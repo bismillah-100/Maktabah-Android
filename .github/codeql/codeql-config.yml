@@ -1,0 +1,6 @@
+name: "CodeQL Custom Config"
+
+paths-ignore:
+  - "**/sqlite3.c"
+  - "**/sqlite3.h"
+  - "**/sqlite3ext.h"

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- Include shared preferences containing donation details and basic preferences -->
+        <include domain="sharedpref" path="main_prefs.xml"/>
+        <include domain="sharedpref" path="MaktabahPrefs.xml"/>
+    </cloud-backup>
+    <device-transfer>
+        <!-- Include shared preferences for device-to-device transfers -->
+        <include domain="sharedpref" path="main_prefs.xml"/>
+        <include domain="sharedpref" path="MaktabahPrefs.xml"/>
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Include shared preferences containing donation details and basic preferences -->
+    <include domain="sharedpref" path="main_prefs.xml"/>
+    <include domain="sharedpref" path="MaktabahPrefs.xml"/>
+</full-backup-content>

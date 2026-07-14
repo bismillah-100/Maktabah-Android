@@ -1,0 +1,45 @@
+# Built artifacts
+build/
+.gradle/
+/captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aar
+
+# IDE specific files
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# Local configuration files
+local.properties
+.kotlin/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Log files
+*.log
+
+# Database files
+*.sqlite
+*.db
+
+# Signing files (Security)
+*.jks
+*.keystore
+*.p12
+*.pepk
+
+# Secrets and sensitive info
+secrets.properties
+google-services.json

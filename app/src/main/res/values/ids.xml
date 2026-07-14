@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="tag_is_last" type="id" />
+    <item name="tag_animating_corners" type="id" />
+    <item name="tag_corner_runnable" type="id" />
+    <item name="tag_corner_animator" type="id" />
+    <item name="tag_animating_rotation" type="id" />
+    <item name="tag_is_first" type="id" />
+    <item name="tag_surface_color" type="id" />
+    <item name="tag_stroke_color" type="id" />
+    <item name="tag_swipe_haptic" type="id" />
+    <item name="tag_anchor_bias" type="id" />
+    <item name="tag_target_bias" type="id" />
+    <item name="tag_bias_animator" type="id" />
+    <item name="library_recycler_view" type="id" />
+    <item name="search_recycler_view" type="id" />
+    <item name="annotations_recycler_view" type="id" />
+</resources>
