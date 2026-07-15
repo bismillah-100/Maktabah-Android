@@ -92,8 +92,8 @@ class SearchEngine {
                     if (stmt.columnType(1) == SQLiteDB.SQLITE_BLOB) {
                         val blob = stmt.columnBlob(1)
                         if (blob != null) {
-                            @Suppress("DEPRECATION") val decompressedSize =
-                                Zstd.decompressedSize(blob).toInt()
+                            val decompressedSize =
+                                Zstd.getFrameContentSize(blob).toInt()
                             if (decompressedSize > 0) {
                                 val ctx = ZstdContextPool.getDecompressCtx()
                                 val decompressed = try {

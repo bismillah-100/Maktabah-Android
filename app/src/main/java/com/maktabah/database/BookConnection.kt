@@ -8,7 +8,7 @@ import com.maktabah.models.TOC
 import com.maktabah.models.TOCNode
 import java.io.File
 
-@Suppress("DEPRECATION")
+
 class BookConnection(private val libraryDataManager: LibraryDataManager) {
     fun getTableOfContents(
         bookId: Int,
@@ -146,7 +146,7 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
                     if (stmt.columnType(1) == SQLiteDB.SQLITE_BLOB) {
                         val blob = stmt.columnBlob(1)
                         if (blob != null) {
-                            val decompressedSize = Zstd.decompressedSize(blob).toInt()
+                            val decompressedSize = Zstd.getFrameContentSize(blob).toInt()
                             if (decompressedSize > 0) {
                                 val ctx = ZstdContextPool.getDecompressCtx()
                                 val decompressed = try {
@@ -202,7 +202,7 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
                     if (stmt.columnType(1) == SQLiteDB.SQLITE_BLOB) {
                         val blob = stmt.columnBlob(1)
                         if (blob != null) {
-                            val decompressedSize = Zstd.decompressedSize(blob).toInt()
+                            val decompressedSize = Zstd.getFrameContentSize(blob).toInt()
                             if (decompressedSize > 0) {
                                 val ctx = ZstdContextPool.getDecompressCtx()
                                 val decompressed = try {
@@ -343,7 +343,7 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
                     if (stmt.columnType(1) == SQLiteDB.SQLITE_BLOB) {
                         val blob = stmt.columnBlob(1)
                         if (blob != null) {
-                            val decompressedSize = Zstd.decompressedSize(blob).toInt()
+                            val decompressedSize = Zstd.getFrameContentSize(blob).toInt()
                             if (decompressedSize > 0) {
                                 val ctx = ZstdContextPool.getDecompressCtx()
                                 val decompressed = try {
