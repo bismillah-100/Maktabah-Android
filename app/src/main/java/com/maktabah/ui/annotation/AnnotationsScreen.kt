@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -56,6 +57,7 @@ import com.maktabah.cloudKit.CloudKitSyncManager
 import com.maktabah.database.AnnotationManager
 import com.maktabah.models.AnnotationGroup
 import com.maktabah.models.AnnotationGroupingMode
+import com.maktabah.models.AnnotationSearchScope
 import com.maktabah.models.AnnotationSortField
 import com.maktabah.ui.common.DonationIconButton
 import com.maktabah.ui.common.GroupedRecyclerView
@@ -63,6 +65,7 @@ import com.maktabah.ui.common.rememberGroupedListColors
 import com.maktabah.ui.history.HistoryViewModel
 import com.maktabah.ui.library.LibraryViewModel
 import com.maktabah.ui.search.SearchTextField
+import com.maktabah.ui.search.AnnotationSearchScopeSegmentedRow
 import com.maktabah.utils.GroupedCardDecoration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -85,6 +88,7 @@ fun AnnotationsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val searchScope by viewModel.searchScope.collectAsState()
     val groupedAnnotations by viewModel.groupedAnnotations.collectAsState()
     val expandedGroups by viewModel.expandedGroups.collectAsState()
     val groupingMode by viewModel.groupingMode.collectAsState()
@@ -117,6 +121,8 @@ fun AnnotationsScreen(
                 AnnotationsTopBar(
                     searchQuery = searchQuery,
                     onSearchQueryChange = { viewModel.searchQuery.value = it },
+                    searchScope = searchScope,
+                    onSearchScopeChange = { viewModel.setSearchScope(it) },
                     bookIdFilter = bookIdFilter,
                     onBack = onBack,
                     hasDonated = hasDonated,
@@ -179,6 +185,8 @@ fun AnnotationsScreen(
 private fun AnnotationsTopBar(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
+    searchScope: AnnotationSearchScope,
+    onSearchScopeChange: (AnnotationSearchScope) -> Unit,
     bookIdFilter: Int?,
     onBack: (() -> Unit)?,
     hasDonated: Boolean,
@@ -204,8 +212,8 @@ private fun AnnotationsTopBar(
                     value = searchQuery,
                     onValueChange = onSearchQueryChange,
                     placeholder = stringResource(R.string.reader_annotations_search_placeholder),
-                    modifier = Modifier.padding(end = 12.dp),
-                    onClearClick = { onSearchQueryChange("") }
+                    onClearClick = { onSearchQueryChange("") },
+                    modifier = Modifier.padding(end = 12.dp)
                 )
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -340,6 +348,16 @@ private fun AnnotationsTopBar(
                 }
             },
         )
+        if (searchQuery.isNotEmpty()) {
+            AnnotationSearchScopeSegmentedRow(
+                searchScope = searchScope,
+                onSearchScopeChange = onSearchScopeChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(38.dp)
+                    .padding(start = 16.dp, end = 16.dp, bottom = 6.dp)
+            )
+        }
     }
 }
 

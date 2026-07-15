@@ -177,6 +177,11 @@
     <string name="annotations_menu_asc">Menaik (Asc)</string>
     <string name="annotations_menu_desc">Menurun (Desc)</string>
     <string name="annotations_empty_hint">Anotasi tidak ditemukan. Ketuk segarkan untuk sinkronisasi dari CloudKit.</string>
+    <string name="annotations_search_all">Semua</string>
+    <string name="annotations_search_book">Buku</string>
+    <string name="annotations_search_context">Konteks</string>
+    <string name="annotations_search_note">Catatan</string>
+    <string name="annotations_search_tag">Tag</string>
     <string name="annotations_expand">Buka</string>
     <string name="annotations_collapse">Tutup</string>
     <string name="history_title">Riwayat</string>

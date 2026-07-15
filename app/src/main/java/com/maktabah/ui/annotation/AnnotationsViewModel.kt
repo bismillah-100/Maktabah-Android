@@ -8,6 +8,7 @@ import com.maktabah.models.Annotation
 import com.maktabah.models.AnnotationChange
 import com.maktabah.models.AnnotationGroup
 import com.maktabah.models.AnnotationGroupingMode
+import com.maktabah.models.AnnotationSearchScope
 import com.maktabah.models.AnnotationSortField
 import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +25,9 @@ class AnnotationsViewModel : ViewModel() {
     val annotations: StateFlow<List<Annotation>> = _annotations.asStateFlow()
 
     val searchQuery = MutableStateFlow("")
+
+    private val _searchScope = MutableStateFlow(AnnotationSearchScope.ALL)
+    val searchScope = _searchScope.asStateFlow()
 
     private val _groupingMode = MutableStateFlow(AnnotationGroupingMode.BOOK)
     val groupingMode = _groupingMode.asStateFlow()
@@ -60,6 +64,10 @@ class AnnotationsViewModel : ViewModel() {
 
     fun setBookIdFilter(filter: Int?) {
         _bookIdFilter.value = filter
+    }
+
+    fun setSearchScope(scope: AnnotationSearchScope) {
+        _searchScope.value = scope
     }
 
     private lateinit var dataManager: LibraryDataManager
@@ -133,11 +141,17 @@ class AnnotationsViewModel : ViewModel() {
         combine(
             _annotations,
             searchQuery,
+            _searchScope,
             _groupingMode,
             sortState,
             _bookIdFilter,
-        ) { annotationsList, query, grouping, sort, bookFilter ->
-            val (field, ascending) = sort
+        ) { args: Array<Any?> ->
+            val annotationsList = args[0] as List<Annotation>
+            val query = args[1] as String
+            val scope = args[2] as AnnotationSearchScope
+            val grouping = args[3] as AnnotationGroupingMode
+            val (field, ascending) = args[4] as Pair<AnnotationSortField, Boolean>
+            val bookFilter = args[5] as Int?
             var filtered =
                 if (bookFilter != null) {
                     annotationsList.filter { it.bkId == bookFilter }
@@ -150,13 +164,20 @@ class AnnotationsViewModel : ViewModel() {
                 filtered =
                     filtered.filter { ann ->
                         val bookName = dataManager.booksById[ann.bkId]?.name ?: ""
-                        ann.context.normalizeArabic()
-                            .contains(normalizedQuery, ignoreCase = true) ||
-                            (ann.note?.normalizeArabic()
-                                ?.contains(normalizedQuery, ignoreCase = true) == true) ||
-                            bookName.normalizeArabic()
-                                .contains(normalizedQuery, ignoreCase = true) ||
+
+                        val matchesBook = (scope == AnnotationSearchScope.ALL || scope == AnnotationSearchScope.BOOK) &&
+                            bookName.normalizeArabic().contains(normalizedQuery, ignoreCase = true)
+
+                        val matchesContext = (scope == AnnotationSearchScope.ALL || scope == AnnotationSearchScope.CONTEXT) &&
+                            ann.context.normalizeArabic().contains(normalizedQuery, ignoreCase = true)
+
+                        val matchesNote = (scope == AnnotationSearchScope.ALL || scope == AnnotationSearchScope.NOTE) &&
+                            ann.note?.normalizeArabic()?.contains(normalizedQuery, ignoreCase = true) == true
+
+                        val matchesTag = (scope == AnnotationSearchScope.ALL || scope == AnnotationSearchScope.TAG) &&
                             ann.tags.normalizeArabic().contains(normalizedQuery, ignoreCase = true)
+
+                        matchesBook || matchesContext || matchesNote || matchesTag
                     }
             }
 

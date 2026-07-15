@@ -179,6 +179,11 @@
     <string name="annotations_menu_asc">Ascending</string>
     <string name="annotations_menu_desc">Descending</string>
     <string name="annotations_empty_hint">No annotations found. Tap refresh to sync from CloudKit.</string>
+    <string name="annotations_search_all">All</string>
+    <string name="annotations_search_book">Book</string>
+    <string name="annotations_search_context">Context</string>
+    <string name="annotations_search_note">Note</string>
+    <string name="annotations_search_tag">Tag</string>
     <string name="annotations_expand">Expand</string>
     <string name="annotations_collapse">Collapse</string>
     <string name="history_title">History</string>
