@@ -57,7 +57,6 @@ import com.maktabah.database.AnnotationManager
 import com.maktabah.models.AnnotationGroup
 import com.maktabah.models.AnnotationGroupingMode
 import com.maktabah.models.AnnotationSortField
-import com.maktabah.ui.common.BookDownloadOverlay
 import com.maktabah.ui.common.DonationIconButton
 import com.maktabah.ui.common.GroupedRecyclerView
 import com.maktabah.ui.common.rememberGroupedListColors
@@ -169,20 +168,6 @@ fun AnnotationsScreen(
                     onAnnotationClick = onNavigateToReader,
                     onAnnotationDelete = { viewModel.forceReload(annotationManager) },
                     annotationManager = annotationManager,
-                )
-            }
-
-            val downloadedBookIds by libraryViewModel.downloadedBookIds.collectAsState()
-            val activeDownloadStates by libraryViewModel.activeDownloadStates.collectAsState()
-            val showOverlay = activeDownloadStates.any {
-                if (it.isBulk) it.bulkBookIds.isNotEmpty() else !downloadedBookIds.contains(it.bookId)
-            }
-
-            if (showOverlay) {
-                BookDownloadOverlay(
-                    viewModel = libraryViewModel,
-                    bottomPadding = bottomPadding,
-                    onNavigateToReader = onNavigateToReader
                 )
             }
         }
