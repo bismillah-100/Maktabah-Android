@@ -168,6 +168,7 @@ fun AnnotationsScreen(
                 AnnotationsList(
                     groupedAnnotations = groupedAnnotations,
                     expandedGroups = expandedGroups,
+                    groupingMode = groupingMode,
                     padding = padding,
                     bottomPadding = bottomPadding,
                     onToggleGroup = { viewModel.toggleGroupExpanded(it) },
@@ -380,6 +381,7 @@ private fun AnnotationSortItem(
 private fun AnnotationsList(
     groupedAnnotations: List<AnnotationGroup>,
     expandedGroups: Map<String, Boolean>,
+    groupingMode: AnnotationGroupingMode,
     padding: PaddingValues,
     bottomPadding: Dp,
     onToggleGroup: (String) -> Unit,
@@ -404,16 +406,18 @@ private fun AnnotationsList(
                 this.secondaryColor = colors.secondaryColor
                 this.onSurfaceColor = colors.onSurfaceColor
                 this.onSurfaceVariantColor = colors.onSurfaceVariantColor
+                this.groupingMode = groupingMode
                 this.stateRestorationPolicy = androidx.recyclerview.widget.RecyclerView.Adapter.StateRestorationPolicy.PREVENT_WHEN_EMPTY
                 submitList(flatItems)
             }
         }
 
-        LaunchedEffect(flatItems, colors) {
+        LaunchedEffect(flatItems, colors, groupingMode) {
             adapter.primaryColor = colors.primaryColor
             adapter.secondaryColor = colors.secondaryColor
             adapter.onSurfaceColor = colors.onSurfaceColor
             adapter.onSurfaceVariantColor = colors.onSurfaceVariantColor
+            adapter.groupingMode = groupingMode
             adapter.submitList(flatItems)
         }
 
