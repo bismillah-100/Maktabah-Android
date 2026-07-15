@@ -393,9 +393,6 @@ private fun LibraryList(
                 this.secondaryColor = colors.secondaryColor
                 this.onSurfaceVariantColor = colors.onSurfaceVariantColor
                 this.stateRestorationPolicy = androidx.recyclerview.widget.RecyclerView.Adapter.StateRestorationPolicy.PREVENT_WHEN_EMPTY
-
-                // Submit synchronously so it doesn't start empty, avoiding scroll-to-bottom anchor bug
-                submitList(flatVisibleItems)
             }
         }
 
@@ -440,6 +437,7 @@ private fun LibraryList(
             colors, showOnlyDownloaded
         ) {
             val viewModeChanged = adapter.viewMode != viewMode
+            val wasEmpty = adapter.currentList.isEmpty()
             adapter.submitList(flatVisibleItems) {
                 adapter.viewMode = viewMode
                 adapter.isSelectionMode = isSelectionMode
@@ -449,7 +447,7 @@ private fun LibraryList(
                 adapter.primaryColor = colors.primaryColor
                 adapter.secondaryColor = colors.secondaryColor
                 adapter.onSurfaceVariantColor = colors.onSurfaceVariantColor
-                if (viewModeChanged) {
+                if (viewModeChanged || wasEmpty) {
                     adapter.scrollToTop()
                 }
             }
