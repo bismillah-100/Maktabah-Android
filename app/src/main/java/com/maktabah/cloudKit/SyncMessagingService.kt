@@ -42,7 +42,7 @@ class SyncMessagingService : FirebaseMessagingService() {
         }
     }
 
-    @Deprecated("Deprecated in Java")
+
     override fun onNewToken(token: String) {
         Log.d("SyncMessagingService", "Refreshed token: $token")
         registerFcmToken(applicationContext, token)
