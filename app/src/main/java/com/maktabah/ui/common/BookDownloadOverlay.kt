@@ -2,6 +2,7 @@ package com.maktabah.ui.common
 
 import android.graphics.BlurMaskFilter
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -208,6 +209,7 @@ private fun DownloadStateItem(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .animateContentSize()
             .padding(16.dp)
     ) {
         // Baris 1: Icon & Nama Buku
@@ -297,14 +299,12 @@ private fun DownloadStateItem(
                     )
                 }
             } else if (state.isDownloading) {
-                if (state.phase == IntegratePhase.DOWNLOAD) {
-                    Text(
-                        text = "${state.progress}%",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
+                Text(
+                    text = if (state.phase == IntegratePhase.DOWNLOAD) "${state.progress}%" else "100%",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
@@ -344,13 +344,26 @@ private fun DownloadStateItem(
 
         if (state.isDownloading && state.error == null) {
             Spacer(modifier = Modifier.height(8.dp))
-            LinearProgressIndicator(
-                progress = { if (state.phase == IntegratePhase.DOWNLOAD) state.progress / 100f else 0.5f },
-                modifier = Modifier.fillMaxWidth(),
-                strokeCap = StrokeCap.Round,
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
-            )
+            if (state.phase == IntegratePhase.DOWNLOAD) {
+                LinearProgressIndicator(
+                    progress = { state.progress / 100f },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp),
+                    strokeCap = StrokeCap.Round,
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
+                )
+            } else {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp),
+                    strokeCap = StrokeCap.Round,
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
+                )
+            }
         }
     }
 }
