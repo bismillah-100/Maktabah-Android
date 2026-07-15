@@ -28,10 +28,12 @@ import androidx.compose.ui.unit.dp
 import com.maktabah.R
 import com.maktabah.database.AnnotationManager
 import com.maktabah.models.Annotation
+import com.maktabah.models.AnnotationSearchScope
 import com.maktabah.models.FlashTarget
 import com.maktabah.ui.annotation.AnnotationItem
 import com.maktabah.ui.common.fadingEdge
-import com.maktabah.ui.search.SearchTextField
+import com.maktabah.ui.search.SearchWithScope
+import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -45,6 +47,7 @@ fun BookAnnotationsSheet(
 ) {
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     var annotationSearchQuery by remember { mutableStateOf("") }
+    var annotationSearchScope by remember { mutableStateOf(AnnotationSearchScope.ALL) }
     val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
         skipPartiallyExpanded = true
     )
@@ -59,21 +62,28 @@ fun BookAnnotationsSheet(
                 .fillMaxWidth()
                 .fillMaxHeight(0.85f)
         ) {
-            val topPadding = 54.dp
             val filteredAnnotations =
-                remember(bookAnnotations, annotationSearchQuery) {
+                remember(bookAnnotations, annotationSearchQuery, annotationSearchScope) {
                     if (annotationSearchQuery.isBlank()) {
                         bookAnnotations
                     } else {
+                        val normalizedQuery = annotationSearchQuery.normalizeArabic()
                         bookAnnotations.filter { ann ->
-                            ann.context.contains(annotationSearchQuery, ignoreCase = true) ||
-                                (ann.note?.contains(
-                                    annotationSearchQuery,
-                                    ignoreCase = true
-                                ) == true)
+                            val matchesContext = (annotationSearchScope == AnnotationSearchScope.ALL || annotationSearchScope == AnnotationSearchScope.CONTEXT) &&
+                                ann.context.normalizeArabic().contains(normalizedQuery, ignoreCase = true)
+
+                            val matchesNote = (annotationSearchScope == AnnotationSearchScope.ALL || annotationSearchScope == AnnotationSearchScope.NOTE) &&
+                                (ann.note?.normalizeArabic()?.contains(normalizedQuery, ignoreCase = true) == true)
+
+                            val matchesTag = (annotationSearchScope == AnnotationSearchScope.ALL || annotationSearchScope == AnnotationSearchScope.TAG) &&
+                                ann.tags.normalizeArabic().contains(normalizedQuery, ignoreCase = true)
+
+                            matchesContext || matchesNote || matchesTag
                         }
                     }
                 }
+
+            val topPadding = if (annotationSearchQuery.isNotEmpty()) 100.dp else 54.dp
 
             if (filteredAnnotations.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize().padding(top = topPadding), contentAlignment = Alignment.Center) {
@@ -137,11 +147,12 @@ fun BookAnnotationsSheet(
             }
 
             Box(modifier = Modifier.padding(start = 16.dp, end = 16.dp)) {
-                SearchTextField(
-                    value = annotationSearchQuery,
-                    onValueChange = { annotationSearchQuery = it },
-                    placeholder = stringResource(R.string.reader_annotations_search_placeholder),
-                    onClearClick = { annotationSearchQuery = "" }
+                SearchWithScope(
+                    searchQuery = annotationSearchQuery,
+                    onSearchQueryChange = { annotationSearchQuery = it },
+                    searchScope = annotationSearchScope,
+                    onSearchScopeChange = { annotationSearchScope = it },
+                    placeholder = stringResource(R.string.reader_annotations_search_placeholder)
                 )
             }
         }

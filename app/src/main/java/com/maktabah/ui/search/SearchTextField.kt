@@ -4,6 +4,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -19,9 +20,13 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,9 +34,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.maktabah.models.AnnotationSearchScope
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -124,4 +132,73 @@ fun SearchTextField(
             }
         },
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AnnotationSearchScopeSegmentedRow(
+    searchScope: AnnotationSearchScope,
+    onSearchScopeChange: (AnnotationSearchScope) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    SingleChoiceSegmentedButtonRow(
+        modifier = modifier
+    ) {
+        AnnotationSearchScope.entries.forEachIndexed { index, scope ->
+            SegmentedButton(
+                modifier = Modifier.fillMaxHeight(),
+                shape = SegmentedButtonDefaults.itemShape(
+                    index = index,
+                    count = AnnotationSearchScope.entries.size
+                ),
+                onClick = { onSearchScopeChange(scope) },
+                selected = searchScope == scope,
+                icon = {},
+                colors = SegmentedButtonDefaults.colors(
+                    activeContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                    activeContentColor = MaterialTheme.colorScheme.primary,
+                    inactiveContainerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.8f),
+                    inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
+                label = {
+                    Text(
+                        text = stringResource(scope.labelRes),
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1
+                    )
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SearchWithScope(
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    searchScope: AnnotationSearchScope,
+    onSearchScopeChange: (AnnotationSearchScope) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        SearchTextField(
+            value = searchQuery,
+            onValueChange = onSearchQueryChange,
+            placeholder = placeholder,
+            onClearClick = { onSearchQueryChange("") }
+        )
+
+        if (searchQuery.isNotEmpty()) {
+            AnnotationSearchScopeSegmentedRow(
+                searchScope = searchScope,
+                onSearchScopeChange = onSearchScopeChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .padding(top = 4.dp)
+            )
+        }
+    }
 }

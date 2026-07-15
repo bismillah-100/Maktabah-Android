@@ -19,6 +19,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.maktabah.R
 import com.maktabah.models.Annotation
 import com.maktabah.models.AnnotationGroup
+import com.maktabah.models.AnnotationGroupingMode
 import com.maktabah.utils.convertToArabicDigits
 
 // Flat item types for the RecyclerView
@@ -63,6 +64,7 @@ class AnnotationsAdapter(
     var secondaryColor: Int = Color.TRANSPARENT
     var onSurfaceColor: Int = Color.TRANSPARENT
     var onSurfaceVariantColor: Int = Color.TRANSPARENT
+    var groupingMode: AnnotationGroupingMode = AnnotationGroupingMode.BOOK
 
     companion object {
         private const val TYPE_HEADER = 0
@@ -245,6 +247,12 @@ class AnnotationsAdapter(
             // Set dynamic icon colors
             arrowIcon.setColorFilter(secondaryColor)
             typeIcon.setColorFilter(secondaryColor)
+
+            if (groupingMode == AnnotationGroupingMode.TAG) {
+                typeIcon.setImageResource(R.drawable.ic_tag)
+            } else {
+                typeIcon.setImageResource(R.drawable.ic_import_contacts)
+            }
 
             // Only set rotation if not currently performing a rotation animation
             val isRotating = arrowIcon.getTag(R.id.tag_animating_rotation) as? Boolean ?: false
