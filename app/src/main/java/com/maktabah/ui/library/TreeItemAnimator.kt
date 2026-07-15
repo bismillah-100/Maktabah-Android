@@ -10,7 +10,12 @@ class TreeItemAnimator : DefaultItemAnimator() {
 
     private val pendingAdds = mutableListOf<RecyclerView.ViewHolder>()
     private val pendingRemoves = mutableListOf<RecyclerView.ViewHolder>()
-    var collapsingParentY: Float? = null
+    
+    /**
+     * View (kategori) atau Float (koordinat Y) yang menjadi acuan posisi collapse.
+     * Menggunakan View memungkinkan animasi tetap akurat meski terjadi scrolling.
+     */
+    var collapsingParent: Any? = null
 
     init {
         val duration = 250L
@@ -50,14 +55,23 @@ class TreeItemAnimator : DefaultItemAnimator() {
         view.clipBounds = android.graphics.Rect(0, topToUse, view.width, view.height.coerceAtLeast(topToUse))
     }
 
-    private fun groupHeights(holders: List<RecyclerView.ViewHolder>): Map<Float, Int> {
-        val result = mutableMapOf<Float, Int>()
+    private fun getParentBottom(tag: Any?): Float {
+        return when (tag) {
+            is View -> tag.bottom.toFloat()
+            is Float -> tag
+            else -> 0f
+        }
+    }
+
+    private fun groupHeights(holders: List<RecyclerView.ViewHolder>): Map<Any, Int> {
+        val result = mutableMapOf<Any, Int>()
         for (holder in holders) {
-            val parentBottom = holder.itemView.tag as? Float ?: continue
+            val tag = holder.itemView.tag ?: continue
+            val parentBottom = getParentBottom(tag)
             val height = (holder.itemView.bottom - parentBottom).toInt().coerceAtLeast(0)
-            val current = result[parentBottom] ?: 0
+            val current = result[tag] ?: 0
             if (height > current) {
-                result[parentBottom] = height
+                result[tag] = height
             }
         }
         return result
@@ -79,9 +93,9 @@ class TreeItemAnimator : DefaultItemAnimator() {
             pendingRemoves.add(holder)
             return true
         }
-        val collapseY = collapsingParentY
-        if (collapseY != null) {
-            holder.itemView.tag = collapseY
+        val collapseParent = collapsingParent
+        if (collapseParent != null) {
+            holder.itemView.tag = collapseParent
             pendingRemoves.add(holder)
             return true
         }
@@ -98,9 +112,9 @@ class TreeItemAnimator : DefaultItemAnimator() {
 
             for (holder in pendingAdds) {
                 val view = holder.itemView
-                val parentBottom = view.tag as? Float ?: 0f
+                val tag = view.tag
                 val isFresh = view.translationY <= -9999f
-                val trueHeight = addHeights[parentBottom] ?: (view.bottom - parentBottom).toInt().coerceAtLeast(0)
+                val trueHeight = if (tag != null) addHeights[tag] ?: (view.bottom - getParentBottom(tag)).toInt().coerceAtLeast(0) else 0
                 val startTranslationY = if (trueHeight > 0) -trueHeight.toFloat() else 0f
                 if (isFresh) {
                     view.translationY = startTranslationY
@@ -108,13 +122,13 @@ class TreeItemAnimator : DefaultItemAnimator() {
 
                 val targetY = view.top
 
-                val cTop = (parentBottom - (targetY + (if (isFresh) startTranslationY else view.translationY))).toInt()
+                val cTop = (getParentBottom(tag) - (targetY + (if (isFresh) startTranslationY else view.translationY))).toInt()
                 setClipTop(view, cTop)
                 invalidateDecoration(view)
 
                 val updateListener = android.animation.ValueAnimator.AnimatorUpdateListener {
                     val currentTransY = view.translationY
-                    val currentClipTop = (parentBottom - (targetY + currentTransY)).toInt()
+                    val currentClipTop = (getParentBottom(tag) - (targetY + currentTransY)).toInt()
                     setClipTop(view, currentClipTop)
                     invalidateDecoration(view)
                 }
@@ -145,13 +159,13 @@ class TreeItemAnimator : DefaultItemAnimator() {
 
             for (holder in pendingRemoves) {
                 val view = holder.itemView
-                val parentBottom = view.tag as? Float ?: 0f
-                val trueHeight = removeHeights[parentBottom] ?: (view.bottom - parentBottom).toInt().coerceAtLeast(0)
+                val tag = view.tag
+                val trueHeight = if (tag != null) removeHeights[tag] ?: (view.bottom - getParentBottom(tag)).toInt().coerceAtLeast(0) else 0
                 val targetTranslationY = if (trueHeight > 0) -trueHeight.toFloat() else 0f
 
                 val updateListener = android.animation.ValueAnimator.AnimatorUpdateListener {
                     val currentTransY = view.translationY
-                    val currentClipTop = (parentBottom - (view.top + currentTransY)).toInt()
+                    val currentClipTop = (getParentBottom(tag) - (view.top + currentTransY)).toInt()
                     setClipTop(view, currentClipTop)
                     invalidateDecoration(view)
                 }
@@ -181,7 +195,7 @@ class TreeItemAnimator : DefaultItemAnimator() {
             }
             pendingRemoves.clear()
         }
-        collapsingParentY = null
+        collapsingParent = null
         super.runPendingAnimations()
     }
 }

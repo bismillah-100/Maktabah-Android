@@ -30,11 +30,11 @@ class LibraryAdapter(
 ) : ListAdapter<FlatLibraryItem, LibraryAdapter.ViewHolder>(ItemDiffCallback()) {
 
     private lateinit var recyclerView: RecyclerView
-    private var lastClickedParentY: Float? = null
+    private var lastClickedParent: Any? = null
     private var lastClickedCategoryId: Int? = null
 
     fun clearLastClickedParent() {
-        lastClickedParentY = null
+        lastClickedParent = null
         lastClickedCategoryId = null
     }
 
@@ -45,7 +45,7 @@ class LibraryAdapter(
     }
 
     private val clearParentRunnable = Runnable {
-        lastClickedParentY = null
+        lastClickedParent = null
         lastClickedCategoryId = null
     }
 
@@ -167,10 +167,10 @@ class LibraryAdapter(
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val flatItem = getItem(position)
 
-        // Tag child item with parent Y if expanding
+        // Tag child item with parent if expanding
         val clickedCategoryId = lastClickedCategoryId
-        val clickedParentY = lastClickedParentY
-        if (clickedCategoryId != null && clickedParentY != null) {
+        val clickedParent = lastClickedParent
+        if (clickedCategoryId != null && clickedParent != null) {
             val clickedPos = currentList.indexOfFirst {
                 val i = it.item
                 (i is CategoryData && i.id == clickedCategoryId)
@@ -187,7 +187,7 @@ class LibraryAdapter(
                         }
                     }
                     if (isDescendant && flatItem.level > clickedLevel) {
-                        holder.itemView.tag = clickedParentY
+                        holder.itemView.tag = clickedParent
                     } else {
                         holder.itemView.tag = null
                     }
@@ -217,23 +217,23 @@ class LibraryAdapter(
             onLoadMore = onLoadMore,
             onLoadMoreAuthors = onLoadMoreAuthors,
             onCategorySelectionToggle = onCategorySelectionToggle,
-            onSetExpandClick = { parentY, categoryId, isExpanded ->
+            onSetExpandClick = { parent, categoryId, isExpanded ->
                 val currentPos = holder.bindingAdapterPosition
                 if (currentPos != RecyclerView.NO_POSITION) {
                     val animator = recyclerView.itemAnimator as? TreeItemAnimator
                     if (isExpanded) { // collapsing
-                        animator?.collapsingParentY = parentY
+                        animator?.collapsingParent = parent
                         for (i in (currentPos + 1) until itemCount) {
                             val nextItem = getItem(i)
                             if (nextItem.level > flatItem.level) {
                                 val childHolder = recyclerView.findViewHolderForAdapterPosition(i)
-                                childHolder?.itemView?.tag = parentY
+                                childHolder?.itemView?.tag = parent
                             } else {
                                 break
                             }
                         }
                     } else { // expanding
-                        lastClickedParentY = parentY
+                        lastClickedParent = parent
                         lastClickedCategoryId = categoryId
                         recyclerView.removeCallbacks(clearParentRunnable)
                         recyclerView.postDelayed(clearParentRunnable, 350)
@@ -289,7 +289,7 @@ class LibraryAdapter(
             onLoadMore: (Int) -> Unit,
             onLoadMoreAuthors: () -> Unit,
             onCategorySelectionToggle: (CategoryData) -> Unit,
-            onSetExpandClick: (Float, Int, Boolean) -> Unit
+            onSetExpandClick: (Any, Int, Boolean) -> Unit
         ) {
             itemView.translationZ = (100 - flatItem.level).toFloat()
             itemView.outlineProvider = null
@@ -405,7 +405,7 @@ class LibraryAdapter(
                         })
                         animator.start()
 
-                        onSetExpandClick(itemView.bottom.toFloat(), item.id, isCurrentlyExpanded)
+                        onSetExpandClick(itemView, item.id, isCurrentlyExpanded)
                         onCategoryToggle(item.id)
                     }
                 }

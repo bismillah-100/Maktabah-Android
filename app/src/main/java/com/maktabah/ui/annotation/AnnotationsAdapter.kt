@@ -46,11 +46,11 @@ class AnnotationsAdapter(
 ) : ListAdapter<AnnotationFlatItem, RecyclerView.ViewHolder>(DiffCallback()) {
 
     private lateinit var recyclerView: RecyclerView
-    private var lastClickedHeaderY: Float? = null
+    private var lastClickedHeader: Any? = null
     private var lastClickedGroupKey: String? = null
 
     private val clearParentRunnable = Runnable {
-        lastClickedHeaderY = null
+        lastClickedHeader = null
         lastClickedGroupKey = null
     }
 
@@ -168,14 +168,14 @@ class AnnotationsAdapter(
 
         // Tag child items for expand/collapse animation (same pattern as LibraryAdapter)
         val clickedKey = lastClickedGroupKey
-        val clickedY = lastClickedHeaderY
-        if (clickedKey != null && clickedY != null) {
+        val clickedParent = lastClickedHeader
+        if (clickedKey != null && clickedParent != null) {
             val isChildOfClicked = when (val flatItem = getItem(position)) {
                 is AnnotationFlatItem.Item -> flatItem.groupKey == clickedKey
                 is AnnotationFlatItem.Spacer -> flatItem.groupKey == clickedKey
                 else -> false
             }
-            holder.itemView.tag = if (isChildOfClicked) clickedY else null
+            holder.itemView.tag = if (isChildOfClicked) clickedParent else null
         } else {
             holder.itemView.tag = null
         }
@@ -195,16 +195,16 @@ class AnnotationsAdapter(
                         val animator = recyclerView.itemAnimator as? com.maktabah.ui.library.TreeItemAnimator
                         if (isExpanded) {
                             // collapsing — tag children so they animate toward header
-                            animator?.collapsingParentY = holder.itemView.bottom.toFloat()
+                            animator?.collapsingParent = holder.itemView
                             for (i in (currentPos + 1) until itemCount) {
                                 val next = getItem(i)
                                 if (next is AnnotationFlatItem.Header) break
                                 recyclerView.findViewHolderForAdapterPosition(i)
-                                    ?.itemView?.tag = holder.itemView.bottom.toFloat()
+                                    ?.itemView?.tag = holder.itemView
                             }
                         } else {
-                            // expanding — store parent Y so newly bound children get the tag
-                            lastClickedHeaderY = holder.itemView.bottom.toFloat()
+                            // expanding — store parent so newly bound children get the tag
+                            lastClickedHeader = holder.itemView
                             lastClickedGroupKey = item.group.key
                             recyclerView.removeCallbacks(clearParentRunnable)
                             recyclerView.postDelayed(clearParentRunnable, 350)
