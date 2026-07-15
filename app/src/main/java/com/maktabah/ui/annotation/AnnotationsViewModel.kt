@@ -12,6 +12,7 @@ import com.maktabah.models.AnnotationSearchScope
 import com.maktabah.models.AnnotationSortField
 import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -137,21 +138,24 @@ class AnnotationsViewModel : ViewModel() {
             field to ascending
         }
 
-    val groupedAnnotations: StateFlow<List<AnnotationGroup>> =
+    private val filterAndSortParams: Flow<FilterAndSortParams> =
         combine(
-            _annotations,
             searchQuery,
             _searchScope,
             _groupingMode,
             sortState,
-            _bookIdFilter,
-        ) { args: Array<Any?> ->
-            val annotationsList = args[0] as List<Annotation>
-            val query = args[1] as String
-            val scope = args[2] as AnnotationSearchScope
-            val grouping = args[3] as AnnotationGroupingMode
-            val (field, ascending) = args[4] as Pair<AnnotationSortField, Boolean>
-            val bookFilter = args[5] as Int?
+            _bookIdFilter
+        ) { query, scope, grouping, sort, bookFilter ->
+            FilterAndSortParams(query, scope, grouping, sort, bookFilter)
+        }
+
+    val groupedAnnotations: StateFlow<List<AnnotationGroup>> =
+        combine(_annotations, filterAndSortParams) { annotationsList, params ->
+            val query = params.query
+            val scope = params.scope
+            val grouping = params.grouping
+            val (field, ascending) = params.sort
+            val bookFilter = params.bookFilter
             var filtered =
                 if (bookFilter != null) {
                     annotationsList.filter { it.bkId == bookFilter }
@@ -293,3 +297,11 @@ class AnnotationsViewModel : ViewModel() {
             initialValue = emptyList(),
         )
 }
+
+private data class FilterAndSortParams(
+    val query: String,
+    val scope: AnnotationSearchScope,
+    val grouping: AnnotationGroupingMode,
+    val sort: Pair<AnnotationSortField, Boolean>,
+    val bookFilter: Int?
+)
