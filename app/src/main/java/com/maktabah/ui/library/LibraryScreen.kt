@@ -54,7 +54,6 @@ import com.maktabah.database.AnnotationManager
 import com.maktabah.models.CategoryData
 import com.maktabah.models.FlatLibraryItem
 import com.maktabah.models.LibraryViewMode
-import com.maktabah.ui.common.BookDownloadOverlay
 import com.maktabah.ui.common.DonationCard
 import com.maktabah.ui.common.DonationIconButton
 import com.maktabah.ui.common.GroupedRecyclerView
@@ -207,20 +206,6 @@ fun LibraryScreen(
                 padding = padding,
                 bottomPadding = bottomPadding,
                 hasDonated = hasDonated,
-            )
-        }
-
-        val showOverlay = if (isSelectionMode) {
-            selectedBookIds.any { !downloadedBookIds.contains(it) }
-        } else {
-            true
-        }
-
-        if (showOverlay) {
-            BookDownloadOverlay(
-                viewModel = viewModel,
-                bottomPadding = bottomPadding,
-                onNavigateToReader = onNavigateToReader,
             )
         }
     }

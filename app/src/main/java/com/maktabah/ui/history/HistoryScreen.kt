@@ -65,7 +65,6 @@ import com.maktabah.R
 import com.maktabah.cloudKit.CloudKitSyncManager
 import com.maktabah.database.AnnotationManager
 import com.maktabah.models.ReadingEntry
-import com.maktabah.ui.common.BookDownloadOverlay
 import com.maktabah.ui.common.DonationCard
 import com.maktabah.ui.common.DonationIconButton
 import com.maktabah.ui.common.InsetGroupedItem
@@ -269,20 +268,6 @@ fun HistoryScreen(
                         )
                     }
                 }
-            )
-        }
-
-        val downloadedBookIds by libraryViewModel.downloadedBookIds.collectAsState()
-        val activeDownloadStates by libraryViewModel.activeDownloadStates.collectAsState()
-        val showOverlay = activeDownloadStates.any {
-            if (it.isBulk) it.bulkBookIds.isNotEmpty() else !downloadedBookIds.contains(it.bookId)
-        }
-
-        if (showOverlay) {
-            BookDownloadOverlay(
-                viewModel = libraryViewModel,
-                bottomPadding = bottomPadding,
-                onNavigateToReader = onNavigateToReader
             )
         }
     }

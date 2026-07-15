@@ -318,6 +318,22 @@ fun MainScreen(
                         .align(Alignment.BottomCenter)
                         .padding(bottom = innerPadding.calculateBottomPadding() + 16.dp),
             )
+
+            val downloadedBookIds by libraryViewModel.downloadedBookIds.collectAsState()
+            val activeDownloadStates by libraryViewModel.activeDownloadStates.collectAsState()
+            val showOverlay = activeDownloadStates.any {
+                if (it.isBulk) it.bulkBookIds.isNotEmpty() else !downloadedBookIds.contains(it.bookId)
+            }
+            val allowedOverlayRoutes = listOf(Tab.Library.route, Tab.Annotations.route, Tab.History.route)
+            val isAllowedRoute = currentRoute in allowedOverlayRoutes
+
+            if (showOverlay && isAllowedRoute) {
+                BookDownloadOverlay(
+                    viewModel = libraryViewModel,
+                    bottomPadding = innerPadding.calculateBottomPadding(),
+                    onNavigateToReader = handleNavigateToReader,
+                )
+            }
         }
     }
 }
