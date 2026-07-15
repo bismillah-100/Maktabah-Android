@@ -270,7 +270,7 @@ object BookArchiveIntegrator {
                         val id = ftsSelectStmt.columnLong(0)
                         val blob = ftsSelectStmt.columnBlob(1)
                         if (blob != null) {
-                            val decompressedSize = Zstd.decompressedSize(blob).toInt()
+                            val decompressedSize = Zstd.getFrameContentSize(blob).toInt()
                             if (decompressedSize > 0) {
                                 val ctx = ZstdContextPool.getDecompressCtx()
                                 val decompressed = try {
