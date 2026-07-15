@@ -57,6 +57,8 @@ class ReaderTabManager : ViewModel() {
         val idx = current.indexOfFirst { it.id == id }
         if (idx == -1) return
 
+        val tabToClose = current[idx]
+
         val remaining = current.toMutableList().also { it.removeAt(idx) }
         _tabs.value = remaining
 
@@ -65,6 +67,9 @@ class ReaderTabManager : ViewModel() {
                 ?: remaining.getOrNull(idx)?.id
                     ?: remaining.firstOrNull()?.id
         }
+
+        // Clean up memory
+        tabToClose.viewModel.onClose()
     }
 
     fun closeTabsForBooks(bookIds: List<Int>) {
@@ -89,4 +94,10 @@ class ReaderTabManager : ViewModel() {
 
     fun getSavedScrollY(tabId: String): Int =
         _tabs.value.firstOrNull { it.id == tabId }?.savedScrollY ?: 0
+
+    override fun onCleared() {
+        super.onCleared()
+        // Clean up all ViewModels when the manager is destroyed
+        _tabs.value.forEach { it.viewModel.onClose() }
+    }
 }

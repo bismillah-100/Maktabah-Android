@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -492,5 +493,18 @@ class ReaderViewModel : ViewModel() {
                 e.printStackTrace()
             }
         }
+    }
+
+    /**
+     * Called manually when the tab is closed to prevent memory leaks,
+     * since this ViewModel is instantiated manually and not tied to the standard Compose lifecycle.
+     */
+    fun onClose() {
+        viewModelScope.cancel()
+        libraryDataManager = null
+        bookConnection = null
+        annotationManager = null
+        sharedPreferences = null
+        archiveFile = null
     }
 }
