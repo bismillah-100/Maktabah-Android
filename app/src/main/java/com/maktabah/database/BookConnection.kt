@@ -8,7 +8,7 @@ import com.maktabah.models.TOC
 import com.maktabah.models.TOCNode
 import java.io.File
 
-@Suppress("DEPRECATION")
+
 class BookConnection(private val libraryDataManager: LibraryDataManager) {
     fun getTableOfContents(
         bookId: Int,
