@@ -269,11 +269,20 @@ class AnnotationManager(
     fun clearDeletedRecordIds(ids: List<String>) {
         if (ids.isEmpty()) return
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
-            for (id in ids) {
+            db.prepare("BEGIN TRANSACTION")?.use { it.step() }
+            try {
                 db.prepare("DELETE FROM deleted_records WHERE ckRecordId = ?")?.use { stmt ->
-                    stmt.bindText(1, id)
-                    stmt.step()
+                    for (id in ids) {
+                        stmt.bindText(1, id)
+                        stmt.step()
+                        stmt.reset()
+                        stmt.clearBindings()
+                    }
                 }
+                db.prepare("COMMIT")?.use { it.step() }
+            } catch (e: Exception) {
+                db.prepare("ROLLBACK")?.use { it.step() }
+                throw e
             }
         }
     }
@@ -313,11 +322,20 @@ class AnnotationManager(
     fun clearPendingUploads(ckRecordIds: List<String>) {
         if (ckRecordIds.isEmpty()) return
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
-            for (id in ckRecordIds) {
+            db.prepare("BEGIN TRANSACTION")?.use { it.step() }
+            try {
                 db.prepare("DELETE FROM pending_uploads WHERE ckRecordId = ?")?.use { stmt ->
-                    stmt.bindText(1, id)
-                    stmt.step()
+                    for (id in ckRecordIds) {
+                        stmt.bindText(1, id)
+                        stmt.step()
+                        stmt.reset()
+                        stmt.clearBindings()
+                    }
                 }
+                db.prepare("COMMIT")?.use { it.step() }
+            } catch (e: Exception) {
+                db.prepare("ROLLBACK")?.use { it.step() }
+                throw e
             }
         }
     }
