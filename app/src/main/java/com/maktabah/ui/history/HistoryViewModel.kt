@@ -243,9 +243,7 @@ class HistoryViewModel : ViewModel() {
             // Ensure order has the incoming items at the top or update their positions
             val order = _historyOrder.value.toMutableList()
             for (incoming in entriesToSave.sortedBy { it.updatedAt }) {
-                if (order.contains(incoming.bookId)) {
-                    order.remove(incoming.bookId)
-                }
+                order.remove(incoming.bookId)
                 order.add(0, incoming.bookId)
             }
 

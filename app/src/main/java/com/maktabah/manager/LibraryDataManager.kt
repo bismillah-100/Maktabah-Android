@@ -172,20 +172,17 @@ class LibraryDataManager(
         val booksByAuthor = mutableMapOf<Int, MutableList<BooksData>>()
         val booksWithNoAuthor = mutableListOf<BooksData>()
 
+        val authorCategories = mutableListOf<CategoryData>()
+        val authorNames = mutableMapOf<Int, String>()
+
         for (book in allBooks) {
             if (book.authno == 0) {
                 booksWithNoAuthor.add(book)
             } else {
                 booksByAuthor.getOrPut(book.authno) { mutableListOf() }.add(book)
-            }
-        }
-
-        val authorCategories = mutableListOf<CategoryData>()
-        val authorNames = mutableMapOf<Int, String>()
-
-        for (book in allBooks) {
-            if (book.authno != 0 && book.auth.isNotEmpty()) {
-                authorNames[book.authno] = book.auth
+                if (book.auth.isNotEmpty()) {
+                    authorNames[book.authno] = book.auth
+                }
             }
         }
 
