@@ -102,29 +102,29 @@ class AnnotationManager(
         var newId: Long = -1
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
 
-        val sql = """
-            INSERT INTO annotations_v2 (
-                bkId, contentId, color, note, type, createdAt, page, context, 
-                rangeLocation, rangeLength, rangeDiacLocation, rangeDiacLength, 
-                part, tags, ckRecordId, lastModified
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(ckRecordId) DO UPDATE SET
-                bkId = excluded.bkId,
-                contentId = excluded.contentId,
-                color = excluded.color,
-                note = excluded.note,
-                type = excluded.type,
-                createdAt = excluded.createdAt,
-                page = excluded.page,
-                context = excluded.context,
-                rangeLocation = excluded.rangeLocation,
-                rangeLength = excluded.rangeLength,
-                rangeDiacLocation = excluded.rangeDiacLocation,
-                rangeDiacLength = excluded.rangeDiacLength,
-                part = excluded.part,
-                tags = excluded.tags,
-                lastModified = excluded.lastModified;
-        """
+            val sql = """
+                INSERT INTO annotations_v2 (
+                    bkId, contentId, color, note, type, createdAt, page, context,
+                    rangeLocation, rangeLength, rangeDiacLocation, rangeDiacLength,
+                    part, tags, ckRecordId, lastModified
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(ckRecordId) DO UPDATE SET
+                    bkId = excluded.bkId,
+                    contentId = excluded.contentId,
+                    color = excluded.color,
+                    note = excluded.note,
+                    type = excluded.type,
+                    createdAt = excluded.createdAt,
+                    page = excluded.page,
+                    context = excluded.context,
+                    rangeLocation = excluded.rangeLocation,
+                    rangeLength = excluded.rangeLength,
+                    rangeDiacLocation = excluded.rangeDiacLocation,
+                    rangeDiacLength = excluded.rangeDiacLength,
+                    part = excluded.part,
+                    tags = excluded.tags,
+                    lastModified = excluded.lastModified;
+            """
             db.prepare(sql)?.use { stmt ->
                 stmt.bindInt(1, annotation.bkId)
                 stmt.bindInt(2, annotation.contentId)
