@@ -6,3 +6,6 @@
 ## 2023-10-27 - [@Immutable in Compose]
 **Learning:** Only apply `@Immutable` to truly immutable data classes (all `val`, no mutable collections). `BooksData`, `SearchResult`, and `Annotation` meet these criteria. Faking immutability leads to recomposition bugs that are harder to debug than the initial performance issues. Fading Edge optimizations via `drawWithContent` were already correctly implemented, avoiding unnecessary composition reads.
 **Action:** Always manually verify every field of a data class before applying `@Immutable`. Replaced static integers with `ids.xml` items in Compose-to-View wrappers to pass lint checks.
+## 2025-07-15 - [LibraryDataManager buildAuthorHierarchy Performance Optimization]
+**Learning:** Avoid redundant traversals of large collections.
+**Action:** When grouping collections and performing transformations based on predicates on those elements, attempt to combine them into one loop.
