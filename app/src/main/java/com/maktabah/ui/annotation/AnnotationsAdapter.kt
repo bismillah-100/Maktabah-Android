@@ -46,12 +46,17 @@ class AnnotationsAdapter(
 ) : ListAdapter<AnnotationFlatItem, RecyclerView.ViewHolder>(DiffCallback()) {
 
     private lateinit var recyclerView: RecyclerView
-    private var lastClickedHeader: Any? = null
+    private var lastClickedHeader: java.lang.ref.WeakReference<View>? = null
     private var lastClickedGroupKey: String? = null
 
     private val clearParentRunnable = Runnable {
         lastClickedHeader = null
         lastClickedGroupKey = null
+    }
+
+    override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+        super.onViewRecycled(holder)
+        holder.itemView.tag = null
     }
 
     var primaryColor: Int = Color.TRANSPARENT
@@ -195,16 +200,17 @@ class AnnotationsAdapter(
                         val animator = recyclerView.itemAnimator as? com.maktabah.ui.library.TreeItemAnimator
                         if (isExpanded) {
                             // collapsing — tag children so they animate toward header
-                            animator?.collapsingParent = holder.itemView
+                            val parentRef = java.lang.ref.WeakReference(holder.itemView)
+                            animator?.collapsingParent = parentRef
                             for (i in (currentPos + 1) until itemCount) {
                                 val next = getItem(i)
                                 if (next is AnnotationFlatItem.Header) break
                                 recyclerView.findViewHolderForAdapterPosition(i)
-                                    ?.itemView?.tag = holder.itemView
+                                    ?.itemView?.tag = parentRef
                             }
                         } else {
                             // expanding — store parent so newly bound children get the tag
-                            lastClickedHeader = holder.itemView
+                            lastClickedHeader = java.lang.ref.WeakReference(holder.itemView)
                             lastClickedGroupKey = item.group.key
                             recyclerView.removeCallbacks(clearParentRunnable)
                             recyclerView.postDelayed(clearParentRunnable, 350)

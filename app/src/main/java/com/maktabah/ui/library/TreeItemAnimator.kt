@@ -12,8 +12,8 @@ class TreeItemAnimator : DefaultItemAnimator() {
     private val pendingRemoves = mutableListOf<RecyclerView.ViewHolder>()
     
     /**
-     * View (kategori) atau Float (koordinat Y) yang menjadi acuan posisi collapse.
-     * Menggunakan View memungkinkan animasi tetap akurat meski terjadi scrolling.
+     * WeakReference<View> (kategori) atau Float (koordinat Y) yang menjadi acuan posisi collapse.
+     * Menggunakan WeakReference<View> memungkinkan animasi tetap akurat meski terjadi scrolling tanpa memory leak.
      */
     var collapsingParent: Any? = null
 
@@ -57,6 +57,9 @@ class TreeItemAnimator : DefaultItemAnimator() {
 
     private fun getParentBottom(tag: Any?): Float {
         return when (tag) {
+            is java.lang.ref.WeakReference<*> -> {
+                (tag.get() as? View)?.bottom?.toFloat() ?: 0f
+            }
             is View -> tag.bottom.toFloat()
             is Float -> tag
             else -> 0f
@@ -67,11 +70,15 @@ class TreeItemAnimator : DefaultItemAnimator() {
         val result = mutableMapOf<Any, Int>()
         for (holder in holders) {
             val tag = holder.itemView.tag ?: continue
+            val key = when (tag) {
+                is java.lang.ref.WeakReference<*> -> tag.get() ?: tag
+                else -> tag
+            }
             val parentBottom = getParentBottom(tag)
             val height = (holder.itemView.bottom - parentBottom).toInt().coerceAtLeast(0)
-            val current = result[tag] ?: 0
+            val current = result[key] ?: 0
             if (height > current) {
-                result[tag] = height
+                result[key] = height
             }
         }
         return result
@@ -113,8 +120,12 @@ class TreeItemAnimator : DefaultItemAnimator() {
             for (holder in pendingAdds) {
                 val view = holder.itemView
                 val tag = view.tag
+                val key = when (tag) {
+                    is java.lang.ref.WeakReference<*> -> tag.get() ?: tag
+                    else -> tag
+                }
                 val isFresh = view.translationY <= -9999f
-                val trueHeight = if (tag != null) addHeights[tag] ?: (view.bottom - getParentBottom(tag)).toInt().coerceAtLeast(0) else 0
+                val trueHeight = if (tag != null) addHeights[key] ?: (view.bottom - getParentBottom(tag)).toInt().coerceAtLeast(0) else 0
                 val startTranslationY = if (trueHeight > 0) -trueHeight.toFloat() else 0f
                 if (isFresh) {
                     view.translationY = startTranslationY
@@ -160,7 +171,11 @@ class TreeItemAnimator : DefaultItemAnimator() {
             for (holder in pendingRemoves) {
                 val view = holder.itemView
                 val tag = view.tag
-                val trueHeight = if (tag != null) removeHeights[tag] ?: (view.bottom - getParentBottom(tag)).toInt().coerceAtLeast(0) else 0
+                val key = when (tag) {
+                    is java.lang.ref.WeakReference<*> -> tag.get() ?: tag
+                    else -> tag
+                }
+                val trueHeight = if (tag != null) removeHeights[key] ?: (view.bottom - getParentBottom(tag)).toInt().coerceAtLeast(0) else 0
                 val targetTranslationY = if (trueHeight > 0) -trueHeight.toFloat() else 0f
 
                 val updateListener = android.animation.ValueAnimator.AnimatorUpdateListener {

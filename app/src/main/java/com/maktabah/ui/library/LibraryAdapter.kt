@@ -30,7 +30,7 @@ class LibraryAdapter(
 ) : ListAdapter<FlatLibraryItem, LibraryAdapter.ViewHolder>(ItemDiffCallback()) {
 
     private lateinit var recyclerView: RecyclerView
-    private var lastClickedParent: Any? = null
+    private var lastClickedParent: java.lang.ref.WeakReference<View>? = null
     private var lastClickedCategoryId: Int? = null
 
     fun clearLastClickedParent() {
@@ -217,23 +217,24 @@ class LibraryAdapter(
             onLoadMore = onLoadMore,
             onLoadMoreAuthors = onLoadMoreAuthors,
             onCategorySelectionToggle = onCategorySelectionToggle,
-            onSetExpandClick = { parent, categoryId, isExpanded ->
+            onSetExpandClick = { parentView, categoryId, isExpanded ->
                 val currentPos = holder.bindingAdapterPosition
                 if (currentPos != RecyclerView.NO_POSITION) {
                     val animator = recyclerView.itemAnimator as? TreeItemAnimator
                     if (isExpanded) { // collapsing
-                        animator?.collapsingParent = parent
+                        val parentRef = java.lang.ref.WeakReference(parentView)
+                        animator?.collapsingParent = parentRef
                         for (i in (currentPos + 1) until itemCount) {
                             val nextItem = getItem(i)
                             if (nextItem.level > flatItem.level) {
                                 val childHolder = recyclerView.findViewHolderForAdapterPosition(i)
-                                childHolder?.itemView?.tag = parent
+                                childHolder?.itemView?.tag = parentRef
                             } else {
                                 break
                             }
                         }
                     } else { // expanding
-                        lastClickedParent = parent
+                        lastClickedParent = java.lang.ref.WeakReference(parentView)
                         lastClickedCategoryId = categoryId
                         recyclerView.removeCallbacks(clearParentRunnable)
                         recyclerView.postDelayed(clearParentRunnable, 350)
@@ -289,7 +290,7 @@ class LibraryAdapter(
             onLoadMore: (Int) -> Unit,
             onLoadMoreAuthors: () -> Unit,
             onCategorySelectionToggle: (CategoryData) -> Unit,
-            onSetExpandClick: (Any, Int, Boolean) -> Unit
+            onSetExpandClick: (View, Int, Boolean) -> Unit
         ) {
             itemView.translationZ = (100 - flatItem.level).toFloat()
             itemView.outlineProvider = null
