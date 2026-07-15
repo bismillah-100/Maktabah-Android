@@ -46,6 +46,7 @@ import com.maktabah.models.VisibleTOCNode
 import com.maktabah.ui.common.InsetGroupedItem
 import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.search.SearchTextField
+import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -66,13 +67,14 @@ fun BookTOCSheet(
     var searchQuery by remember { mutableStateOf("") }
 
     val filteredTOC = remember(tocList, searchQuery) {
-        if (searchQuery.isBlank()) {
+        val cleanQuery = searchQuery.normalizeArabic()
+        if (cleanQuery.isBlank()) {
             tocList
         } else {
             fun filterNodes(nodes: List<TOCNode>): List<TOCNode> {
                 return nodes.mapNotNull { node ->
                     val filteredChildren = filterNodes(node.children)
-                    val matches = node.title.contains(searchQuery, ignoreCase = true)
+                    val matches = node.title.normalizeArabic().contains(cleanQuery, ignoreCase = true)
                     if (matches || filteredChildren.isNotEmpty()) {
                         node.copy(children = filteredChildren.toMutableList())
                     } else {

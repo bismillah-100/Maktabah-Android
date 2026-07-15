@@ -72,6 +72,7 @@ import com.maktabah.database.AnnotationManager
 import com.maktabah.models.AuthorMode
 import com.maktabah.models.ImportMode
 import com.maktabah.ui.search.SearchTextField
+import com.maktabah.utils.normalizeArabic
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -774,10 +775,11 @@ fun SearchPickerDialog(
     var query by remember { mutableStateOf("") }
     val filtered =
         remember(query, items) {
-            if (query.isBlank()) {
+            val cleanQuery = query.normalizeArabic()
+            if (cleanQuery.isBlank()) {
                 items
             } else {
-                items.filter { it.second.contains(query, ignoreCase = true) }
+                items.filter { it.second.normalizeArabic().contains(cleanQuery, ignoreCase = true) }
             }
         }
 

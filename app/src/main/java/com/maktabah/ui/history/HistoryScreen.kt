@@ -65,6 +65,7 @@ import com.maktabah.R
 import com.maktabah.cloudKit.CloudKitSyncManager
 import com.maktabah.database.AnnotationManager
 import com.maktabah.models.ReadingEntry
+import com.maktabah.utils.normalizeArabic
 import com.maktabah.ui.common.DonationCard
 import com.maktabah.ui.common.DonationIconButton
 import com.maktabah.ui.common.InsetGroupedItem
@@ -559,8 +560,9 @@ private fun AddFavoriteSheet(
 ) {
     var searchFavQuery by remember { mutableStateOf("") }
     val filteredBooks = remember(searchFavQuery) {
-        if (searchFavQuery.isBlank()) books
-        else books.filter { it.name.contains(searchFavQuery, ignoreCase = true) }
+        val cleanQuery = searchFavQuery.normalizeArabic()
+        if (cleanQuery.isBlank()) books
+        else books.filter { it.name.normalizeArabic().contains(cleanQuery, ignoreCase = true) }
     }
 
     ModalBottomSheet(
