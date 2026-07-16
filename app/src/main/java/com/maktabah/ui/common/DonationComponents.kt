@@ -46,6 +46,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.Firebase
+import com.google.firebase.messaging.messaging
 import com.maktabah.R
 import okhttp3.Call
 import okhttp3.Callback
@@ -58,7 +60,7 @@ import org.json.JSONObject
 import java.io.IOException
 import java.security.MessageDigest
 
-@Suppress("DEPRECATION")
+
 fun registerFcmToken(context: Context, token: String? = null, email: String? = null) {
     val prefs = context.getSharedPreferences("main_prefs", Context.MODE_PRIVATE)
 
@@ -107,7 +109,7 @@ fun registerFcmToken(context: Context, token: String? = null, email: String? = n
         fcmTokenCallback(token)
     } else {
         try {
-            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            Firebase.messaging.token.addOnCompleteListener { task ->
                 if (task.isSuccessful && task.result != null) {
                     fcmTokenCallback(task.result)
                 }
