@@ -9,3 +9,7 @@
 ## 2025-07-15 - [LibraryDataManager buildAuthorHierarchy Performance Optimization]
 **Learning:** Avoid redundant traversals of large collections.
 **Action:** When grouping collections and performing transformations based on predicates on those elements, attempt to combine them into one loop.
+
+## 2024-07-16 - Zero-Copy JNI Buffer Traps
+**Learning:** When using JNI `NewDirectByteBuffer` to map native memory into a Java `ByteBuffer`, the target buffer for operations (like ZSTD decompression) must also be a direct buffer to achieve true zero-copy. Furthermore, allocating `ByteBuffer.allocateDirect` inside a tight loop triggers native out-of-memory errors because the JVM Garbage Collector cannot run finalizers fast enough to free the native memory chunks.
+**Action:** Always allocate `DirectByteBuffer`s outside of loops or use a bounded pool (like `ZstdContextPool`) to reuse them. In JNI, `decompressDirectByteBuffer` must read from a direct buffer source and write to a direct buffer destination to be memory and CPU efficient.

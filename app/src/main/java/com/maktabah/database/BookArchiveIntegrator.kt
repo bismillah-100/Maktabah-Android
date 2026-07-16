@@ -268,14 +268,18 @@ object BookArchiveIntegrator {
                 db.prepare("SELECT id, nass FROM main.\"$targetTableName\" WHERE nass IS NOT NULL;")?.use { ftsSelectStmt ->
                     while (ftsSelectStmt.step() == SQLiteDB.SQLITE_ROW) {
                         val id = ftsSelectStmt.columnLong(0)
-                        val blob = ftsSelectStmt.columnBlob(1)
+                        val blob = ftsSelectStmt.columnBlobDirect(1)
                         if (blob != null) {
                             val decompressedSize = Zstd.getFrameContentSize(blob).toInt()
                             if (decompressedSize > 0) {
                                 val ctx = ZstdContextPool.getDecompressCtx()
                                 val decompressed = try {
+                                    val dstBuf = ZstdContextPool.getDirectBuffer(decompressedSize)
+                                    ctx.decompressDirectByteBuffer(dstBuf, 0, decompressedSize, blob, 0, blob.limit())
                                     val dst = ByteArray(decompressedSize)
-                                    ctx.decompressByteArray(dst, 0, decompressedSize, blob, 0, blob.size)
+                                    dstBuf.get(dst)
+                                    ZstdContextPool.releaseDirectBuffer(dstBuf)
+
                                     dst
                                 } finally {
                                     ZstdContextPool.releaseDecompressCtx(ctx)

@@ -132,6 +132,15 @@ Java_com_maktabah_database_SQLiteStmt_columnBlob(JNIEnv* env, jobject /* this */
     return arr;
 }
 
+extern "C" JNIEXPORT jobject JNICALL
+Java_com_maktabah_database_SQLiteStmt_columnBlobDirect(JNIEnv* env, jobject /* this */, jlong stmtPtr, jint col) {
+    sqlite3_stmt *stmt = reinterpret_cast<sqlite3_stmt *>(stmtPtr);
+    const void *blob = sqlite3_column_blob(stmt, col);
+    int size = sqlite3_column_bytes(stmt, col);
+    if (!blob || size <= 0) return nullptr;
+    return env->NewDirectByteBuffer(const_cast<void*>(blob), size);
+}
+
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_maktabah_database_SQLiteDB_lastInsertRowId(JNIEnv* env, jobject /* this */, jlong dbPtr) {
     sqlite3 *db = reinterpret_cast<sqlite3 *>(dbPtr);

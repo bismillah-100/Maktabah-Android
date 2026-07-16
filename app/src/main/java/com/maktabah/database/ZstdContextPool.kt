@@ -23,6 +23,10 @@ object ZstdContextPool {
     private const val MAX_POOL_SIZE = 16
     private val decompressCache = ArrayBlockingQueue<ZstdDecompressCtx>(MAX_POOL_SIZE)
     private val compressCache = ArrayBlockingQueue<ZstdCompressCtx>(MAX_POOL_SIZE)
+    private val directBufferCache = ArrayBlockingQueue<java.nio.ByteBuffer>(MAX_POOL_SIZE)
+
+    // Allocate 1MB direct buffer per thread (large enough for most compressed chunks)
+    private const val MAX_DIRECT_BUFFER_SIZE = 1024 * 1024
 
     fun getDecompressCtx(): ZstdDecompressCtx {
         return decompressCache.poll() ?: ZstdDecompressCtx()
@@ -42,6 +46,22 @@ object ZstdContextPool {
     fun releaseCompressCtx(ctx: ZstdCompressCtx) {
         if (!compressCache.offer(ctx)) {
             ctx.close()
+        }
+    }
+
+    fun getDirectBuffer(minCapacity: Int): java.nio.ByteBuffer {
+        var buf = directBufferCache.poll()
+        if (buf == null || buf.capacity() < minCapacity) {
+            val sizeToAllocate = maxOf(MAX_DIRECT_BUFFER_SIZE, minCapacity)
+            buf = java.nio.ByteBuffer.allocateDirect(sizeToAllocate)
+        }
+        buf.clear()
+        return buf
+    }
+
+    fun releaseDirectBuffer(buf: java.nio.ByteBuffer) {
+        if (buf.capacity() <= MAX_DIRECT_BUFFER_SIZE) {
+            directBufferCache.offer(buf)
         }
     }
 }

@@ -3,6 +3,7 @@ package com.maktabah.models
 import androidx.compose.runtime.Immutable
 import java.util.UUID
 
+
 @Immutable
 data class TOC(
     val title: String,
@@ -11,7 +12,8 @@ data class TOC(
     val id: Int,
 )
 
-@Immutable
+
+
 data class TOCNode(
     val id: Int,
     val title: String,
@@ -24,6 +26,7 @@ data class TOCNode(
     constructor(toc: TOC) : this(id = toc.id, title = toc.title, level = toc.level, sub = toc.sub)
 }
 
+
 @Immutable
 data class BookContent(
     val id: Int,
@@ -31,6 +34,7 @@ data class BookContent(
     val page: Int,
     val part: Int,
 )
+
 
 @Immutable
 data class VisibleTOCNode(

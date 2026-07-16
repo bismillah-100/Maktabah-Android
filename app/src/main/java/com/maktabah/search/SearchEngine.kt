@@ -90,15 +90,19 @@ class SearchEngine {
                     var nassText = ""
 
                     if (stmt.columnType(1) == SQLiteDB.SQLITE_BLOB) {
-                        val blob = stmt.columnBlob(1)
+                        val blob = stmt.columnBlobDirect(1)
                         if (blob != null) {
                             val decompressedSize =
                                 Zstd.getFrameContentSize(blob).toInt()
                             if (decompressedSize > 0) {
                                 val ctx = ZstdContextPool.getDecompressCtx()
                                 val decompressed = try {
+                                    val dstBuf = ZstdContextPool.getDirectBuffer(decompressedSize)
+                                    ctx.decompressDirectByteBuffer(dstBuf, 0, decompressedSize, blob, 0, blob.limit())
                                     val dst = ByteArray(decompressedSize)
-                                    ctx.decompressByteArray(dst, 0, decompressedSize, blob, 0, blob.size)
+                                    dstBuf.get(dst)
+                                    ZstdContextPool.releaseDirectBuffer(dstBuf)
+
                                     dst
                                 } finally {
                                     ZstdContextPool.releaseDecompressCtx(ctx)

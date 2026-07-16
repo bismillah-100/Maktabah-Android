@@ -409,13 +409,13 @@ class SearchViewModel : ViewModel() {
                         val searchKeywords = when (mode) {
                             SearchMode.PHRASE -> {
                                 val normalized = query.normalizeArabic()
-                                if (normalized.isBlank()) emptyList() else listOf(normalized)
+                                if (normalized.isBlank()) emptySequence() else sequenceOf(normalized)
                             }
 
                             else -> {
-                                query.normalizeArabic().split(" ").filter { it.isNotBlank() }
+                                query.normalizeArabic().split(" ").asSequence().filter { it.isNotBlank() }
                             }
-                        }.map { it.convertToArabicDigits() }
+                        }.map { it.convertToArabicDigits() }.toList()
 
                         val mapped = bookResults.map {
                             val stripped = it.nass.stripSpanTags()

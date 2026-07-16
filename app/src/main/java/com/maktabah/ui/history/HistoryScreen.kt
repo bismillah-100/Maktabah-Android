@@ -600,7 +600,10 @@ private fun AddFavoriteSheet(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
-                items(filteredBooks.size) { index ->
+                items(
+                    count = filteredBooks.size,
+                    key = { index -> filteredBooks[index].id }
+                ) { index ->
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                         val book = filteredBooks[index]
                         val isFav = entriesByBookId[book.id]?.isFavorite == true

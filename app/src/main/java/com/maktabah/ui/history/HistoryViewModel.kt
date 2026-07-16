@@ -49,9 +49,11 @@ class HistoryViewModel : ViewModel() {
 
     fun getFavoriteBookIds(): List<Int> {
         return _entriesByBookId.value.values
+            .asSequence()
             .filter { it.isFavorite }
             .sortedByDescending { it.favoritedAt ?: 0L }
             .map { it.bookId }
+            .toList()
     }
 
     fun addBookToHistory(bookId: Int) {
