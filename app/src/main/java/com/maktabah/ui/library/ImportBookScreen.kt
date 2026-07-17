@@ -150,10 +150,22 @@ fun ImportBookSheet(
     var showCategoryPicker by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
 
+    val bookItems = remember(books) {
+        books.map { it.id to context.getString(R.string.item_with_id, it.name, it.id) }
+    }
+
+    val authorItems = remember(authors) {
+        authors.map { it.id to context.getString(R.string.item_with_id, it.name, it.id) }
+    }
+
+    val categoryItems = remember(categories) {
+        categories.map { it.id to it.name }
+    }
+
     if (showBookPicker) {
         SearchPickerDialog(
             title = stringResource(R.string.pilih_buku),
-            items = books.map { it.id to context.getString(R.string.item_with_id, it.name, it.id) },
+            items = bookItems,
             onSelect = { id ->
                 val book = books.firstOrNull { it.id == id }
                 vm.setSelectedBookId(id, book?.name, book?.archive, book?.categoryId)
@@ -166,7 +178,7 @@ fun ImportBookSheet(
     if (showAuthorPicker) {
         SearchPickerDialog(
             title = stringResource(R.string.pilih_author),
-            items = authors.map { it.id to context.getString(R.string.item_with_id, it.name, it.id) },
+            items = authorItems,
             onSelect = { id ->
                 vm.setSelectedAuthorId(id)
                 showAuthorPicker = false
@@ -178,7 +190,7 @@ fun ImportBookSheet(
     if (showCategoryPicker) {
         SearchPickerDialog(
             title = stringResource(R.string.pilih_kategori),
-            items = categories.map { it.id to it.name },
+            items = categoryItems,
             onSelect = { id ->
                 vm.setCategoryId(id)
                 showCategoryPicker = false
