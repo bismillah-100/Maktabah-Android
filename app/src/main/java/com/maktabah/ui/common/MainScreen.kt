@@ -37,18 +37,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -86,7 +81,6 @@ import com.maktabah.ui.reader.ReaderTabManager
 import com.maktabah.ui.search.SearchScreen
 import com.maktabah.ui.search.SearchViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -190,11 +184,13 @@ fun MainScreen(
                 syncJob?.cancel()
                 syncJob = scope.launch {
                     // Wait until currentRoute becomes a valid main screen route
-                    androidx.compose.runtime.snapshotFlow { currentRouteState.value }
-                        .filter { route -> route != null && Tab.entries.any { it.route == route } }
-                        .first()
+                    snapshotFlow { currentRouteState.value }
+                        .first { route -> route != null && Tab.entries.any { it.route == route } }
 
-                    val ckPrefs = context.getSharedPreferences("MaktabahPrefs", android.content.Context.MODE_PRIVATE)
+                    val ckPrefs = context.getSharedPreferences(
+                        "MaktabahPrefs",
+                        android.content.Context.MODE_PRIVATE
+                    )
                     if (ckPrefs.getString("ckWebAuthToken", null) != null) {
                         cloudKitSyncManager.checkAccountChangeAndSync(
                             context,
@@ -231,60 +227,69 @@ fun MainScreen(
     }
 
     val handleNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit =
-        { bookId, contentId, loc, len, query ->
-            val book = libraryViewModel.dataManager.booksById[bookId]
-            if (book == null) {
-                showBookNotFoundPopover = true
-            } else {
-                if (libraryViewModel.isBookDownloadedById(bookId)) {
-                    val archivePath =
-                        java.io.File(context.filesDir, "${book.archive}.sqlite").absolutePath
-                    val flashTarget =
-                        when {
-                            loc != null && len != null -> FlashTarget(loc = loc, len = len)
-                            query != null -> FlashTarget(query = query)
-                            else -> null
-                        }
-                    val isInReader = navController.currentDestination?.route == "reader_tabs"
-                    val tab =
-                        tabManager.openTab(
-                            book = book,
-                            archivePath = archivePath,
-                            initialContentId = contentId,
-                            flashTarget = flashTarget,
-                            searchQuery = query,
-                            setActive = !isInReader, // Don't switch if already in reader
-                        )
-                    // Initialize ViewModel jika belum
-                    tab.viewModel.initialize(
-                        context,
-                        annotationManager,
-                        libraryViewModel.dataManager,
-                    )
-                    if (tab.viewModel.currentBookIdFlow.value != bookId) {
-                        val finalContentId =
-                            contentId
-                                ?: historyViewModel.entriesByBookId.value[bookId]?.lastContentId
-                        tab.viewModel.loadBook(bookId, archivePath, book.name, finalContentId)
-                        tab.viewModel.setSearchQuery(query)
-                    }
-                    // Navigate ke reader_tabs hanya jika belum di sana
-                    if (navController.currentDestination?.route != "reader_tabs") {
-                        navController.navigate("reader_tabs") {
-                            launchSingleTop = true
-                            // Simpan state tab sebelumnya agar bisa di-restore saat kembali
-                            restoreState = true
-                        }
-                    }
+        remember(
+            libraryViewModel,
+            tabManager,
+            navController,
+            context,
+            historyViewModel,
+            annotationManager
+        ) {
+            { bookId, contentId, loc, len, query ->
+                val book = libraryViewModel.dataManager.booksById[bookId]
+                if (book == null) {
+                    showBookNotFoundPopover = true
                 } else {
-                    libraryViewModel.showDownloadConfirmation(
-                        context,
-                        bookId,
-                        contentId,
-                        loc,
-                        len,
-                        query,
-                    )
+                    if (libraryViewModel.isBookDownloadedById(bookId)) {
+                        val archivePath =
+                            java.io.File(context.filesDir, "${book.archive}.sqlite").absolutePath
+                        val flashTarget =
+                            when {
+                                loc != null && len != null -> FlashTarget(loc = loc, len = len)
+                                query != null -> FlashTarget(query = query)
+                                else -> null
+                            }
+                        val isInReader = navController.currentDestination?.route == "reader_tabs"
+                        val tab =
+                            tabManager.openTab(
+                                book = book,
+                                archivePath = archivePath,
+                                initialContentId = contentId,
+                                flashTarget = flashTarget,
+                                searchQuery = query,
+                                setActive = !isInReader, // Don't switch if already in reader
+                            )
+                        // Initialize ViewModel jika belum
+                        tab.viewModel.initialize(
+                            context,
+                            annotationManager,
+                            libraryViewModel.dataManager,
+                        )
+                        if (tab.viewModel.currentBookIdFlow.value != bookId) {
+                            val finalContentId =
+                                contentId
+                                    ?: historyViewModel.entriesByBookId.value[bookId]?.lastContentId
+                            tab.viewModel.loadBook(bookId, archivePath, book.name, finalContentId)
+                            tab.viewModel.setSearchQuery(query)
+                        }
+                        // Navigate ke reader_tabs hanya jika belum di sana
+                        if (navController.currentDestination?.route != "reader_tabs") {
+                            navController.navigate("reader_tabs") {
+                                launchSingleTop = true
+                                // Simpan state tab sebelumnya agar bisa di-restore saat kembali
+                                restoreState = true
+                            }
+                        }
+                    } else {
+                        libraryViewModel.showDownloadConfirmation(
+                            context,
+                            bookId,
+                            contentId,
+                            loc,
+                            len,
+                            query,
+                        )
+                    }
                 }
             }
         }
@@ -324,7 +329,8 @@ fun MainScreen(
             val showOverlay = activeDownloadStates.any {
                 if (it.isBulk) it.bulkBookIds.isNotEmpty() else !downloadedBookIds.contains(it.bookId)
             }
-            val allowedOverlayRoutes = listOf(Tab.Library.route, Tab.Annotations.route, Tab.History.route)
+            val allowedOverlayRoutes =
+                listOf(Tab.Library.route, Tab.Annotations.route, Tab.History.route)
             val isAllowedRoute = currentRoute in allowedOverlayRoutes
 
             if (showOverlay && isAllowedRoute) {
@@ -495,13 +501,15 @@ private fun AppNavHost(
             val initial = initialState.destination.route ?: ""
             val target = targetState.destination.route ?: ""
             val tabRoutes = Tab.entries.map { it.route }
+
             if (initial in tabRoutes && target in tabRoutes) {
-                androidx.compose.animation.EnterTransition.None
+                androidx.compose.animation.fadeIn(
+                    animationSpec = androidx.compose.animation.core.tween(350)
+                )
             } else {
                 slideIntoContainer(
                     androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection.Start,
-                    androidx.compose.animation.core
-                        .tween(300),
+                    androidx.compose.animation.core.tween(300),
                 )
             }
         },
@@ -509,53 +517,51 @@ private fun AppNavHost(
             val initial = initialState.destination.route ?: ""
             val target = targetState.destination.route ?: ""
             val tabRoutes = Tab.entries.map { it.route }
+
             if (initial in tabRoutes && target in tabRoutes) {
-                androidx.compose.animation.ExitTransition.None
+                androidx.compose.animation.fadeOut(
+                    animationSpec = androidx.compose.animation.core.tween(350)
+                )
             } else {
                 androidx.compose.animation.slideOutHorizontally(
                     targetOffsetX = { -it / 3 },
-                    animationSpec =
-                        androidx.compose.animation.core
-                            .tween(300),
-                ) +
-                    androidx.compose.animation.fadeOut(
-                        animationSpec =
-                            androidx.compose.animation.core
-                                .tween(300),
-                    )
+                    animationSpec = androidx.compose.animation.core.tween(300),
+                ) + androidx.compose.animation.fadeOut(
+                    animationSpec = androidx.compose.animation.core.tween(300),
+                )
             }
         },
         popEnterTransition = {
             val initial = initialState.destination.route ?: ""
             val target = targetState.destination.route ?: ""
             val tabRoutes = Tab.entries.map { it.route }
+
             if (initial in tabRoutes && target in tabRoutes) {
-                androidx.compose.animation.EnterTransition.None
+                androidx.compose.animation.fadeIn(
+                    animationSpec = androidx.compose.animation.core.tween(350)
+                )
             } else {
                 androidx.compose.animation.slideInHorizontally(
                     initialOffsetX = { -it / 3 },
-                    animationSpec =
-                        androidx.compose.animation.core
-                            .tween(300),
-                ) +
-                    androidx.compose.animation.fadeIn(
-                        animationSpec =
-                            androidx.compose.animation.core
-                                .tween(300),
-                    )
+                    animationSpec = androidx.compose.animation.core.tween(300),
+                ) + androidx.compose.animation.fadeIn(
+                    animationSpec = androidx.compose.animation.core.tween(300),
+                )
             }
         },
         popExitTransition = {
             val initial = initialState.destination.route ?: ""
             val target = targetState.destination.route ?: ""
             val tabRoutes = Tab.entries.map { it.route }
+
             if (initial in tabRoutes && target in tabRoutes) {
-                androidx.compose.animation.ExitTransition.None
+                androidx.compose.animation.fadeOut(
+                    animationSpec = androidx.compose.animation.core.tween(350)
+                )
             } else {
                 slideOutOfContainer(
                     androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection.End,
-                    androidx.compose.animation.core
-                        .tween(300),
+                    androidx.compose.animation.core.tween(300),
                 )
             }
         },
