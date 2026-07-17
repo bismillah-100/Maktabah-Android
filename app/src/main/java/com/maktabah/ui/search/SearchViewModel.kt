@@ -17,10 +17,13 @@ import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.snippetAround
 import com.maktabah.utils.stripSpanTags
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class SearchViewModel : ViewModel() {
@@ -165,43 +168,55 @@ class SearchViewModel : ViewModel() {
         updateFlatItems(dataManager)
     }
 
+    private var searchJob: kotlinx.coroutines.Job? = null
+
     fun updateSearchQuery(query: String, dataManager: LibraryDataManager) {
         _searchQuery.value = query
 
-        if (query.isNotEmpty()) {
-            val matchingIds = mutableSetOf<Int>()
-            val roots = dataManager.allRootCategories
-            val cleanQuery = query.normalizeArabic()
-
-            fun findMatching(cats: List<Any>): Boolean {
-                var matches = false
-                for (c in cats) {
-                    if (c is BooksData) {
-                        if (cleanQuery.isEmpty() || c.name.normalizeArabic()
-                                .contains(cleanQuery, ignoreCase = true)
-                        ) {
-                            matches = true
-                        }
-                    } else if (c is CategoryData) {
-                        val catMatches =
-                            c.name.normalizeArabic().contains(cleanQuery, ignoreCase = true)
-                        val childrenMatch = findMatching(c.children)
-                        if (catMatches || childrenMatch) {
-                            matchingIds.add(c.id)
-                            matches = true
-                        }
-                    }
-                }
-                return matches
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            if (query.isNotEmpty()) {
+                delay(500)
             }
 
-            findMatching(roots)
-            _expandedCategories.value = matchingIds
-        } else {
-            _expandedCategories.value = emptySet()
-        }
+            if (query.isNotEmpty()) {
+                val matchingIds = mutableSetOf<Int>()
+                val roots = dataManager.allRootCategories
+                val cleanQuery = query.normalizeArabic()
 
-        updateFlatItems(dataManager)
+                withContext(Dispatchers.Default) {
+                    fun findMatching(cats: List<Any>): Boolean {
+                        coroutineContext.ensureActive()
+                        var matches = false
+                        for (c in cats) {
+                            if (c is BooksData) {
+                                if (cleanQuery.isEmpty() || c.name.normalizeArabic()
+                                        .contains(cleanQuery, ignoreCase = true)
+                                ) {
+                                    matches = true
+                                }
+                            } else if (c is CategoryData) {
+                                val catMatches =
+                                    c.name.normalizeArabic().contains(cleanQuery, ignoreCase = true)
+                                val childrenMatch = findMatching(c.children)
+                                if (catMatches || childrenMatch) {
+                                    matchingIds.add(c.id)
+                                    matches = true
+                                }
+                            }
+                        }
+                        return matches
+                    }
+
+                    findMatching(roots)
+                }
+                _expandedCategories.value = matchingIds
+            } else {
+                _expandedCategories.value = emptySet()
+            }
+
+            updateFlatItems(dataManager)
+        }
     }
 
     fun toggleBookSelection(bookId: Int) {
@@ -264,8 +279,10 @@ class SearchViewModel : ViewModel() {
         updateFlatItems(dataManager)
     }
 
+    private var updateFlatItemsJob: kotlinx.coroutines.Job? = null
     private fun updateFlatItems(dataManager: LibraryDataManager) {
-        viewModelScope.launch(Dispatchers.Default) {
+        updateFlatItemsJob?.cancel()
+        updateFlatItemsJob = viewModelScope.launch(Dispatchers.Default) {
             val result = mutableListOf<FlatLibraryItem>()
             val expanded = _expandedCategories.value
             val roots = dataManager.allRootCategories

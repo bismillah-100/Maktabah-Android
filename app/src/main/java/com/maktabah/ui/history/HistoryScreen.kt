@@ -90,16 +90,23 @@ fun HistoryScreen(
     var historyExpanded by remember { mutableStateOf(true) }
     var favoritesExpanded by remember { mutableStateOf(true) }
     var isSyncing by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
+    val searchQuery by historyViewModel.searchQuery.collectAsState()
+    val entriesByBookId by historyViewModel.entriesByBookId.collectAsState()
+
+    val filteredHistory by remember(historyViewModel, libraryViewModel.dataManager) {
+        historyViewModel.getFilteredHistory(libraryViewModel.dataManager)
+    }.collectAsState()
+
+    val filteredFavorites by remember(historyViewModel, libraryViewModel.dataManager) {
+        historyViewModel.getFilteredFavorites(libraryViewModel.dataManager)
+    }.collectAsState()
+
     var showAddFavoriteSheet by remember { mutableStateOf(false) }
     var selectedHistoryItem by remember { mutableStateOf<Int?>(null) }
     var selectedFavoriteItem by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
-
-    val entriesByBookId by historyViewModel.entriesByBookId.collectAsState()
-    val historyOrder by historyViewModel.historyOrder.collectAsState()
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -110,8 +117,8 @@ fun HistoryScreen(
             },
             topBar = {
                 HistoryTopBar(
-                    searchQuery = searchQuery,
-                    onSearchQueryChange = { searchQuery = it },
+                    searchQuery = searchQuery.normalizeArabic(),
+                    onSearchQueryChange = { historyViewModel.updateSearchQuery(it) },
                     isSyncing = isSyncing,
                     hasDonated = hasDonated,
                     onAddFavoriteClick = { showAddFavoriteSheet = true },
@@ -140,26 +147,6 @@ fun HistoryScreen(
                 )
             },
         ) { padding ->
-            val filteredHistory = remember(historyOrder, searchQuery) {
-                if (searchQuery.isBlank()) historyOrder
-                else historyOrder.filter {
-                    libraryViewModel.dataManager.booksById[it]?.name?.contains(
-                        searchQuery,
-                        ignoreCase = true
-                    ) == true
-                }
-            }
-            val favoriteIds = historyViewModel.getFavoriteBookIds()
-            val filteredFavorites = remember(favoriteIds, searchQuery) {
-                if (searchQuery.isBlank()) favoriteIds
-                else favoriteIds.filter {
-                    libraryViewModel.dataManager.booksById[it]?.name?.contains(
-                        searchQuery,
-                        ignoreCase = true
-                    ) == true
-                }
-            }
-
             val listState = rememberLazyListState()
             LazyColumn(
                 state = listState,

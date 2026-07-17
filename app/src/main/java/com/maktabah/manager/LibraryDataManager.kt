@@ -5,6 +5,7 @@ import com.maktabah.database.SQLiteDB
 import com.maktabah.models.BooksData
 import com.maktabah.models.CategoryData
 import com.maktabah.models.ShortsMapping
+import com.maktabah.utils.normalizeArabic
 import java.io.File
 
 class LibraryDataManager(
@@ -213,4 +214,10 @@ class LibraryDataManager(
 
         return authorCategories
     }
+
+	// Fungsi pembantu untuk cek apakah nama buku mengandung query
+	fun bookContainsQuery(bookId: Int, query: String): Boolean {
+		val bookName = booksById[bookId]?.name ?: return false
+		return bookName.normalizeArabic().contains(query, ignoreCase = true)
+	}
 }

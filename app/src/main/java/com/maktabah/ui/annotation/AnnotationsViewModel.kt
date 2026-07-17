@@ -18,9 +18,11 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+@OptIn(kotlinx.coroutines.FlowPreview::class)
 class AnnotationsViewModel : ViewModel() {
     private val _annotations = MutableStateFlow<List<Annotation>>(emptyList())
     val annotations: StateFlow<List<Annotation>> = _annotations.asStateFlow()
@@ -147,7 +149,7 @@ class AnnotationsViewModel : ViewModel() {
             _bookIdFilter
         ) { query, scope, grouping, sort, bookFilter ->
             FilterAndSortParams(query, scope, grouping, sort, bookFilter)
-        }
+        }.debounce(500)
 
     val groupedAnnotations: StateFlow<List<AnnotationGroup>> =
         combine(_annotations, filterAndSortParams) { annotationsList, params ->

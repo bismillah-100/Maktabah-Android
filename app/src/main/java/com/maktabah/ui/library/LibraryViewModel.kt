@@ -16,8 +16,11 @@ import com.maktabah.models.FlatLibraryItem
 import com.maktabah.models.LibraryViewMode
 import com.maktabah.models.LoadMoreAuthors
 import com.maktabah.models.LoadMoreData
+import com.maktabah.ui.reader.ReaderTabManager
 import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -25,7 +28,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.maktabah.ui.reader.ReaderTabManager
 import java.io.File
 
 class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
@@ -177,46 +179,58 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
         updateFlatItems()
     }
 
+    private var searchJob: kotlinx.coroutines.Job? = null
+
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
         _displayedAuthorCount.value = 100
 
-        if (query.isNotEmpty()) {
-            val matchingIds = mutableSetOf<Int>()
-            val viewModeVal = _viewMode.value
-            val roots =
-                if (viewModeVal == LibraryViewMode.AUTHOR) _authorCategories.value else _rootCategories.value
-            val cleanQuery = query.normalizeArabic()
-
-            fun findMatching(cats: List<Any>): Boolean {
-                var matches = false
-                for (c in cats) {
-                    if (c is BooksData) {
-                        if (cleanQuery.isEmpty() || c.name.normalizeArabic()
-                                .contains(cleanQuery, ignoreCase = true)
-                        ) {
-                            matches = true
-                        }
-                    } else if (c is CategoryData) {
-                        val catMatches =
-                            c.name.normalizeArabic().contains(cleanQuery, ignoreCase = true)
-                        val childrenMatch = findMatching(c.children)
-                        if (catMatches || childrenMatch) {
-                            matchingIds.add(c.id)
-                            matches = true
-                        }
-                    }
-                }
-                return matches
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            if (query.isNotEmpty()) {
+                delay(500)
             }
 
-            findMatching(roots)
-            _expandedCategories.value = matchingIds
-        } else {
-            _expandedCategories.value = emptySet()
-        }
+            if (query.isNotEmpty()) {
+                val matchingIds = mutableSetOf<Int>()
+                val viewModeVal = _viewMode.value
+                val roots =
+                    if (viewModeVal == LibraryViewMode.AUTHOR) _authorCategories.value else _rootCategories.value
+                val cleanQuery = query.normalizeArabic()
 
-        updateFlatItems()
+                withContext(Dispatchers.Default) {
+                    fun findMatching(cats: List<Any>): Boolean {
+						coroutineContext.ensureActive()
+                        var matches = false
+                        for (c in cats) {
+                            if (c is BooksData) {
+                                if (cleanQuery.isEmpty() || c.name.normalizeArabic()
+                                        .contains(cleanQuery, ignoreCase = true)
+                                ) {
+                                    matches = true
+                                }
+                            } else if (c is CategoryData) {
+                                val catMatches =
+                                    c.name.normalizeArabic().contains(cleanQuery, ignoreCase = true)
+                                val childrenMatch = findMatching(c.children)
+                                if (catMatches || childrenMatch) {
+                                    matchingIds.add(c.id)
+                                    matches = true
+                                }
+                            }
+                        }
+                        return matches
+                    }
+
+                    findMatching(roots)
+                }
+                _expandedCategories.value = matchingIds
+            } else {
+                _expandedCategories.value = emptySet()
+            }
+
+            updateFlatItems()
+        }
     }
 
     fun toggleShowOnlyDownloaded() {
@@ -350,7 +364,7 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
             isBulk = true,
             bulkBookIds = needDownload
         )
-        
+
         if (existingBulkState != null) {
             _activeDownloadStates.value = _activeDownloadStates.value.map {
                 if (it.id == existingBulkState.id) newState else it
@@ -395,8 +409,10 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
         return result
     }
 
+    private var updateFlatItemsJob: kotlinx.coroutines.Job? = null
     private fun updateFlatItems() {
-        viewModelScope.launch(Dispatchers.Default) {
+        updateFlatItemsJob?.cancel()
+        updateFlatItemsJob = viewModelScope.launch(Dispatchers.Default) {
             val result = mutableListOf<FlatLibraryItem>()
             val expanded = _expandedCategories.value
             val viewModeVal = _viewMode.value
@@ -629,7 +645,7 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
         onComplete: (Int, Int?, Int?, Int?, String?) -> Unit
     ) {
         val currentState = _activeDownloadStates.value.find { it.id == stateId } ?: return
-        
+
         // Update state to downloading
         _activeDownloadStates.value = _activeDownloadStates.value.map {
             if (it.id == stateId) it.copy(isDownloading = true, progress = 0) else it
@@ -648,7 +664,7 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
                         _activeDownloadStates.value = _activeDownloadStates.value.map {
                             if (it.id == stateId) it.copy(progress = (idx * 100 / toDownload.size)) else it
                         }
-                        
+
                         val success = manager.downloadBook(entry, onPhaseChanged = { phase ->
                             _activeDownloadStates.value = _activeDownloadStates.value.map {
                                 if (it.id == stateId) it.copy(phase = phase) else it

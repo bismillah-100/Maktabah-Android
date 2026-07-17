@@ -9,6 +9,13 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import androidx.lifecycle.viewModelScope
+import com.maktabah.manager.LibraryDataManager
+import com.maktabah.utils.normalizeArabic
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -55,6 +62,42 @@ class HistoryViewModel : ViewModel() {
             .map { it.bookId }
             .toList()
     }
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    fun updateSearchQuery(query: String) {
+        _searchQuery.value = query.normalizeArabic()
+    }
+	
+	@OptIn(kotlinx.coroutines.FlowPreview::class)
+	fun getFilteredHistory(dataManager: LibraryDataManager): StateFlow<List<Int>> {
+		return combine(_historyOrder, _searchQuery) { order, query ->
+			val cleanQuery = query.normalizeArabic()
+			if (cleanQuery.isBlank()) {
+				order
+			} else {
+				order.filter { dataManager.bookContainsQuery(it, cleanQuery) }
+			}
+		}.debounce(500).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), _historyOrder.value)
+	}
+
+	@OptIn(kotlinx.coroutines.FlowPreview::class)
+	fun getFilteredFavorites(dataManager: LibraryDataManager): StateFlow<List<Int>> {
+		return combine(_entriesByBookId, _searchQuery) { entries, query ->
+			val cleanQuery = query.normalizeArabic()
+			val favorites = entries.values
+				.filter { it.isFavorite }
+				.sortedByDescending { it.favoritedAt ?: 0L }
+				.map { it.bookId }
+	
+			if (cleanQuery.isBlank()) {
+				favorites
+			} else {
+				favorites.filter { dataManager.bookContainsQuery(it, cleanQuery) }
+			}
+		}.debounce(500).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), getFavoriteBookIds())
+	}
 
     fun addBookToHistory(bookId: Int) {
         val entries = _entriesByBookId.value.toMutableMap()
