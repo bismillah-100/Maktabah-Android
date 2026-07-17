@@ -85,20 +85,30 @@ class SearchEngine {
                 stmt.bindInt(3, offset)
 
                 var currentFetched = 0
+                var nassType = -1
+                var partType = -1
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
                     val id = stmt.columnInt(0)
                     var nassText = ""
 
-                    if (stmt.columnType(1) == SQLiteDB.SQLITE_BLOB) {
-                        val blob = stmt.columnBlob(1)
+                    if (nassType == -1) {
+                        nassType = stmt.columnType(1)
+                    }
+
+                    if (nassType == SQLiteDB.SQLITE_BLOB) {
+                        val blob = stmt.columnBlobDirect(1)
                         if (blob != null) {
                             val decompressedSize =
                                 Zstd.getFrameContentSize(blob).toInt()
                             if (decompressedSize > 0) {
                                 val ctx = ZstdContextPool.getDecompressCtx()
                                 val decompressed = try {
+                                    val dstBuf = ZstdContextPool.getDirectBuffer(decompressedSize)
+                                    ctx.decompressDirectByteBuffer(dstBuf, 0, decompressedSize, blob, 0, blob.limit())
                                     val dst = ByteArray(decompressedSize)
-                                    ctx.decompressByteArray(dst, 0, decompressedSize, blob, 0, blob.size)
+                                    dstBuf.get(dst)
+                                    ZstdContextPool.releaseDirectBuffer(dstBuf)
+
                                     dst
                                 } finally {
                                     ZstdContextPool.releaseDecompressCtx(ctx)
@@ -113,7 +123,9 @@ class SearchEngine {
                     val page = stmt.columnInt(2)
 
                     // Helper to parse part
-                    val partType = stmt.columnType(3)
+                    if (partType == -1) {
+                        partType = stmt.columnType(3)
+                    }
                     val part = if (partType == SQLiteDB.SQLITE_INTEGER) {
                         stmt.columnInt(3)
                     } else if (partType == SQLiteDB.SQLITE_TEXT) {

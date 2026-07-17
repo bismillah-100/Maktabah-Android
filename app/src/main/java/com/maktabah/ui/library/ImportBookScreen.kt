@@ -798,7 +798,7 @@ fun SearchPickerDialog(
                 Spacer(Modifier.height(8.dp))
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp)) {
-                        items(filtered) { (id, label) ->
+                        items(filtered, key = { (id, _) -> id }) { (id, label) ->
                             Row(
                                 modifier =
                                     Modifier

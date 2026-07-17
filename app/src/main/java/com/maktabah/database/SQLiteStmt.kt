@@ -33,6 +33,7 @@ class SQLiteStmt(private var stmtPtr: Long) : Closeable {
     fun columnInt(col: Int): Int = columnInt(stmtPtr, col)
     fun columnLong(col: Int): Long = columnLong(stmtPtr, col)
     fun columnBlob(col: Int): ByteArray? = columnBlob(stmtPtr, col)
+    fun columnBlobDirect(col: Int): java.nio.ByteBuffer? = columnBlobDirect(stmtPtr, col)
     fun columnType(col: Int): Int = columnType(stmtPtr, col)
 
     override fun close() {
@@ -55,5 +56,6 @@ class SQLiteStmt(private var stmtPtr: Long) : Closeable {
     private external fun columnInt(stmtPtr: Long, col: Int): Int
     private external fun columnLong(stmtPtr: Long, col: Int): Long
     private external fun columnBlob(stmtPtr: Long, col: Int): ByteArray?
+    private external fun columnBlobDirect(stmtPtr: Long, col: Int): java.nio.ByteBuffer?
     private external fun columnType(stmtPtr: Long, col: Int): Int
 }

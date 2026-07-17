@@ -165,7 +165,7 @@ class ReaderViewModel : ViewModel() {
     private fun loadCustomFonts(context: Context) {
         val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
         val fontPaths = prefs.getStringSet("custom_fonts", emptySet()) ?: emptySet()
-        _customFonts.value = fontPaths.map { File(it) }.filter { it.exists() }
+        _customFonts.value = fontPaths.asSequence().map { File(it) }.filter { it.exists() }.toList()
     }
 
     fun loadBook(
