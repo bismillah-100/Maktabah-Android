@@ -36,6 +36,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
@@ -63,26 +65,57 @@ fun BookTOCSheet(
     onDismissRequest: () -> Unit,
 ) {
     val currentContent by viewModel.currentContent.collectAsState()
-    val listState = rememberLazyListState()
-    var searchQuery by remember { mutableStateOf("") }
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = viewModel.tocListIndex.intValue,
+        initialFirstVisibleItemScrollOffset = viewModel.tocListOffset.intValue
+    )
 
-    val filteredTOC = remember(tocList, searchQuery) {
-        val cleanQuery = searchQuery.normalizeArabic()
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.collect { (index, offset) ->
+            viewModel.tocListIndex.intValue = index
+            viewModel.tocListOffset.intValue = offset
+        }
+    }
+
+    val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
+    var searchQuery by viewModel.tocSearchQuery
+
+    // State untuk query yang sudah di-debounce
+    var debouncedQuery by remember { mutableStateOf(searchQuery) }
+
+    LaunchedEffect(searchQuery) {
+        // Jika query kosong, langsung update tanpa delay agar responsif saat user menekan 'X'
+        if (searchQuery.isNotBlank()) {
+            delay(300.milliseconds)
+        }
+        debouncedQuery = searchQuery
+    }
+
+    // State untuk hasil filter
+    var filteredTOC by remember { mutableStateOf(tocList) }
+
+    LaunchedEffect(tocList, debouncedQuery) {
+        val cleanQuery = debouncedQuery.normalizeArabic()
         if (cleanQuery.isBlank()) {
-            tocList
+            filteredTOC = tocList
         } else {
-            fun filterNodes(nodes: List<TOCNode>): List<TOCNode> {
-                return nodes.mapNotNull { node ->
-                    val filteredChildren = filterNodes(node.children)
-                    val matches = node.title.normalizeArabic().contains(cleanQuery, ignoreCase = true)
-                    if (matches || filteredChildren.isNotEmpty()) {
-                        node.copy(children = filteredChildren.toMutableList())
-                    } else {
-                        null
+            val result = withContext(Dispatchers.Default) {
+                fun filterNodes(nodes: List<TOCNode>): List<TOCNode> {
+                    return nodes.mapNotNull { node ->
+                        val filteredChildren = filterNodes(node.children)
+                        val matches = node.title.normalizeArabic().contains(cleanQuery, ignoreCase = true)
+                        if (matches || filteredChildren.isNotEmpty()) {
+                            node.copy(children = filteredChildren.toMutableList())
+                        } else {
+                            null
+                        }
                     }
                 }
+                filterNodes(tocList)
             }
-            filterNodes(tocList)
+            filteredTOC = result
         }
     }
 
@@ -133,8 +166,23 @@ fun BookTOCSheet(
     }
     val visibleNodes by visibleNodesState
 
-    LaunchedEffect(tocList, selectedNode) {
+    // Keep track of the last selected node UUID we scrolled to
+    var lastScrolledToUuid by remember { mutableStateOf<String?>(null) }
+    var lastSearchQuery by remember { mutableStateOf(searchQuery) }
+
+    LaunchedEffect(tocList, selectedNode, searchQuery) {
         if (tocList.isEmpty() || selectedNode == null) return@LaunchedEffect
+
+        val isSearchEmptyNow = searchQuery.isBlank()
+        val wasSearchNotEmpty = lastSearchQuery.isNotBlank()
+        val searchJustCleared = isSearchEmptyNow && wasSearchNotEmpty
+        lastSearchQuery = searchQuery
+
+        // Only scroll if:
+        // 1. Target node changed
+        // 2. We just cleared the search
+        if (selectedNode.uuid == lastScrolledToUuid && !searchJustCleared) return@LaunchedEffect
+
         delay(0.5.seconds)
 
         val pathResult = withContext(Dispatchers.Default) {
@@ -170,13 +218,18 @@ fun BookTOCSheet(
                 .first { list -> list.any { it.node.uuid == targetUuid } }
 
             // Tunggu sampai LazyColumn siap (layout ready)
-            snapshotFlow { listState.layoutInfo.totalItemsCount > 0 }
+            snapshotFlow { listState.layoutInfo.totalItemsCount == visibleNodesState.value.size }
                 .first { it }
 
             val index = visibleNodesState.value.indexOfFirst { it.node.uuid == targetUuid }
             if (index != -1) {
-                delay(100.milliseconds)
-                listState.scrollToItem(index)
+                val visibleItems = listState.layoutInfo.visibleItemsInfo
+                val isVisible = visibleItems.any { it.index == index }
+                if (!isVisible) {
+                    delay(100.milliseconds)
+                    listState.scrollToItem(index)
+                }
+                lastScrolledToUuid = targetUuid
             }
         }
     }
@@ -225,6 +278,7 @@ fun BookTOCSheet(
                 } else {
                     LazyColumn(
                         modifier = Modifier
+                            .nestedScroll(nestedScrollConnection)
                             .fillMaxSize()
                             .fadingEdge(listState, 48.dp),
                         state = listState,

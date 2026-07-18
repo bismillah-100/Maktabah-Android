@@ -145,7 +145,7 @@ fun ReaderScreen(
     var showTOC by remember { mutableStateOf(false) }
     var showAnnotationsSheet by remember { mutableStateOf(false) }
     var showBookSearchSheet by remember { mutableStateOf(false) }
-    val expandedTOCNodes = remember { mutableStateOf(setOf<String>()) }
+    val expandedTOCNodes = viewModel.tocExpandedNodes
     var showOptions by remember { mutableStateOf(false) }
     var showBookInfo by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
@@ -589,6 +589,7 @@ fun ReaderScreen(
             bookId = bookId,
             libraryViewModel = libraryViewModel,
             viewModel = viewModel,
+            tabId = activeTabId ?: "",
             onDismissRequest = { showBookSearchSheet = false },
         )
     }

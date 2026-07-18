@@ -45,6 +45,13 @@ import com.maktabah.R
 import com.maktabah.models.ReaderTab
 import com.maktabah.ui.common.SwipeDeleteBackground
 import com.maktabah.ui.common.isSwipeTargetReached
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 
 /**
  * Sheet daftar semua tab — mengacu iOSReaderTabsPopoverView.swift.
@@ -59,22 +66,49 @@ fun ReaderTabsListSheet(
     onClose: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
+        skipPartiallyExpanded = true
+    )
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = { WindowInsets(0.dp) },
     ) {
-        CompositionLocalProvider(
-            LocalLayoutDirection provides
-                LayoutDirection.Rtl
+        val initialIndex = remember {
+            val idx = tabs.indexOfFirst { it.id == activeTabId }
+            if (idx != -1) idx else 0
+        }
+        val listState = androidx.compose.foundation.lazy.rememberLazyListState(
+            initialFirstVisibleItemIndex = initialIndex
+        )
+        val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.85f)
         ) {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 32.dp),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+            CompositionLocalProvider(
+                LocalLayoutDirection provides
+                    LayoutDirection.Rtl
             ) {
-                items(tabs, key = { it.id }) { tab ->
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .nestedScroll(nestedScrollConnection)
+                        .fillMaxSize()
+                        .padding(bottom = 32.dp),
+                    contentPadding = PaddingValues(
+                        start = 16.dp, 
+                        end = 16.dp, 
+                        top = 8.dp, 
+                        bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 16.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    items(tabs, key = { it.id }) { tab ->
                     val isActive = tab.id == activeTabId
                     var itemWidth by remember { mutableIntStateOf(0) }
                     var dismissStateRef by remember { mutableStateOf<SwipeToDismissBoxState?>(null) }
@@ -96,7 +130,7 @@ fun ReaderTabsListSheet(
                     dismissStateRef = dismissState
 
                     SwipeToDismissBox(
-                        modifier = Modifier.onSizeChanged { itemWidth = it.width },
+                        modifier = Modifier.onSizeChanged { itemWidth = it.width }.animateItem(),
                         state = dismissState,
                         enableDismissFromStartToEnd = false,
                         enableDismissFromEndToStart = true,
@@ -158,4 +192,4 @@ fun ReaderTabsListSheet(
             }
         }
     }
-}
+}}

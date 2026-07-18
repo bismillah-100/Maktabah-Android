@@ -16,7 +16,11 @@ import com.maktabah.models.Annotation
 import com.maktabah.models.BookContent
 import com.maktabah.models.FlashTarget
 import com.maktabah.models.TOCNode
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import com.maktabah.models.AnnotationSearchScope
 import com.maktabah.ui.annotation.AnnotationCoordinator
+import com.maktabah.ui.search.BookSearchViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +33,23 @@ import java.io.FileOutputStream
 import java.util.UUID
 
 class ReaderViewModel : ViewModel() {
+
+    // Tab-specific UI state for Book TOC
+    var tocSearchQuery = mutableStateOf("")
+    var tocExpandedNodes = mutableStateOf(setOf<String>())
+    var tocListIndex = mutableIntStateOf(0)
+    var tocListOffset = mutableIntStateOf(0)
+
+    // Tab-specific UI state for Book Annotations
+    var annotationSearchQuery = mutableStateOf("")
+    var annotationSearchScope = mutableStateOf(AnnotationSearchScope.ALL)
+    var annotationListIndex = mutableIntStateOf(0)
+    var annotationListOffset = mutableIntStateOf(0)
+
+    // Tab-specific UI state for Book Search
+    var bookSearchListIndex = mutableIntStateOf(0)
+    var bookSearchListOffset = mutableIntStateOf(0)
+    val bookSearchViewModel = BookSearchViewModel()
 
     private var libraryDataManager: LibraryDataManager? = null
     private var bookConnection: BookConnection? = null

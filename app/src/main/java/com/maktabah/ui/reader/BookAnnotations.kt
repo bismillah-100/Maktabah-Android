@@ -20,7 +20,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -36,6 +40,8 @@ import com.maktabah.ui.search.SearchWithScope
 import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,9 +51,23 @@ fun BookAnnotationsSheet(
     viewModel: ReaderViewModel,
     onDismissRequest: () -> Unit,
 ) {
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-    var annotationSearchQuery by remember { mutableStateOf("") }
-    var annotationSearchScope by remember { mutableStateOf(AnnotationSearchScope.ALL) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState(
+        initialFirstVisibleItemIndex = viewModel.annotationListIndex.intValue,
+        initialFirstVisibleItemScrollOffset = viewModel.annotationListOffset.intValue
+    )
+
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.collect { (index, offset) ->
+            viewModel.annotationListIndex.intValue = index
+            viewModel.annotationListOffset.intValue = offset
+        }
+    }
+
+    val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
+    var annotationSearchQuery by viewModel.annotationSearchQuery
+    var annotationSearchScope by viewModel.annotationSearchScope
     val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
         skipPartiallyExpanded = true
     )
@@ -62,12 +82,23 @@ fun BookAnnotationsSheet(
                 .fillMaxWidth()
                 .fillMaxHeight(0.85f)
         ) {
-            val filteredAnnotations =
-                remember(bookAnnotations, annotationSearchQuery, annotationSearchScope) {
-                    if (annotationSearchQuery.isBlank()) {
-                        bookAnnotations
-                    } else {
-                        val normalizedQuery = annotationSearchQuery.normalizeArabic()
+            var debouncedQuery by remember { mutableStateOf(annotationSearchQuery) }
+
+            LaunchedEffect(annotationSearchQuery) {
+                if (annotationSearchQuery.isNotBlank()) {
+                    delay(200.milliseconds)
+                }
+                debouncedQuery = annotationSearchQuery
+            }
+
+            var filteredAnnotations by remember { mutableStateOf(bookAnnotations) }
+
+            LaunchedEffect(bookAnnotations, debouncedQuery, annotationSearchScope) {
+                if (debouncedQuery.isBlank()) {
+                    filteredAnnotations = bookAnnotations
+                } else {
+                    val result = withContext(Dispatchers.Default) {
+                        val normalizedQuery = debouncedQuery.normalizeArabic()
                         bookAnnotations.filter { ann ->
                             val matchesContext = (annotationSearchScope == AnnotationSearchScope.ALL || annotationSearchScope == AnnotationSearchScope.CONTEXT) &&
                                 ann.context.normalizeArabic().contains(normalizedQuery, ignoreCase = true)
@@ -81,7 +112,9 @@ fun BookAnnotationsSheet(
                             matchesContext || matchesNote || matchesTag
                         }
                     }
+                    filteredAnnotations = result
                 }
+            }
 
             val topPadding = if (annotationSearchQuery.isNotEmpty()) 100.dp else 54.dp
 
@@ -98,6 +131,7 @@ fun BookAnnotationsSheet(
                 ) {
                     LazyColumn(
                         modifier = Modifier
+                            .nestedScroll(nestedScrollConnection)
                             .fillMaxSize()
                             .fadingEdge(listState, 48.dp),
                         state = listState,

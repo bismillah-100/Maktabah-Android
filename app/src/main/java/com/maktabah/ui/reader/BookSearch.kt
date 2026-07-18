@@ -29,9 +29,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -44,7 +47,6 @@ import com.maktabah.models.SearchMode
 import com.maktabah.ui.common.InsetGroupedItem
 import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.library.LibraryViewModel
-import com.maktabah.ui.search.BookSearchViewModel
 import com.maktabah.ui.search.QueryInputBar
 import com.maktabah.ui.search.SearchHelpDialog
 import com.maktabah.ui.search.SearchHistoryOverlay
@@ -60,11 +62,10 @@ fun BookSearchSheet(
     bookId: Int,
     libraryViewModel: LibraryViewModel,
     viewModel: ReaderViewModel,
+    tabId: String,
     onDismissRequest: () -> Unit,
 ) {
-    val bookSearchViewModel: BookSearchViewModel =
-        androidx.lifecycle.viewmodel.compose
-            .viewModel()
+    val bookSearchViewModel = viewModel.bookSearchViewModel
     val query by bookSearchViewModel.query.collectAsState()
     val lastSearchQuery by bookSearchViewModel.lastSearchQuery.collectAsState()
     val results by bookSearchViewModel.results.collectAsState()
@@ -100,7 +101,21 @@ fun BookSearchSheet(
         contentWindowInsets = { WindowInsets(0.dp) },
     ) {
         val focusManager = LocalFocusManager.current
-        val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+        val listState = androidx.compose.foundation.lazy.rememberLazyListState(
+            initialFirstVisibleItemIndex = viewModel.bookSearchListIndex.intValue,
+            initialFirstVisibleItemScrollOffset = viewModel.bookSearchListOffset.intValue
+        )
+
+        LaunchedEffect(listState) {
+            snapshotFlow {
+                listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+            }.collect { (index, offset) ->
+                viewModel.bookSearchListIndex.intValue = index
+                viewModel.bookSearchListOffset.intValue = offset
+            }
+        }
+
+        val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -120,6 +135,7 @@ fun BookSearchSheet(
             ) {
                 androidx.compose.foundation.lazy.LazyColumn(
                     modifier = Modifier
+                        .nestedScroll(nestedScrollConnection)
                         .fillMaxSize()
                         .fadingEdge(listState, 48.dp),
                     state = listState,
@@ -243,6 +259,8 @@ fun BookSearchSheet(
                     bookSearchViewModel.updateQuery(it)
                     if (it.isEmpty()) {
                         isHistoryVisible = true
+                        viewModel.setSearchQuery(null)
+                        viewModel.setFlashTarget(null)
                     }
                 },
                 onSearch = {
