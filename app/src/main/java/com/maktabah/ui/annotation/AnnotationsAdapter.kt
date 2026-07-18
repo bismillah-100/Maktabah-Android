@@ -241,6 +241,10 @@ class AnnotationsAdapter(
         private val typeIcon: ImageView = itemView.findViewById(R.id.typeIcon)
         private val divider: View = itemView.findViewById(R.id.divider)
 
+        init {
+            itemView.background = com.maktabah.utils.ItemHighlightDrawable { itemView.parent as? android.view.View }
+        }
+
         fun bind(item: AnnotationFlatItem.Header, onToggle: () -> Unit) {
             nameText.text = item.group.title
 
@@ -275,8 +279,7 @@ class AnnotationsAdapter(
                 }
             }
 
-            // Clear background for decoration
-            itemView.background = null
+            // Clear inner background for decoration
             itemContainer.background = null
             itemContainer.isClickable = false
             itemContainer.isFocusable = false
@@ -306,6 +309,10 @@ class AnnotationsAdapter(
         private val pageText: TextView = itemView.findViewById(R.id.pageText)
         private val tagsText: TextView = itemView.findViewById(R.id.tagsText)
         private val divider: View = itemView.findViewById(R.id.divider)
+
+        init {
+            itemView.background = com.maktabah.utils.ItemHighlightDrawable { itemView.parent as? android.view.View }
+        }
 
         fun bind(
             item: AnnotationFlatItem.Item,
@@ -354,7 +361,6 @@ class AnnotationsAdapter(
                 tagsText.visibility = View.GONE
             }
 
-            itemView.background = null
             itemContainer.background = null
             itemContainer.isClickable = false
             itemContainer.isFocusable = false

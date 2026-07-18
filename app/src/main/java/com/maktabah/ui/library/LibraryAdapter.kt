@@ -201,8 +201,6 @@ class LibraryAdapter(
             holder.itemView.tag = null
         }
 
-        applyDecorationState(holder.itemView, position)
-
         holder.bind(
             flatItem = flatItem,
             isLast = position == itemCount - 1,
@@ -253,6 +251,10 @@ class LibraryAdapter(
         private val indentSpace: Space? = itemView.findViewById(R.id.indentSpace)
         private val divider: View? = itemView.findViewById(R.id.divider)
 
+        init {
+            itemView.background = com.maktabah.utils.ItemHighlightDrawable { itemView.parent as? android.view.View }
+        }
+
         private fun getPrimaryColor(): Int = primaryColor
 
         private fun getSecondaryColor(): Int = secondaryColor
@@ -293,18 +295,13 @@ class LibraryAdapter(
             onSetExpandClick: (View, Int, Boolean) -> Unit
         ) {
             itemView.translationZ = (100 - flatItem.level).toFloat()
-            itemView.outlineProvider = null
 
-            // Clear background for decoration-based drawing
-            // We use a simple ripple drawable on the itemContainer or itemView instead
-            container.background = null
+            val density = itemView.context.resources.displayMetrics.density
+            val item = flatItem.item
 
             itemContainer?.background = null
             itemContainer?.isClickable = false
             itemContainer?.isFocusable = false
-
-            val density = itemView.context.resources.displayMetrics.density
-            val item = flatItem.item
 
             val layoutParams = itemView.layoutParams as? ViewGroup.MarginLayoutParams
             if (layoutParams != null) {
@@ -379,9 +376,11 @@ class LibraryAdapter(
                             typeIcon?.setColorFilter(getOnSurfaceVariantColor())
                         }
                         typeIcon?.scaleX = 1f
+                        itemView.isSelected = allSelected || mixedSelected
 
                         typeIcon?.setOnClickListener { onCategorySelectionToggle(item) }
                     } else {
+                        itemView.isSelected = false
                         typeIcon?.setOnClickListener(null)
                         typeIcon?.isClickable = false
                         typeIcon?.setImageResource(if (viewMode == LibraryViewMode.AUTHOR) R.drawable.ic_person else R.drawable.ic_folder)
@@ -424,6 +423,7 @@ class LibraryAdapter(
 
                     if (isSelectionMode) {
                         val isSelected = selectedBookIds.contains(item.id)
+                        itemView.isSelected = isSelected
                         if (isSelected) {
                             typeIcon?.setImageResource(R.drawable.ic_check_circle)
                             typeIcon?.setColorFilter(getPrimaryColor())
@@ -433,6 +433,7 @@ class LibraryAdapter(
                         }
                         typeIcon?.scaleX = 1f
                     } else {
+                        itemView.isSelected = false
                         val isDownloaded = isBookDownloadedById(item.id)
                         if (isDownloaded) {
                             typeIcon?.setImageResource(R.drawable.ic_import_contacts)
