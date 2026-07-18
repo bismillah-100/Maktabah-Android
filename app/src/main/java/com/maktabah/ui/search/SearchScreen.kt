@@ -483,6 +483,7 @@ private fun SearchResultsOverlay(
                     BasicTextField(
                         value = bookFilter,
                         onValueChange = onBookFilterChange,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                         modifier = Modifier
                             .fillMaxWidth()
                             .focusRequester(focusRequester)
