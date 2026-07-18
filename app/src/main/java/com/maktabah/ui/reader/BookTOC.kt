@@ -82,23 +82,40 @@ fun BookTOCSheet(
     val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
     var searchQuery by viewModel.tocSearchQuery
 
-    val filteredTOC = remember(tocList, searchQuery) {
-        val cleanQuery = searchQuery.normalizeArabic()
+    // State untuk query yang sudah di-debounce
+    var debouncedQuery by remember { mutableStateOf(searchQuery) }
+
+    LaunchedEffect(searchQuery) {
+        // Jika query kosong, langsung update tanpa delay agar responsif saat user menekan 'X'
+        if (searchQuery.isNotBlank()) {
+            delay(300.milliseconds)
+        }
+        debouncedQuery = searchQuery
+    }
+
+    // State untuk hasil filter
+    var filteredTOC by remember { mutableStateOf(tocList) }
+
+    LaunchedEffect(tocList, debouncedQuery) {
+        val cleanQuery = debouncedQuery.normalizeArabic()
         if (cleanQuery.isBlank()) {
-            tocList
+            filteredTOC = tocList
         } else {
-            fun filterNodes(nodes: List<TOCNode>): List<TOCNode> {
-                return nodes.mapNotNull { node ->
-                    val filteredChildren = filterNodes(node.children)
-                    val matches = node.title.normalizeArabic().contains(cleanQuery, ignoreCase = true)
-                    if (matches || filteredChildren.isNotEmpty()) {
-                        node.copy(children = filteredChildren.toMutableList())
-                    } else {
-                        null
+            val result = withContext(Dispatchers.Default) {
+                fun filterNodes(nodes: List<TOCNode>): List<TOCNode> {
+                    return nodes.mapNotNull { node ->
+                        val filteredChildren = filterNodes(node.children)
+                        val matches = node.title.normalizeArabic().contains(cleanQuery, ignoreCase = true)
+                        if (matches || filteredChildren.isNotEmpty()) {
+                            node.copy(children = filteredChildren.toMutableList())
+                        } else {
+                            null
+                        }
                     }
                 }
+                filterNodes(tocList)
             }
-            filterNodes(tocList)
+            filteredTOC = result
         }
     }
 
