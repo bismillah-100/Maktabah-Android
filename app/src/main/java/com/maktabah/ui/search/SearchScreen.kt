@@ -84,6 +84,7 @@ import com.maktabah.ui.common.rememberGroupedListColors
 import com.maktabah.ui.library.LibraryViewModel
 import com.maktabah.utils.GroupedCardDecoration
 import com.maktabah.utils.convertToArabicDigits
+import com.maktabah.utils.normalizeArabic
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -454,13 +455,24 @@ private fun SearchResultsOverlay(
     bottomPadding: Dp,
     libraryViewModel: LibraryViewModel
 ) {
-    val filteredResults = remember(results, bookFilter) {
+    var debouncedBookFilter by remember { mutableStateOf(bookFilter) }
+    LaunchedEffect(bookFilter) {
         if (bookFilter.isEmpty()) {
+            debouncedBookFilter = bookFilter
+        } else {
+            kotlinx.coroutines.delay(500)
+            debouncedBookFilter = bookFilter
+        }
+    }
+
+    val filteredResults = remember(results, debouncedBookFilter) {
+        if (debouncedBookFilter.isEmpty()) {
             results
         } else {
+            val cleanQuery = debouncedBookFilter.normalizeArabic()
             results.filter { result ->
                 val name = libraryViewModel.dataManager.booksById[result.bookId]?.name ?: ""
-                name.contains(bookFilter, ignoreCase = true)
+                name.normalizeArabic().contains(cleanQuery, ignoreCase = true)
             }
         }
     }
@@ -481,6 +493,7 @@ private fun SearchResultsOverlay(
                     BasicTextField(
                         value = bookFilter,
                         onValueChange = onBookFilterChange,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                         modifier = Modifier
                             .fillMaxWidth()
                             .focusRequester(focusRequester)

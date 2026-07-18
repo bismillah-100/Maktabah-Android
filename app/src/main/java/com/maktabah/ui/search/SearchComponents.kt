@@ -81,6 +81,10 @@ fun QueryInputBar(
         color = MaterialTheme.colorScheme.surfaceVariant,
         tonalElevation = 2.dp,
         shadowElevation = 6.dp,
+        border = androidx.compose.foundation.BorderStroke(
+            width = 0.5.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
+        ),
     ) {
         Row(
             modifier =
