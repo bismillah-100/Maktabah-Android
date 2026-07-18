@@ -87,8 +87,10 @@ fun HistoryScreen(
     onNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
     hasDonated: Boolean,
 ) {
-    var historyExpanded by remember { mutableStateOf(true) }
-    var favoritesExpanded by remember { mutableStateOf(true) }
+    val context = LocalContext.current
+    val sharedPrefs = remember { context.getSharedPreferences("HistoryPrefs", android.content.Context.MODE_PRIVATE) }
+    var historyExpanded by remember { mutableStateOf(sharedPrefs.getBoolean("historyExpanded", true)) }
+    var favoritesExpanded by remember { mutableStateOf(sharedPrefs.getBoolean("favoritesExpanded", true)) }
     var isSyncing by remember { mutableStateOf(false) }
     val searchQuery by historyViewModel.searchQuery.collectAsState()
     val entriesByBookId by historyViewModel.entriesByBookId.collectAsState()
@@ -105,7 +107,6 @@ fun HistoryScreen(
     var selectedHistoryItem by remember { mutableStateOf<Int?>(null) }
     var selectedFavoriteItem by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -160,7 +161,10 @@ fun HistoryScreen(
             ) {
                 historySection(
                     isExpanded = historyExpanded,
-                    onToggleExpand = { historyExpanded = !historyExpanded },
+                    onToggleExpand = { 
+                        historyExpanded = !historyExpanded
+                        sharedPrefs.edit().putBoolean("historyExpanded", historyExpanded).apply()
+                    },
                     historyItems = filteredHistory,
                     entriesByBookId = entriesByBookId,
                     bookById = { libraryViewModel.dataManager.booksById[it] },
@@ -178,7 +182,10 @@ fun HistoryScreen(
 
                 favoritesSection(
                     isExpanded = favoritesExpanded,
-                    onToggleExpand = { favoritesExpanded = !favoritesExpanded },
+                    onToggleExpand = { 
+                        favoritesExpanded = !favoritesExpanded
+                        sharedPrefs.edit().putBoolean("favoritesExpanded", favoritesExpanded).apply()
+                    },
                     favoriteItems = filteredFavorites,
                     entriesByBookId = entriesByBookId,
                     bookById = { libraryViewModel.dataManager.booksById[it] },

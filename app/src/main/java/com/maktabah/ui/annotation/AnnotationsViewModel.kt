@@ -51,6 +51,11 @@ class AnnotationsViewModel : ViewModel() {
         val isExpanded = current[key] ?: false
         current[key] = !isExpanded
         _expandedGroups.value = current
+        
+        if (::sharedPrefs.isInitialized) {
+            val expandedKeys = current.filterValues { it }.keys
+            sharedPrefs.edit().putStringSet("expandedGroups", expandedKeys).apply()
+        }
     }
 
     fun setGroupingMode(mode: AnnotationGroupingMode) {
@@ -74,15 +79,22 @@ class AnnotationsViewModel : ViewModel() {
     }
 
     private lateinit var dataManager: LibraryDataManager
+    private lateinit var sharedPrefs: android.content.SharedPreferences
     private var isInitialized = false
 
     fun initialize(
+        context: android.content.Context,
         annotationManager: AnnotationManager,
         libraryDataManager: LibraryDataManager,
     ) {
         if (isInitialized) return
         isInitialized = true
         this.dataManager = libraryDataManager
+        this.sharedPrefs = context.getSharedPreferences("AnnotationsPrefs", android.content.Context.MODE_PRIVATE)
+
+        val expandedKeys = sharedPrefs.getStringSet("expandedGroups", emptySet()) ?: emptySet()
+        val initialExpanded = expandedKeys.associateWith { true }
+        _expandedGroups.value = initialExpanded
 
         loadAnnotations(annotationManager)
         observeAnnotationUpdates(annotationManager)

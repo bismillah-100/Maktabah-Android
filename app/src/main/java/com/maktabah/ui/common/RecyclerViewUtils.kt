@@ -153,7 +153,7 @@ fun GroupedRecyclerView(
     colors: GroupedListColors = rememberGroupedListColors(),
     itemAnimator: RecyclerView.ItemAnimator? = TreeItemAnimator(),
     itemTouchHelper: ItemTouchHelper? = null,
-    onScrollStateChanged: (Int) -> Unit = {},
+    onScrollStateChanged: (RecyclerView, Int) -> Unit = { _, _ -> },
     onScrolled: (RecyclerView, Int, Int) -> Unit = { _, _, _ -> },
     decorationFactory: (RecyclerView) -> GroupedCardDecoration? = { null },
     update: (RecyclerView) -> Unit = {}
@@ -200,7 +200,7 @@ fun GroupedRecyclerView(
                         if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
                             focusManager.clearFocus()
                         }
-                        onScrollStateChanged(newState)
+                        onScrollStateChanged(recyclerView, newState)
                     }
                 })
                 addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->

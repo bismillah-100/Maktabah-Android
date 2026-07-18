@@ -38,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -97,7 +98,7 @@ fun AnnotationsScreen(
     val focusManager = LocalFocusManager.current
 
     LaunchedEffect(viewModel, annotationManager, libraryViewModel) {
-        viewModel.initialize(annotationManager, libraryViewModel.dataManager)
+        viewModel.initialize(context, annotationManager, libraryViewModel.dataManager)
     }
 
     LaunchedEffect(bookIdFilter) {
@@ -390,6 +391,9 @@ private fun AnnotationsList(
     annotationManager: AnnotationManager,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val sharedPrefs = remember { context.getSharedPreferences("AnnotationsPrefs", android.content.Context.MODE_PRIVATE) }
+    var hasRestoredScroll by rememberSaveable { mutableStateOf(false) }
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         val colors = rememberGroupedListColors()
 
@@ -631,6 +635,20 @@ private fun AnnotationsList(
             bottomContentPadding = bottomPadding,
             colors = colors,
             itemTouchHelper = itemTouchHelper,
+            onScrollStateChanged = { rv, newState ->
+                if (newState == androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) {
+                    val lm = rv.layoutManager as? androidx.recyclerview.widget.LinearLayoutManager
+                    if (lm != null) {
+                        val pos = lm.findFirstVisibleItemPosition()
+                        val view = lm.findViewByPosition(pos)
+                        val offset = (view?.top ?: 0) - rv.paddingTop
+                        sharedPrefs.edit()
+                            .putInt("scroll_pos", pos)
+                            .putInt("scroll_offset", offset)
+                            .apply()
+                    }
+                }
+            },
             decorationFactory = { rv ->
                 val ctx = rv.context
                 val cornerRadius = 30 * ctx.resources.displayMetrics.density
@@ -652,6 +670,17 @@ private fun AnnotationsList(
                             isLast = item.index == item.lastIndex
                         )
                         is AnnotationFlatItem.Spacer -> null
+                    }
+                }
+            },
+            update = { rv ->
+                if (!hasRestoredScroll && adapter.currentList.isNotEmpty()) {
+                    hasRestoredScroll = true
+                    val pos = sharedPrefs.getInt("scroll_pos", 0)
+                    val offset = sharedPrefs.getInt("scroll_offset", 0)
+                    if (pos != 0 || offset != 0) {
+                        (rv.layoutManager as? androidx.recyclerview.widget.LinearLayoutManager)
+                            ?.scrollToPositionWithOffset(pos, offset)
                     }
                 }
             }

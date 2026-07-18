@@ -165,7 +165,7 @@ fun MainScreen(
             .viewModel()
     LaunchedEffect(Unit) {
         historyViewModel.initialize(context)
-        annotationsViewModel.initialize(annotationManager, libraryViewModel.dataManager)
+        annotationsViewModel.initialize(context, annotationManager, libraryViewModel.dataManager)
 
         scope.launch {
             HistoryViewModel.refreshFlow.collect {
