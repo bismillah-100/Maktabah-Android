@@ -84,6 +84,7 @@ import com.maktabah.ui.common.rememberGroupedListColors
 import com.maktabah.ui.library.LibraryViewModel
 import com.maktabah.utils.GroupedCardDecoration
 import com.maktabah.utils.convertToArabicDigits
+import com.maktabah.utils.normalizeArabic
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -460,7 +461,8 @@ private fun SearchResultsOverlay(
         } else {
             results.filter { result ->
                 val name = libraryViewModel.dataManager.booksById[result.bookId]?.name ?: ""
-                name.contains(bookFilter, ignoreCase = true)
+                val cleanQuery = bookFilter.normalizeArabic()
+                name.normalizeArabic().contains(cleanQuery, ignoreCase = true)
             }
         }
     }
