@@ -34,6 +34,7 @@ import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -62,11 +63,12 @@ fun BookSearchSheet(
     bookId: Int,
     libraryViewModel: LibraryViewModel,
     viewModel: ReaderViewModel,
+    tabId: String,
     onDismissRequest: () -> Unit,
 ) {
     val bookSearchViewModel: BookSearchViewModel =
         androidx.lifecycle.viewmodel.compose
-            .viewModel()
+            .viewModel(key = tabId)
     val query by bookSearchViewModel.query.collectAsState()
     val lastSearchQuery by bookSearchViewModel.lastSearchQuery.collectAsState()
     val results by bookSearchViewModel.results.collectAsState()
@@ -102,7 +104,20 @@ fun BookSearchSheet(
         contentWindowInsets = { WindowInsets(0.dp) },
     ) {
         val focusManager = LocalFocusManager.current
-        val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+        val listState = androidx.compose.foundation.lazy.rememberLazyListState(
+            initialFirstVisibleItemIndex = viewModel.bookSearchListIndex.intValue,
+            initialFirstVisibleItemScrollOffset = viewModel.bookSearchListOffset.intValue
+        )
+
+        LaunchedEffect(listState) {
+            snapshotFlow {
+                listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+            }.collect { (index, offset) ->
+                viewModel.bookSearchListIndex.intValue = index
+                viewModel.bookSearchListOffset.intValue = offset
+            }
+        }
+
         val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
         Box(
             modifier = Modifier

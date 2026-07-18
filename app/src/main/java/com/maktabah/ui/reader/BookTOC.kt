@@ -65,7 +65,19 @@ fun BookTOCSheet(
     onDismissRequest: () -> Unit,
 ) {
     val currentContent by viewModel.currentContent.collectAsState()
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = viewModel.tocListIndex.intValue,
+        initialFirstVisibleItemScrollOffset = viewModel.tocListOffset.intValue
+    )
+
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.collect { (index, offset) ->
+            viewModel.tocListIndex.intValue = index
+            viewModel.tocListOffset.intValue = offset
+        }
+    }
 
     val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
     var searchQuery by viewModel.tocSearchQuery

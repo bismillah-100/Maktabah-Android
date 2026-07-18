@@ -23,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -47,10 +49,23 @@ fun BookAnnotationsSheet(
     viewModel: ReaderViewModel,
     onDismissRequest: () -> Unit,
 ) {
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState(
+        initialFirstVisibleItemIndex = viewModel.annotationListIndex.intValue,
+        initialFirstVisibleItemScrollOffset = viewModel.annotationListOffset.intValue
+    )
+
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.collect { (index, offset) ->
+            viewModel.annotationListIndex.intValue = index
+            viewModel.annotationListOffset.intValue = offset
+        }
+    }
+
     val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
-    var annotationSearchQuery by remember { mutableStateOf("") }
-    var annotationSearchScope by remember { mutableStateOf(AnnotationSearchScope.ALL) }
+    var annotationSearchQuery by viewModel.annotationSearchQuery
+    var annotationSearchScope by viewModel.annotationSearchScope
     val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
         skipPartiallyExpanded = true
     )
