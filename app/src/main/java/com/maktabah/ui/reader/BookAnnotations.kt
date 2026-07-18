@@ -20,6 +20,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -46,6 +48,7 @@ fun BookAnnotationsSheet(
     onDismissRequest: () -> Unit,
 ) {
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
     var annotationSearchQuery by remember { mutableStateOf("") }
     var annotationSearchScope by remember { mutableStateOf(AnnotationSearchScope.ALL) }
     val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
@@ -98,6 +101,7 @@ fun BookAnnotationsSheet(
                 ) {
                     LazyColumn(
                         modifier = Modifier
+                            .nestedScroll(nestedScrollConnection)
                             .fillMaxSize()
                             .fadingEdge(listState, 48.dp),
                         state = listState,

@@ -29,6 +29,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -101,6 +103,7 @@ fun BookSearchSheet(
     ) {
         val focusManager = LocalFocusManager.current
         val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+        val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -120,6 +123,7 @@ fun BookSearchSheet(
             ) {
                 androidx.compose.foundation.lazy.LazyColumn(
                     modifier = Modifier
+                        .nestedScroll(nestedScrollConnection)
                         .fillMaxSize()
                         .fadingEdge(listState, 48.dp),
                     state = listState,

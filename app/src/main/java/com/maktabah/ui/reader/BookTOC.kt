@@ -36,6 +36,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
@@ -64,6 +66,7 @@ fun BookTOCSheet(
 ) {
     val currentContent by viewModel.currentContent.collectAsState()
     val listState = rememberLazyListState()
+    val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
     var searchQuery by remember { mutableStateOf("") }
 
     val filteredTOC = remember(tocList, searchQuery) {
@@ -225,6 +228,7 @@ fun BookTOCSheet(
                 } else {
                     LazyColumn(
                         modifier = Modifier
+                            .nestedScroll(nestedScrollConnection)
                             .fillMaxSize()
                             .fadingEdge(listState, 48.dp),
                         state = listState,
