@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import com.maktabah.models.AnnotationSearchScope
 import com.maktabah.ui.annotation.AnnotationCoordinator
+import com.maktabah.ui.search.BookSearchViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -48,6 +49,7 @@ class ReaderViewModel : ViewModel() {
     // Tab-specific UI state for Book Search
     var bookSearchListIndex = mutableIntStateOf(0)
     var bookSearchListOffset = mutableIntStateOf(0)
+    val bookSearchViewModel = BookSearchViewModel()
 
     private var libraryDataManager: LibraryDataManager? = null
     private var bookConnection: BookConnection? = null

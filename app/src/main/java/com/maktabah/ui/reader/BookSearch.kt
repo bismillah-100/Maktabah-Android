@@ -47,7 +47,6 @@ import com.maktabah.models.SearchMode
 import com.maktabah.ui.common.InsetGroupedItem
 import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.library.LibraryViewModel
-import com.maktabah.ui.search.BookSearchViewModel
 import com.maktabah.ui.search.QueryInputBar
 import com.maktabah.ui.search.SearchHelpDialog
 import com.maktabah.ui.search.SearchHistoryOverlay
@@ -66,9 +65,7 @@ fun BookSearchSheet(
     tabId: String,
     onDismissRequest: () -> Unit,
 ) {
-    val bookSearchViewModel: BookSearchViewModel =
-        androidx.lifecycle.viewmodel.compose
-            .viewModel(key = tabId)
+    val bookSearchViewModel = viewModel.bookSearchViewModel
     val query by bookSearchViewModel.query.collectAsState()
     val lastSearchQuery by bookSearchViewModel.lastSearchQuery.collectAsState()
     val results by bookSearchViewModel.results.collectAsState()
