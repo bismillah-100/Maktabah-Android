@@ -40,7 +40,7 @@ object ArabicTextRenderer {
             RegexOption.DOT_MATCHES_ALL,
         )
     private val structRegex = Regex("""^\s*\([^)]+\)|^\s*\S+\s*-""", RegexOption.MULTILINE)
-    private val separatorRegex = Regex("""_{3,}""")
+    private val separatorRegex = Regex("""^[ \t]*(_{3,})[^\p{L}\r\n]*$""", RegexOption.MULTILINE)
 
     /**
      * Hapus HTML tags, kumpulkan [headerRanges] untuk span title. Mengembalikan (cleanText,
@@ -202,9 +202,20 @@ object ArabicTextRenderer {
         structRegex.findAll(text).forEach { colored.add(it.range) }
 
         val footnoteRanges = mutableListOf<IntRange>()
-        separatorRegex.findAll(text).forEach { match ->
-            colored.add(match.range)
-            val afterSep = match.range.last + 1
+        val matches = separatorRegex.findAll(text).toList()
+        
+        matches.forEach { match ->
+            val underscoreGroup = match.groups[1]
+            if (underscoreGroup != null) {
+                colored.add(underscoreGroup.range)
+            } else {
+                colored.add(match.range)
+            }
+        }
+        
+        if (matches.isNotEmpty()) {
+            val lastMatch = matches.last()
+            val afterSep = lastMatch.range.last + 1
             if (afterSep < text.length) {
                 footnoteRanges.add(afterSep until text.length)
             }
