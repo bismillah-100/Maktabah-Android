@@ -342,7 +342,7 @@ class LibraryAdapter(
 
                     val isExpanded = expandedCategories.contains(item.id)
 
-                    val isRotating = arrowIcon?.getTag(R.id.tag_animating_rotation) as? Boolean ?: false
+                    val isRotating = arrowIcon?.getTag(R.id.tag_animating_rotation) != null
                     if (!isRotating) {
                         arrowIcon?.rotation = if (isExpanded) 0f else 90f
                     }
@@ -392,13 +392,17 @@ class LibraryAdapter(
                     arrowIcon?.isClickable = false
 
                     itemView.setOnClickListener {
-                        val currentRotation = arrowIcon?.rotation ?: 0f
-                        val isCurrentlyExpanded = currentRotation == 0f
+                        val isCurrentlyExpanded = expandedCategories.contains(item.id)
                         val targetRotation = if (isCurrentlyExpanded) 90f else 0f
+                        
+                        val existingAnimator = arrowIcon?.getTag(R.id.tag_animating_rotation) as? ObjectAnimator
+                        existingAnimator?.cancel()
+
+                        val currentRotation = arrowIcon?.rotation ?: if (isCurrentlyExpanded) 0f else 90f
                         val animator = ObjectAnimator.ofFloat(arrowIcon, "rotation", currentRotation, targetRotation).setDuration(250)
                         animator.addListener(object : android.animation.AnimatorListenerAdapter() {
                             override fun onAnimationStart(animation: android.animation.Animator) {
-                                arrowIcon?.setTag(R.id.tag_animating_rotation, true)
+                                arrowIcon?.setTag(R.id.tag_animating_rotation, animator)
                             }
                             override fun onAnimationEnd(animation: android.animation.Animator) {
                                 arrowIcon?.setTag(R.id.tag_animating_rotation, null)
