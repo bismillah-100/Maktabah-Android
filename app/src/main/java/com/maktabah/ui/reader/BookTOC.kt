@@ -66,8 +66,9 @@ fun BookTOCSheet(
 ) {
     val currentContent by viewModel.currentContent.collectAsState()
     val listState = rememberLazyListState()
+
     val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
-    var searchQuery by remember { mutableStateOf("") }
+    var searchQuery by viewModel.tocSearchQuery
 
     val filteredTOC = remember(tocList, searchQuery) {
         val cleanQuery = searchQuery.normalizeArabic()
@@ -136,8 +137,23 @@ fun BookTOCSheet(
     }
     val visibleNodes by visibleNodesState
 
-    LaunchedEffect(tocList, selectedNode) {
+    // Keep track of the last selected node UUID we scrolled to
+    var lastScrolledToUuid by remember { mutableStateOf<String?>(null) }
+    var lastSearchQuery by remember { mutableStateOf(searchQuery) }
+
+    LaunchedEffect(tocList, selectedNode, searchQuery) {
         if (tocList.isEmpty() || selectedNode == null) return@LaunchedEffect
+
+        val isSearchEmptyNow = searchQuery.isBlank()
+        val wasSearchNotEmpty = lastSearchQuery.isNotBlank()
+        val searchJustCleared = isSearchEmptyNow && wasSearchNotEmpty
+        lastSearchQuery = searchQuery
+
+        // Only scroll if:
+        // 1. Target node changed
+        // 2. We just cleared the search
+        if (selectedNode.uuid == lastScrolledToUuid && !searchJustCleared) return@LaunchedEffect
+
         delay(0.5.seconds)
 
         val pathResult = withContext(Dispatchers.Default) {
@@ -173,13 +189,18 @@ fun BookTOCSheet(
                 .first { list -> list.any { it.node.uuid == targetUuid } }
 
             // Tunggu sampai LazyColumn siap (layout ready)
-            snapshotFlow { listState.layoutInfo.totalItemsCount > 0 }
+            snapshotFlow { listState.layoutInfo.totalItemsCount == visibleNodesState.value.size }
                 .first { it }
 
             val index = visibleNodesState.value.indexOfFirst { it.node.uuid == targetUuid }
             if (index != -1) {
-                delay(100.milliseconds)
-                listState.scrollToItem(index)
+                val visibleItems = listState.layoutInfo.visibleItemsInfo
+                val isVisible = visibleItems.any { it.index == index }
+                if (!isVisible) {
+                    delay(100.milliseconds)
+                    listState.scrollToItem(index)
+                }
+                lastScrolledToUuid = targetUuid
             }
         }
     }
