@@ -40,6 +40,8 @@ import com.maktabah.ui.search.SearchWithScope
 import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,12 +82,23 @@ fun BookAnnotationsSheet(
                 .fillMaxWidth()
                 .fillMaxHeight(0.85f)
         ) {
-            val filteredAnnotations =
-                remember(bookAnnotations, annotationSearchQuery, annotationSearchScope) {
-                    if (annotationSearchQuery.isBlank()) {
-                        bookAnnotations
-                    } else {
-                        val normalizedQuery = annotationSearchQuery.normalizeArabic()
+            var debouncedQuery by remember { mutableStateOf(annotationSearchQuery) }
+
+            LaunchedEffect(annotationSearchQuery) {
+                if (annotationSearchQuery.isNotBlank()) {
+                    delay(200.milliseconds)
+                }
+                debouncedQuery = annotationSearchQuery
+            }
+
+            var filteredAnnotations by remember { mutableStateOf(bookAnnotations) }
+
+            LaunchedEffect(bookAnnotations, debouncedQuery, annotationSearchScope) {
+                if (debouncedQuery.isBlank()) {
+                    filteredAnnotations = bookAnnotations
+                } else {
+                    val result = withContext(Dispatchers.Default) {
+                        val normalizedQuery = debouncedQuery.normalizeArabic()
                         bookAnnotations.filter { ann ->
                             val matchesContext = (annotationSearchScope == AnnotationSearchScope.ALL || annotationSearchScope == AnnotationSearchScope.CONTEXT) &&
                                 ann.context.normalizeArabic().contains(normalizedQuery, ignoreCase = true)
@@ -99,7 +112,9 @@ fun BookAnnotationsSheet(
                             matchesContext || matchesNote || matchesTag
                         }
                     }
+                    filteredAnnotations = result
                 }
+            }
 
             val topPadding = if (annotationSearchQuery.isNotEmpty()) 100.dp else 54.dp
 
