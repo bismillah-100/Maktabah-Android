@@ -259,6 +259,8 @@ fun BookSearchSheet(
                     bookSearchViewModel.updateQuery(it)
                     if (it.isEmpty()) {
                         isHistoryVisible = true
+                        viewModel.setSearchQuery(null)
+                        viewModel.setFlashTarget(null)
                     }
                 },
                 onSearch = {

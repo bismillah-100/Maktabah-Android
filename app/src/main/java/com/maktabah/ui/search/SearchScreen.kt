@@ -93,6 +93,7 @@ fun SearchScreen(
     bottomPadding: Dp,
     onNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
     hasDonated: Boolean,
+    onClearGlobalQuery: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -136,6 +137,7 @@ fun SearchScreen(
     BackHandler(enabled = results.isNotEmpty()) {
         viewModel.clearResults()
         query = ""
+        onClearGlobalQuery()
     }
 
     Box(
@@ -165,7 +167,13 @@ fun SearchScreen(
 
         QueryInputBar(
             query = query,
-            onQueryChange = { newQuery -> query = newQuery },
+            onQueryChange = { newQuery -> 
+                query = newQuery 
+                if (newQuery.isEmpty()) {
+                    viewModel.clearResults()
+                    onClearGlobalQuery()
+                }
+            },
             onSearch = {
                 focusManager.clearFocus()
                 viewModel.performSearch(
@@ -237,6 +245,7 @@ fun SearchScreen(
                 onClearResults = {
                     viewModel.clearResults()
                     query = ""
+                    onClearGlobalQuery()
                 },
                 onSelect = onNavigateToReader,
                 bottomPadding = bottomPadding,
