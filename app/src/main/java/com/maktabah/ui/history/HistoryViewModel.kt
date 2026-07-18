@@ -66,25 +66,36 @@ class HistoryViewModel : ViewModel() {
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
+    private var filteredHistoryFlow: StateFlow<List<Int>>? = null
+    private var filteredFavoritesFlow: StateFlow<List<Int>>? = null
+
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query.normalizeArabic()
     }
 	
 	@OptIn(kotlinx.coroutines.FlowPreview::class)
 	fun getFilteredHistory(dataManager: LibraryDataManager): StateFlow<List<Int>> {
-		return combine(_historyOrder, _searchQuery) { order, query ->
+		return filteredHistoryFlow ?: combine(
+			_historyOrder,
+			_searchQuery.debounce { query -> if (query.isEmpty()) 0L else 500L }
+		) { order, query ->
 			val cleanQuery = query.normalizeArabic()
 			if (cleanQuery.isBlank()) {
 				order
 			} else {
 				order.filter { dataManager.bookContainsQuery(it, cleanQuery) }
 			}
-		}.debounce(500).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), _historyOrder.value)
+		}.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), _historyOrder.value).also {
+			filteredHistoryFlow = it
+		}
 	}
 
 	@OptIn(kotlinx.coroutines.FlowPreview::class)
 	fun getFilteredFavorites(dataManager: LibraryDataManager): StateFlow<List<Int>> {
-		return combine(_entriesByBookId, _searchQuery) { entries, query ->
+		return filteredFavoritesFlow ?: combine(
+			_entriesByBookId,
+			_searchQuery.debounce { query -> if (query.isEmpty()) 0L else 500L }
+		) { entries, query ->
 			val cleanQuery = query.normalizeArabic()
 			val favorites = entries.values
 				.filter { it.isFavorite }
@@ -96,7 +107,9 @@ class HistoryViewModel : ViewModel() {
 			} else {
 				favorites.filter { dataManager.bookContainsQuery(it, cleanQuery) }
 			}
-		}.debounce(500).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), getFavoriteBookIds())
+		}.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), getFavoriteBookIds()).also {
+			filteredFavoritesFlow = it
+		}
 	}
 
     fun addBookToHistory(bookId: Int) {
