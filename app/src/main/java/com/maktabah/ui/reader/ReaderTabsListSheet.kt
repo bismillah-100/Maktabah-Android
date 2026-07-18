@@ -130,7 +130,7 @@ fun ReaderTabsListSheet(
                     dismissStateRef = dismissState
 
                     SwipeToDismissBox(
-                        modifier = Modifier.onSizeChanged { itemWidth = it.width },
+                        modifier = Modifier.onSizeChanged { itemWidth = it.width }.animateItem(),
                         state = dismissState,
                         enableDismissFromStartToEnd = false,
                         enableDismissFromEndToStart = true,
