@@ -455,13 +455,23 @@ private fun SearchResultsOverlay(
     bottomPadding: Dp,
     libraryViewModel: LibraryViewModel
 ) {
-    val filteredResults = remember(results, bookFilter) {
+    var debouncedBookFilter by remember { mutableStateOf(bookFilter) }
+    LaunchedEffect(bookFilter) {
         if (bookFilter.isEmpty()) {
+            debouncedBookFilter = bookFilter
+        } else {
+            kotlinx.coroutines.delay(500)
+            debouncedBookFilter = bookFilter
+        }
+    }
+
+    val filteredResults = remember(results, debouncedBookFilter) {
+        if (debouncedBookFilter.isEmpty()) {
             results
         } else {
+            val cleanQuery = debouncedBookFilter.normalizeArabic()
             results.filter { result ->
                 val name = libraryViewModel.dataManager.booksById[result.bookId]?.name ?: ""
-                val cleanQuery = bookFilter.normalizeArabic()
                 name.normalizeArabic().contains(cleanQuery, ignoreCase = true)
             }
         }
