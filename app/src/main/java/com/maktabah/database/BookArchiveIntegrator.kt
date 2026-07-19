@@ -133,14 +133,10 @@ object BookArchiveIntegrator {
                             if (i == nassIndex) {
                                 val nassText = selectStmt.columnText(i)
                                 if (nassText != null) {
-                                    val bytes = nassText.toByteArray()
-                                    val ctx = ZstdContextPool.getCompressCtx()
-                                    val compressed = try {
-                                        ctx.compress(bytes)
-                                    } finally {
-                                        ZstdContextPool.releaseCompressCtx(ctx)
-                                    }
+                                    val compressed = compressText(nassText)
+                                    if (compressed != null) {
                                     insertStmt.bindBlob(i + 1, compressed)
+                                }
                                 } else {
                                     insertStmt.bindNull(i + 1)
                                 }
@@ -268,38 +264,22 @@ object BookArchiveIntegrator {
                 db.prepare("SELECT id, nass FROM main.\"$targetTableName\" WHERE nass IS NOT NULL;")?.use { ftsSelectStmt ->
                     while (ftsSelectStmt.step() == SQLiteDB.SQLITE_ROW) {
                         val id = ftsSelectStmt.columnLong(0)
-                        val blob = ftsSelectStmt.columnBlobDirect(1)
-                        if (blob != null) {
-                            val decompressedSize = Zstd.getFrameContentSize(blob).toInt()
-                            if (decompressedSize > 0) {
-                                val ctx = ZstdContextPool.getDecompressCtx()
-                                val decompressed = try {
-                                    val dstBuf = ZstdContextPool.getDirectBuffer(decompressedSize)
-                                    ctx.decompressDirectByteBuffer(dstBuf, 0, decompressedSize, blob, 0, blob.limit())
-                                    val dst = ByteArray(decompressedSize)
-                                    dstBuf.get(dst)
-                                    ZstdContextPool.releaseDirectBuffer(dstBuf)
+                        val nassText = decompressBlob(ftsSelectStmt.columnBlobDirect(1))
+                        if (nassText.isNotEmpty()) {
+                            val cleanText =
+                                nassText
+                                    .replace("\n", " ")
+                                    .replace("\r", " ")
+                                    .removingHarakat()
+                                    .normalizeArabic()
 
-                                    dst
-                                } finally {
-                                    ZstdContextPool.releaseDecompressCtx(ctx)
-                                }
-                                val nassText = String(decompressed)
-                                val cleanText =
-                                    nassText
-                                        .replace("\n", " ")
-                                        .replace("\r", " ")
-                                        .removingHarakat()
-                                        .normalizeArabic()
-
-                                if (cleanText.isNotBlank()) {
-                                    ftsInsertStmt.reset()
-                                    ftsInsertStmt.clearBindings()
-                                    ftsInsertStmt.bindLong(1, id)
-                                    ftsInsertStmt.bindText(2, cleanText)
-                                    ftsInsertStmt.step()
-                                    ftsCount++
-                                }
+                            if (cleanText.isNotBlank()) {
+                                ftsInsertStmt.reset()
+                                ftsInsertStmt.clearBindings()
+                                ftsInsertStmt.bindLong(1, id)
+                                ftsInsertStmt.bindText(2, cleanText)
+                                ftsInsertStmt.step()
+                                ftsCount++
                             }
                         }
                     }
