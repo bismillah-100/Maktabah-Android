@@ -22,3 +22,8 @@
 ## 2023-10-27 - [Compose State Desync]
 **Learning:** StateFlow uses reference equality to determine if an update needs to be emitted. Modifying a mutable property of a data class (`var`) inside a map and reassigning the map does not trigger re-evaluation if the object reference remains the same, leading to UI not updating when adding/removing favorites.
 **Action:** Enforce immutability (`val`) in data classes (e.g., `ReadingEntry`) and use `.copy()` to create new object references when modifying state to ensure Compose and StateFlow properly detect the change.
+
+
+## 2024-07-28 - [Eliminate Redundant Computations in Loops]
+**Learning:** Pre-computing constant values (such as regex normalizations like `query.normalizeArabic()`) outside of recursive functions or deep traversal loops prevents thousands of redundant, expensive computations and provides massive performance benefits over micro-optimizations like sequences.
+**Action:** Always inspect deep recursive trees (like `traverse` in `LibraryViewModel`) or large collection iterators for constant string manipulations and hoist them out of the loops.

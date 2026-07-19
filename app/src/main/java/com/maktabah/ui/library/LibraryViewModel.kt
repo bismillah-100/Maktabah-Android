@@ -419,6 +419,7 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
             var roots =
                 if (viewModeVal == LibraryViewMode.AUTHOR) _authorCategories.value else _rootCategories.value
             val query = _searchQuery.value
+            val cleanQuery = query.normalizeArabic()
             val showOnlyDownloaded = _showOnlyDownloaded.value
             val downloadedIds = _downloadedBookIds.value
 
@@ -438,7 +439,6 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
             }
 
             fun hasMatchingBooks(cats: List<Any>): Boolean {
-                val cleanQuery = query.normalizeArabic()
                 for (c in cats) {
                     if (c is BooksData) {
                         val matchesQuery = cleanQuery.isEmpty() || c.name.normalizeArabic()
@@ -454,7 +454,6 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
 
             fun traverse(categories: List<Any>, level: Int, parentCategoryId: Int?): Boolean {
                 var hasVisibleContent = false
-                val cleanQuery = query.normalizeArabic()
                 var bookCount = 0
                 var hiddenCount = 0
                 val limit = if (parentCategoryId != null) _categoryLimits.value[parentCategoryId]
