@@ -118,9 +118,11 @@ class HistoryViewModel : ViewModel() {
             bookId = bookId,
             ckRecordId = bookId.toString()
         )
-        entry.lastOpenedAt = System.currentTimeMillis()
-        entry.updatedAt = System.currentTimeMillis()
-        entries[bookId] = entry
+        val newEntry = entry.copy(
+            lastOpenedAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis()
+        )
+        entries[bookId] = newEntry
 
         val order = _historyOrder.value.toMutableList()
         order.remove(bookId)
@@ -140,10 +142,12 @@ class HistoryViewModel : ViewModel() {
         val entries = _entriesByBookId.value.toMutableMap()
         if (entries.containsKey(bookId)) {
             val entry = entries[bookId]!!
-            entry.lastContentId = contentId
-            entry.positionUpdatedAt = System.currentTimeMillis()
-            entry.updatedAt = System.currentTimeMillis()
-            entries[bookId] = entry
+            val newEntry = entry.copy(
+                lastContentId = contentId,
+                positionUpdatedAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+            entries[bookId] = newEntry
             _entriesByBookId.value = entries
             saveToFile()
         } else {
@@ -158,12 +162,13 @@ class HistoryViewModel : ViewModel() {
             bookId = bookId,
             ckRecordId = bookId.toString()
         )
-        entry.isFavorite = !entry.isFavorite
-        if (entry.isFavorite) {
-            entry.favoritedAt = System.currentTimeMillis()
-        }
-        entry.updatedAt = System.currentTimeMillis()
-        entries[bookId] = entry
+        val isFav = !entry.isFavorite
+        val newEntry = entry.copy(
+            isFavorite = isFav,
+            favoritedAt = if (isFav) System.currentTimeMillis() else entry.favoritedAt,
+            updatedAt = System.currentTimeMillis()
+        )
+        entries[bookId] = newEntry
         _entriesByBookId.value = entries
         saveToFile()
     }
@@ -176,14 +181,18 @@ class HistoryViewModel : ViewModel() {
         val entries = _entriesByBookId.value.toMutableMap()
         val entry = entries[bookId]
         if (entry != null) {
-            entry.lastOpenedAt = null
-            entry.lastContentId = null
-            entry.updatedAt = System.currentTimeMillis()
-            entries[bookId] = entry
+            val newEntry = entry.copy(
+                lastOpenedAt = null,
+                lastContentId = null,
+                updatedAt = System.currentTimeMillis()
+            )
+            entries[bookId] = newEntry
             _entriesByBookId.value = entries
+            saveToFile()
+            return newEntry
         }
         saveToFile()
-        return entry
+        return null
     }
 
     private fun saveToFile() {
