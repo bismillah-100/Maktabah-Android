@@ -24,101 +24,173 @@ class CloudKitSyncManager {
         historyViewModel: HistoryViewModel
     ): String? = syncMutex.withLock {
         withContext(Dispatchers.IO) {
-        val result = CloudKitCoreManager.shared.fetchChanges(
-            context = context,
-            zoneName = "AnnotationsZone",
-            onRecordReceived = { record ->
-                val recordType = record.optString("recordType", "")
-                val ckRecordId = record.optString("recordName", "")
-                val fields = record.optJSONObject("fields") ?: return@fetchChanges
+            val annotationsToSave = mutableListOf<Annotation>()
+            val entriesToSave = mutableListOf<ReadingEntry>()
+            val recordIdsToDelete = mutableListOf<String>()
 
-                if (recordType == "Annotation") {
-                    val bkId = fields.optJSONObject("bkId")?.optInt("value", 0) ?: 0
-                    val contentId = fields.optJSONObject("contentId")?.optInt("value", 0) ?: 0
-                    val colorHex = fields.optJSONObject("colorHex")?.optString("value", "") ?: ""
-                    val note = fields.optJSONObject("note")?.let { if (it.has("value")) it.optString("value") else null }
-                    val type = fields.optJSONObject("type")?.optInt("value", 0) ?: 0
-                    val createdAt = fields.optJSONObject("createdAt")?.optLong("value", 0L) ?: 0L
-                    val page = fields.optJSONObject("page")?.optInt("value", 0) ?: 0
-                    val contextText = fields.optJSONObject("context")?.optString("value", "") ?: ""
-                    val rangeLocation =
-                        fields.optJSONObject("rangeLocation")?.optInt("value", 0) ?: 0
-                    val rangeLength = fields.optJSONObject("rangeLength")?.optInt("value", 0) ?: 0
-                    val rangeDiacLocation =
-                        fields.optJSONObject("rangeDiacLocation")?.optInt("value", 0) ?: 0
-                    val rangeDiacLength =
-                        fields.optJSONObject("rangeDiacLength")?.optInt("value", 0) ?: 0
-                    val part = fields.optJSONObject("part")?.optInt("value", 0) ?: 0
+            val result = CloudKitCoreManager.shared.fetchChanges(
+                context = context,
+                zoneName = "AnnotationsZone",
+                onRecordReceived = { record ->
+                    val recordType = record.optString("recordType", "")
+                    val ckRecordId = record.optString("recordName", "")
+                    val fields = record.optJSONObject("fields") ?: return@fetchChanges
 
-                    val tagsObj = fields.optJSONObject("tags")
-                    val tagsList = tagsObj?.optJSONArray("value")
-                    val tags = if (tagsList != null && tagsList.length() > 0) {
-                        (0 until tagsList.length()).joinToString(",") { tagsList.getString(it) }
-                    } else ""
+                    if (recordType == "Annotation") {
+                        val bkId = fields.optJSONObject("bkId")?.optInt("value", 0) ?: 0
+                        val contentId = fields.optJSONObject("contentId")?.optInt("value", 0) ?: 0
+                        val colorHex = fields.optJSONObject("colorHex")?.optString("value", "") ?: ""
+                        val note = fields.optJSONObject("note")?.let { if (it.has("value")) it.optString("value") else null }
+                        val type = fields.optJSONObject("type")?.optInt("value", 0) ?: 0
+                        val createdAtVal = fields.optJSONObject("createdAt")?.optLong("value", 0L) ?: 0L
+                        val createdAt = if (createdAtVal in 1L..9999999999L) createdAtVal * 1000L else createdAtVal
+                        val page = fields.optJSONObject("page")?.optInt("value", 0) ?: 0
+                        val contextText = fields.optJSONObject("context")?.optString("value", "") ?: ""
+                        val rangeLocation =
+                            fields.optJSONObject("rangeLocation")?.optInt("value", 0) ?: 0
+                        val rangeLength = fields.optJSONObject("rangeLength")?.optInt("value", 0) ?: 0
+                        val rangeDiacLocation =
+                            fields.optJSONObject("rangeDiacLocation")?.optInt("value", 0) ?: 0
+                        val rangeDiacLength =
+                            fields.optJSONObject("rangeDiacLength")?.optInt("value", 0) ?: 0
+                        val part = fields.optJSONObject("part")?.optInt("value", 0) ?: 0
 
-                    val lastModified = fields.optJSONObject("lastModified")?.optLong("value", 0L)
+                        val tagsObj = fields.optJSONObject("tags")
+                        val tagsList = tagsObj?.optJSONArray("value")
+                        val tags = if (tagsList != null && tagsList.length() > 0) {
+                            (0 until tagsList.length()).joinToString(",") { tagsList.getString(it) }
+                        } else ""
 
-                    val annotation = Annotation(
-                        bkId = bkId,
-                        contentId = contentId,
-                        colorHex = colorHex,
-                        note = note,
-                        type = type,
-                        createdAt = createdAt,
-                        page = page,
-                        context = contextText,
-                        rangeLocation = rangeLocation,
-                        rangeLength = rangeLength,
-                        rangeDiacLocation = rangeDiacLocation,
-                        rangeDiacLength = rangeDiacLength,
-                        part = part,
-                        tags = tags,
-                        ckRecordId = ckRecordId,
-                        lastModified = lastModified
-                    )
-                    annotationManager.insertOrUpdate(annotation, fromSync = true)
-                } else if (recordType == "ReadingEntry") {
-                    val bookId =
-                        fields.optJSONObject("bookId")?.optInt("value", 0) ?: return@fetchChanges
-                    val lastContentId = fields.optJSONObject("lastContentId")?.optInt("value")
-                    val lastOpenedAt = fields.optJSONObject("lastOpenedAt")?.optLong("value")
-                    val favoritedAt = fields.optJSONObject("favoritedAt")?.optLong("value")
-                    val positionUpdatedAt =
-                        fields.optJSONObject("positionUpdatedAt")?.optLong("value")
-                    val isFavorite = fields.optJSONObject("isFavorite")?.optInt("value", 0) == 1
-                    val lastModified =
-                        fields.optJSONObject("lastModified")?.optLong("value", 0L) ?: 0L
+                        val lastModifiedVal = fields.optJSONObject("lastModified")?.optLong("value", 0L) ?: 0L
+                        val lastModified = if (lastModifiedVal > 0L) {
+                            if (lastModifiedVal in 1L..9999999999L) lastModifiedVal * 1000L else lastModifiedVal
+                        } else null
 
-                    val entry = ReadingEntry(
-                        bookId = bookId,
-                        lastContentId = if (lastContentId == 0 && fields.optJSONObject("lastContentId")?.has("value") != true
-                        ) null else lastContentId,
-                        lastOpenedAt = if (lastOpenedAt == 0L && fields.optJSONObject("lastOpenedAt")?.has("value") != true
-                        ) null else lastOpenedAt,
-                        favoritedAt = if (favoritedAt == 0L && fields.optJSONObject("favoritedAt")?.has("value") != true
-                        ) null else favoritedAt,
-                        positionUpdatedAt = if (positionUpdatedAt == 0L && fields.optJSONObject("positionUpdatedAt")?.has("value") != true
-                        ) null else positionUpdatedAt,
-                        isFavorite = isFavorite,
-                        updatedAt = lastModified,
-                        ckRecordId = ckRecordId
-                    )
-                    historyViewModel.applyCloudKitChanges(listOf(entry))
+                        val annotation = Annotation(
+                            bkId = bkId,
+                            contentId = contentId,
+                            colorHex = colorHex,
+                            note = note,
+                            type = type,
+                            createdAt = createdAt,
+                            page = page,
+                            context = contextText,
+                            rangeLocation = rangeLocation,
+                            rangeLength = rangeLength,
+                            rangeDiacLocation = rangeDiacLocation,
+                            rangeDiacLength = rangeDiacLength,
+                            part = part,
+                            tags = tags,
+                            ckRecordId = ckRecordId,
+                            lastModified = lastModified
+                        )
+                        annotationsToSave.add(annotation)
+                    } else if (recordType == "ReadingEntry") {
+                        val bookIdObj = fields.optJSONObject("bookId")
+                        val bookId = if (bookIdObj != null) {
+                            val v = bookIdObj.opt("value")
+                            if (v == null || v == JSONObject.NULL) 0
+                            else if (v is Number) v.toInt()
+                            else v.toString().toIntOrNull() ?: 0
+                        } else 0
+                        if (bookId == 0) return@fetchChanges
+
+                        val lastContentIdObj = fields.optJSONObject("lastContentId")
+                        val lastContentId = if (lastContentIdObj != null) {
+                            val v = lastContentIdObj.opt("value")
+                            if (v == null || v == JSONObject.NULL) null
+                            else if (v is Number) v.toInt()
+                            else v.toString().toIntOrNull()
+                        } else null
+
+                        val lastOpenedAtObj = fields.optJSONObject("lastOpenedAt")
+                        val lastOpenedAtVal = if (lastOpenedAtObj != null) {
+                            val v = lastOpenedAtObj.opt("value")
+                            if (v == null || v == JSONObject.NULL) null
+                            else if (v is Number) v.toLong()
+                            else v.toString().toLongOrNull()
+                        } else null
+                        val lastOpenedAt = if (lastOpenedAtVal != null && lastOpenedAtVal in 1L..9999999999L) lastOpenedAtVal * 1000L else lastOpenedAtVal
+
+                        val favoritedAtObj = fields.optJSONObject("favoritedAt")
+                        val favoritedAtVal = if (favoritedAtObj != null) {
+                            val v = favoritedAtObj.opt("value")
+                            if (v == null || v == JSONObject.NULL) null
+                            else if (v is Number) v.toLong()
+                            else v.toString().toLongOrNull()
+                        } else null
+                        val favoritedAt = if (favoritedAtVal != null && favoritedAtVal in 1L..9999999999L) favoritedAtVal * 1000L else favoritedAtVal
+
+                        val positionUpdatedAtObj = fields.optJSONObject("positionUpdatedAt")
+                        val positionUpdatedAtVal = if (positionUpdatedAtObj != null) {
+                            val v = positionUpdatedAtObj.opt("value")
+                            if (v == null || v == JSONObject.NULL) null
+                            else if (v is Number) v.toLong()
+                            else v.toString().toLongOrNull()
+                        } else null
+                        val positionUpdatedAt = if (positionUpdatedAtVal != null && positionUpdatedAtVal in 1L..9999999999L) positionUpdatedAtVal * 1000L else positionUpdatedAtVal
+
+                        val isFavoriteObj = fields.optJSONObject("isFavorite")
+                        val isFavorite = if (isFavoriteObj != null) {
+                            val v = isFavoriteObj.opt("value")
+                            if (v == null || v == JSONObject.NULL) false
+                            else if (v is Boolean) v
+                            else if (v is Number) v.toInt() == 1
+                            else v.toString().toIntOrNull() == 1
+                        } else false
+
+                        val lastModifiedObj = fields.optJSONObject("lastModified")
+                        val lastModifiedVal = if (lastModifiedObj != null) {
+                            val v = lastModifiedObj.opt("value")
+                            if (v == null || v == JSONObject.NULL) 0L
+                            else if (v is Number) v.toLong()
+                            else v.toString().toLongOrNull() ?: 0L
+                        } else 0L
+                        val lastModified = if (lastModifiedVal in 1L..9999999999L) lastModifiedVal * 1000L else lastModifiedVal
+
+                        val entry = ReadingEntry(
+                            bookId = bookId,
+                            lastContentId = lastContentId,
+                            lastOpenedAt = lastOpenedAt,
+                            favoritedAt = favoritedAt,
+                            positionUpdatedAt = positionUpdatedAt,
+                            isFavorite = isFavorite,
+                            updatedAt = lastModified,
+                            ckRecordId = ckRecordId
+                        )
+                        entriesToSave.add(entry)
+                    }
+                },
+                onRecordDeleted = { ckRecordId ->
+                    recordIdsToDelete.add(ckRecordId)
                 }
-            },
-            onRecordDeleted = { ckRecordId ->
-                annotationManager.deleteByCkRecordId(ckRecordId)
-            }
-        )
+            )
 
-        result.fold(
-            onSuccess = { return@withContext it.second },
-            onFailure = { 
-                if (it.message == "No Web Auth Token") return@withContext null
-                return@withContext "Exception: ${it.message}" 
-            }
-        )
-    } }
+            result.fold(
+                onSuccess = {
+                    // Apply Annotation changes in batch
+                    if (annotationsToSave.isNotEmpty() || recordIdsToDelete.isNotEmpty()) {
+                        for (ckRecordId in recordIdsToDelete) {
+                            annotationManager.deleteByCkRecordId(ckRecordId)
+                        }
+                        for (annotation in annotationsToSave) {
+                            annotationManager.insertOrUpdate(annotation, fromSync = true)
+                        }
+                    }
+
+                    // Apply ReadingEntry changes in batch
+                    if (entriesToSave.isNotEmpty() || recordIdsToDelete.isNotEmpty()) {
+                        historyViewModel.applyCloudKitChanges(entriesToSave, recordIdsToDelete)
+                    }
+
+                    return@withContext it.second
+                },
+                onFailure = { 
+                    if (it.message == "No Web Auth Token") return@withContext null
+                    return@withContext "Exception: ${it.message}" 
+                }
+            )
+        } }
 
     suspend fun syncAnnotations(context: Context, annotationManager: AnnotationManager): String? =
         syncMutex.withLock {
@@ -128,7 +200,6 @@ class CloudKitSyncManager {
 
             val recordsToSave = JSONArray()
             for (annotation in annotations) {
-                coroutineContext.ensureActive()
                 val recordName = annotation.ckRecordId ?: UUID.randomUUID().toString()
                 if (annotation.ckRecordId == null) {
                     annotationManager.insertOrUpdate(annotation.copy(ckRecordId = recordName), fromSync = true)
@@ -148,7 +219,8 @@ class CloudKitSyncManager {
                             "note",
                             JSONObject().apply { put("value", annotation.note) })
                         put("type", JSONObject().apply { put("value", annotation.type) })
-                        put("createdAt", JSONObject().apply { put("value", annotation.createdAt) })
+                        val createdAtSec = if (annotation.createdAt > 10000000000L) annotation.createdAt / 1000L else annotation.createdAt
+                        put("createdAt", JSONObject().apply { put("value", createdAtSec) })
                         put("page", JSONObject().apply { put("value", annotation.page) })
                         put("context", JSONObject().apply { put("value", annotation.context) })
                         put(
@@ -171,17 +243,16 @@ class CloudKitSyncManager {
                         }
                         put("tags", JSONObject().apply { put("value", tagsArray) })
 
-                        val lastMod = annotation.lastModified ?: System.currentTimeMillis()
-                        put("lastModified", JSONObject().apply { put("value", lastMod) })
+                        val lastModVal = annotation.lastModified ?: System.currentTimeMillis()
+                        val lastModSec = if (lastModVal > 10000000000L) lastModVal / 1000L else lastModVal
+                        put("lastModified", JSONObject().apply { put("value", lastModSec) })
                     })
                 }
                 recordsToSave.put(record)
             }
 
             val recordIDsToDelete = JSONArray()
-            deletedIds.forEach {
-                coroutineContext.ensureActive()
-                recordIDsToDelete.put(it) }
+            deletedIds.forEach { recordIDsToDelete.put(it) }
 
             val result =
                 CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, recordIDsToDelete)
@@ -199,40 +270,47 @@ class CloudKitSyncManager {
     suspend fun syncHistoryAndFavorites(context: Context, entries: List<ReadingEntry>) =
         withContext(Dispatchers.IO) {
             val recordsToSave = JSONArray()
+            val recordIDsToDelete = JSONArray()
             for (entry in entries) {
                 coroutineContext.ensureActive()
-                val record = JSONObject().apply {
-                    put("recordType", "ReadingEntry")
-                    put("recordName", entry.ckRecordId ?: entry.bookId.toString())
-                    put("zoneID", JSONObject().apply {
-                        put("zoneName", "AnnotationsZone")
-                        put("ownerRecordName", "_defaultOwner_")
-                    })
-                    put("fields", JSONObject().apply {
-                        put("bookId", JSONObject().apply { put("value", entry.bookId) })
-                        put(
-                            "isFavorite",
-                            JSONObject().apply { put("value", if (entry.isFavorite) 1 else 0) })
-                        put("lastModified", JSONObject().apply { put("value", entry.updatedAt) })
-                        if (entry.lastContentId != null) put(
-                            "lastContentId",
-                            JSONObject().apply { put("value", entry.lastContentId) })
-                        if (entry.lastOpenedAt != null) put(
-                            "lastOpenedAt",
-                            JSONObject().apply { put("value", entry.lastOpenedAt) })
-                        if (entry.favoritedAt != null) put(
-                            "favoritedAt",
-                            JSONObject().apply { put("value", entry.favoritedAt) })
-                        if (entry.positionUpdatedAt != null) put(
-                            "positionUpdatedAt",
-                            JSONObject().apply { put("value", entry.positionUpdatedAt) })
-                    })
+                val recordId = entry.ckRecordId ?: entry.bookId.toString()
+                if (!entry.isFavorite && entry.lastOpenedAt == null) {
+                    recordIDsToDelete.put(recordId)
+                } else {
+                    val record = JSONObject().apply {
+                        put("recordType", "ReadingEntry")
+                        put("recordName", recordId)
+                        put("zoneID", JSONObject().apply {
+                            put("zoneName", "AnnotationsZone")
+                            put("ownerRecordName", "_defaultOwner_")
+                        })
+                        put("fields", JSONObject().apply {
+                            put("bookId", JSONObject().apply { put("value", entry.bookId) })
+                            put(
+                                "isFavorite",
+                                JSONObject().apply { put("value", if (entry.isFavorite) 1 else 0) })
+                            val lastModSec = if (entry.updatedAt > 10000000000L) entry.updatedAt / 1000L else entry.updatedAt
+                            put("lastModified", JSONObject().apply { put("value", lastModSec) })
+                            put("lastContentId", JSONObject().apply {
+                                put("value", entry.lastContentId ?: JSONObject.NULL)
+                            })
+                            put("lastOpenedAt", JSONObject().apply {
+                                put("value", entry.lastOpenedAt ?: JSONObject.NULL)
+                            })
+                            put("favoritedAt", JSONObject().apply {
+                                put("value", entry.favoritedAt ?: JSONObject.NULL)
+                            })
+                            put("positionUpdatedAt", JSONObject().apply {
+                                put("value", entry.positionUpdatedAt ?: JSONObject.NULL)
+                            })
+                        })
+                    }
+                    recordsToSave.put(record)
                 }
-                recordsToSave.put(record)
             }
 
             val result =
-                CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, JSONArray())
+                CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, recordIDsToDelete)
             if (result.isSuccess) {
                 "Success: Uploaded history and favorites"
             } else {
