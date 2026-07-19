@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -127,6 +128,7 @@ class CloudKitSyncManager {
 
             val recordsToSave = JSONArray()
             for (annotation in annotations) {
+                coroutineContext.ensureActive()
                 val recordName = annotation.ckRecordId ?: UUID.randomUUID().toString()
                 if (annotation.ckRecordId == null) {
                     annotationManager.insertOrUpdate(annotation.copy(ckRecordId = recordName), fromSync = true)
@@ -177,7 +179,9 @@ class CloudKitSyncManager {
             }
 
             val recordIDsToDelete = JSONArray()
-            deletedIds.forEach { recordIDsToDelete.put(it) }
+            deletedIds.forEach {
+                coroutineContext.ensureActive()
+                recordIDsToDelete.put(it) }
 
             val result =
                 CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, recordIDsToDelete)
@@ -196,6 +200,7 @@ class CloudKitSyncManager {
         withContext(Dispatchers.IO) {
             val recordsToSave = JSONArray()
             for (entry in entries) {
+                coroutineContext.ensureActive()
                 val record = JSONObject().apply {
                     put("recordType", "ReadingEntry")
                     put("recordName", entry.ckRecordId ?: entry.bookId.toString())
