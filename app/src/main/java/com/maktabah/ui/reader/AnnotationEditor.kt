@@ -218,7 +218,7 @@ fun AnnotationEditorDialog(
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            items(existingTags.size) { index ->
+                            items(existingTags.size, key = { index -> existingTags[index] }) { index ->
                                 val tag = existingTags[index]
                                 AssistChip(
                                     onClick = {

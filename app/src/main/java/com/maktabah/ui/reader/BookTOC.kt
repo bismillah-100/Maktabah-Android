@@ -284,7 +284,7 @@ fun BookTOCSheet(
                         state = listState,
                         contentPadding = PaddingValues(top = topPadding, bottom = 32.dp)
                     ) {
-                        itemsIndexed(visibleNodes) { index, visibleNode ->
+                        itemsIndexed(visibleNodes, key = { _, node -> node.node.uuid }) { index, visibleNode ->
                             val node = visibleNode.node
                             val depth = visibleNode.depth
                             val hasChildren = visibleNode.hasChildren
