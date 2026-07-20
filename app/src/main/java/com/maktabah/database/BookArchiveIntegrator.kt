@@ -62,7 +62,10 @@ object BookArchiveIntegrator {
                 )
 
             // Attach source database
-            db.prepare("ATTACH DATABASE '${downloadedDbFile.absolutePath}' AS sourceDB;")?.use { it.step() }
+            db.prepare("ATTACH DATABASE ? AS sourceDB;")?.use { stmt ->
+                stmt.bindText(1, downloadedDbFile.absolutePath)
+                stmt.step()
+            }
 
             // 1. Find the table name in source database (it might not match target bookId)
             var sourceTableId: String? = null

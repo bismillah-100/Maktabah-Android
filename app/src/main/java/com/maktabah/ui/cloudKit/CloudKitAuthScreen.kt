@@ -111,9 +111,15 @@ fun CloudKitAuthScreen(
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
 
+                            // Security mitigations for WebView
+                            settings.allowFileAccess = false
+                            settings.allowContentAccess = false
+
                             webViewClient = object : WebViewClient() {
                                 private fun handleUrl(url: String?): Boolean {
-                                    if (url != null && url.contains("ckWebAuthToken=")) {
+                                    if (url == null) return false
+
+                                    if (url.contains("ckWebAuthToken=")) {
                                         val uri = url.toUri()
                                         val token = uri.getQueryParameter("ckWebAuthToken")
                                         if (token != null) {
@@ -131,7 +137,17 @@ fun CloudKitAuthScreen(
                                     view: WebView?,
                                     request: WebResourceRequest?
                                 ): Boolean {
-                                    return handleUrl(request?.url.toString())
+                                    val urlString = request?.url?.toString()
+                                    if (handleUrl(urlString)) return true
+
+                                    // Only allow navigation to trusted Apple/CloudKit domains
+                                    val host = request?.url?.host ?: return true // block if no host
+                                    if (host.endsWith(".apple.com") || host.endsWith(".apple-cloudkit.com")) {
+                                        return false // Allow WebView to load it
+                                    }
+
+                                    // Block everything else
+                                    return true
                                 }
 
                                 override fun onPageStarted(

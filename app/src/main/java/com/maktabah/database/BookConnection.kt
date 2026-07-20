@@ -10,6 +10,13 @@ import java.io.File
 
 
 class BookConnection(private val libraryDataManager: LibraryDataManager) {
+
+    private fun getSafeTableName(prefix: String, id: Int): String {
+        val tableName = "$prefix$id"
+        require(tableName.matches(Regex("^[a-zA-Z0-9_]+$"))) { "Invalid table name format" }
+        return "\"$tableName\""
+    }
+
     fun getTableOfContents(
         bookId: Int,
         archiveDbFile: File,
@@ -17,10 +24,10 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
         if (!archiveDbFile.exists()) return emptyList()
 
         val flatTOCs = mutableListOf<TOC>()
-        val tableName = "t$bookId"
+        val safeTableName = getSafeTableName("t", bookId)
 
         SQLiteDB(archiveDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
-            db.prepare("SELECT id, tit, COALESCE(lvl, 0), COALESCE(sub, 0) FROM $tableName ORDER BY id ASC")?.use { stmt ->
+            db.prepare("SELECT id, tit, COALESCE(lvl, 0), COALESCE(sub, 0) FROM $safeTableName ORDER BY id ASC")?.use { stmt ->
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
                     flatTOCs.add(
                         TOC(
@@ -134,11 +141,11 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
         if (!archiveDbFile.exists()) return null
 
         var content: BookContent? = null
-        val tableName = "b$bookId"
+        val safeTableName = getSafeTableName("b", bookId)
 
         SQLiteDB(archiveDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
             val columns = if (isQuran) "id, nass, page, part, sora, aya" else "id, nass, page, part"
-            db.prepare("SELECT $columns FROM $tableName WHERE id = ? LIMIT 1")?.use { stmt ->
+            db.prepare("SELECT $columns FROM $safeTableName WHERE id = ? LIMIT 1")?.use { stmt ->
                 stmt.bindInt(1, contentId)
                 if (stmt.step() == SQLiteDB.SQLITE_ROW) {
                     val id = stmt.columnInt(0)
@@ -171,10 +178,10 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
         if (!archiveDbFile.exists()) return null
 
         var content: BookContent? = null
-        val tableName = "b$bookId"
+        val safeTableName = getSafeTableName("b", bookId)
 
         SQLiteDB(archiveDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
-            db.prepare("SELECT id, nass, page, part FROM $tableName ORDER BY id ASC LIMIT 1")?.use { stmt ->
+            db.prepare("SELECT id, nass, page, part FROM $safeTableName ORDER BY id ASC LIMIT 1")?.use { stmt ->
                 if (stmt.step() == SQLiteDB.SQLITE_ROW) {
                     val id = stmt.columnInt(0)
                     var nassText = ""
@@ -224,7 +231,7 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
     ): Int {
         if (!archiveDbFile.exists()) return 0
         var total = 0
-        val tableName = "b$bookId"
+        val safeTableName = getSafeTableName("b", bookId)
         SQLiteDB(archiveDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
             val querySQL = """
                 SELECT MAX(
@@ -236,7 +243,7 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
                         END AS INTEGER
                     )
                 )
-                FROM $tableName
+                FROM $safeTableName
             """
             db.prepare(querySQL)?.use { stmt ->
                 if (stmt.step() == SQLiteDB.SQLITE_ROW) {
@@ -254,9 +261,9 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
     ): Int {
         if (!archiveDbFile.exists()) return 0
         var maxPage = 0
-        val tableName = "b$bookId"
+        val safeTableName = getSafeTableName("b", bookId)
         SQLiteDB(archiveDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
-            val querySQL = "SELECT MAX(page) FROM $tableName WHERE part = ?"
+            val querySQL = "SELECT MAX(page) FROM $safeTableName WHERE part = ?"
             db.prepare(querySQL)?.use { stmt ->
                 stmt.bindText(1, part.toString())
                 if (stmt.step() == SQLiteDB.SQLITE_ROW) {
@@ -274,9 +281,9 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
     ): Int {
         if (!archiveDbFile.exists()) return 0
         var minPage = 0
-        val tableName = "b$bookId"
+        val safeTableName = getSafeTableName("b", bookId)
         SQLiteDB(archiveDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
-            val querySQL = "SELECT MIN(page) FROM $tableName WHERE part = ?"
+            val querySQL = "SELECT MIN(page) FROM $safeTableName WHERE part = ?"
             db.prepare(querySQL)?.use { stmt ->
                 stmt.bindText(1, part.toString())
                 if (stmt.step() == SQLiteDB.SQLITE_ROW) {
@@ -295,10 +302,10 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
     ): BookContent? {
         if (!archiveDbFile.exists()) return null
         var content: BookContent? = null
-        val tableName = "b$bookId"
+        val safeTableName = getSafeTableName("b", bookId)
         SQLiteDB(archiveDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
             val querySQL =
-                "SELECT id, nass, page, part FROM $tableName WHERE part = ? AND page = ? LIMIT 1"
+                "SELECT id, nass, page, part FROM $safeTableName WHERE part = ? AND page = ? LIMIT 1"
             db.prepare(querySQL)?.use { stmt ->
                 stmt.bindText(1, part.toString())
                 stmt.bindInt(2, page)
