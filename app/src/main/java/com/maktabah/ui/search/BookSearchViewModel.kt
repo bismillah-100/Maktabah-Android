@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
+import com.maktabah.R
 
 class BookSearchViewModel : ViewModel() {
     private val searchEngine = SearchEngine()
@@ -125,6 +126,14 @@ class BookSearchViewModel : ViewModel() {
 
             _isSearching.value = false
             _searchProgress.value = null
+
+            if (_results.value.isEmpty()) {
+                android.widget.Toast.makeText(
+                    context,
+                    context.getString(R.string.reader_toc_no_results),
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
         }
     }
 }

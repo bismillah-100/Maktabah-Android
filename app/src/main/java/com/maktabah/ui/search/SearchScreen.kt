@@ -36,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Deselect
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -116,6 +117,7 @@ fun SearchScreen(
     val selectedBookIds by viewModel.selectedBookIds.collectAsState()
     val flatVisibleItems by viewModel.flatVisibleItems.collectAsState()
     val isDataLoaded by libraryViewModel.isDataLoaded.collectAsState()
+    val isTreeLoaded by viewModel.isTreeLoaded.collectAsState()
     val completedBooks by viewModel.completedBooks.collectAsState()
     val totalBooks by viewModel.totalBooks.collectAsState()
     val currentBookProgress by viewModel.currentBookProgress.collectAsState()
@@ -164,6 +166,7 @@ fun SearchScreen(
             searchQuery = searchQuery,
             bottomContentPadding = bottomPadding + 88.dp,
             hasDonated = hasDonated,
+            isDataLoaded = isDataLoaded && isTreeLoaded,
         )
 
         QueryInputBar(
@@ -279,6 +282,7 @@ private fun FilterAndCategoryContent(
     searchQuery: String,
     bottomContentPadding: Dp,
     hasDonated: Boolean,
+    isDataLoaded: Boolean,
 ) {
     Scaffold(
         topBar = {
@@ -292,7 +296,11 @@ private fun FilterAndCategoryContent(
         },
         containerColor = Color.Transparent,
     ) { padding ->
-        if (flatVisibleItems.isEmpty() && searchQuery.isEmpty()) {
+        if (!isDataLoaded) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else if (flatVisibleItems.isEmpty() && searchQuery.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
                     text = stringResource(R.string.search_empty_library_hint),

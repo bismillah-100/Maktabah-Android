@@ -12,6 +12,7 @@ import com.maktabah.models.LoadMoreData
 import com.maktabah.models.SearchMode
 import com.maktabah.models.SearchResult
 import com.maktabah.search.SearchEngine
+import com.maktabah.R
 import com.maktabah.utils.convertToArabicDigits
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.snippetAround
@@ -47,6 +48,9 @@ class SearchViewModel : ViewModel() {
 
     private val _flatVisibleItems = MutableStateFlow<List<FlatLibraryItem>>(emptyList())
     val flatVisibleItems: StateFlow<List<FlatLibraryItem>> = _flatVisibleItems.asStateFlow()
+
+    private val _isTreeLoaded = MutableStateFlow(false)
+    val isTreeLoaded: StateFlow<Boolean> = _isTreeLoaded.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
@@ -372,6 +376,7 @@ class SearchViewModel : ViewModel() {
 
             traverse(roots, 0, null)
             _flatVisibleItems.value = result
+            _isTreeLoaded.value = true
         }
     }
 
@@ -462,6 +467,14 @@ class SearchViewModel : ViewModel() {
             _isSearching.value = false
             _currentBookProgress.value = null
             _currentBookName.value = ""
+
+            if (allResults.isEmpty()) {
+                android.widget.Toast.makeText(
+                    context,
+                    context.getString(R.string.reader_toc_no_results),
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
         }
     }
 }
