@@ -51,11 +51,12 @@ import com.maktabah.ui.common.isSwipeTargetReached
 import com.maktabah.utils.convertToArabicDigits
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.lazy.LazyItemScope
 import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AnnotationItem(
+fun LazyItemScope.AnnotationItem(
     ann: Annotation,
     index: Int,
     lastIndex: Int,
@@ -77,25 +78,32 @@ fun AnnotationItem(
             positionalThreshold = { it * 0.5f },
             confirmValueChange = { value ->
                 if (value == SwipeToDismissBoxValue.EndToStart) {
-                    if (dismissStateRef?.isSwipeTargetReached(itemWidth) != true) {
-                        return@rememberSwipeToDismissBoxState false
-                    }
-                    dismissScope.launch {
-                        val syncResult = onDelete()
-                        withContext(Dispatchers.Main) {
-                            if (syncResult != null) {
-                                Toast.makeText(context, syncResult, Toast.LENGTH_LONG).show()
-                            }
-                            onDeleteComplete()
-                        }
-                    }
-                    true
+                    dismissStateRef?.isSwipeTargetReached(itemWidth) == true
                 } else {
                     true
                 }
             },
         )
     dismissStateRef = dismissState
+
+    androidx.compose.runtime.LaunchedEffect(dismissState.targetValue, itemWidth) {
+        androidx.compose.runtime.snapshotFlow {
+            val offset = try { dismissState.requireOffset() } catch (_: Exception) { 0f }
+            dismissState.targetValue to offset
+        }.collect { (target, offset) ->
+            if (target == SwipeToDismissBoxValue.EndToStart && itemWidth > 0 && kotlin.math.abs(offset) >= itemWidth * 0.95f) {
+                onDeleteComplete()
+                dismissScope.launch {
+                    val syncResult = onDelete()
+                    if (syncResult != null) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, syncResult, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     val isFirst = index == 0
     val isLast = index == lastIndex
@@ -208,7 +216,7 @@ fun AnnotationItem(
 
     if (enableSwipe) {
         SwipeToDismissBox(
-            modifier = modifier.onSizeChanged { itemWidth = it.width },
+            modifier = modifier.onSizeChanged { itemWidth = it.width }.animateItem(),
             state = dismissState,
             enableDismissFromStartToEnd = false,
             enableDismissFromEndToStart = true,

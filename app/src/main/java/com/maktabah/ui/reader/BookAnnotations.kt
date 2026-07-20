@@ -168,10 +168,11 @@ fun BookAnnotationsSheet(
                                             annotationManager.deleteAnnotation(it, ann.ckRecordId)
                                         }
                                     }
+                                    viewModel.refreshAnnotations()
                                     null
                                 },
                                 onDeleteComplete = {
-                                    viewModel.refreshAnnotations()
+                                    filteredAnnotations = filteredAnnotations.filterNot { it.id == ann.id }
                                 },
                                 dividerStartPadding = Dp.Hairline
                             )
