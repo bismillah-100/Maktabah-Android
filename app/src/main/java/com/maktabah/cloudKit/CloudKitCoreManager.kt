@@ -2,6 +2,8 @@ package com.maktabah.cloudKit
 
 import android.content.Context
 import androidx.core.content.edit
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -86,6 +88,8 @@ class CloudKitCoreManager private constructor() {
                 val reason = try { JSONObject(errorStr).getString("reason") } catch(_: Exception) { errorStr.take(100) }
                 Result.failure(Exception("Err: $reason"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             e.printStackTrace()
             Result.failure(e)
@@ -122,6 +126,8 @@ class CloudKitCoreManager private constructor() {
                     val reason = try { JSONObject(errorStr).getString("reason") } catch(_: Exception) { errorStr.take(100) }
                     lastException = Exception("Err ($scope): $reason")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 android.util.Log.e("CloudKitCore", "fetchUserInfo Exception ($scope): ${e.message}", e)
                 lastException = e
@@ -147,6 +153,7 @@ class CloudKitCoreManager private constructor() {
             var totalCount = 0
 
             while (moreComing) {
+                coroutineContext.ensureActive()
                 val url = URL("$cloudKitBaseUrl/changes?ckAPIToken=$apiToken&ckWebAuthToken=${URLEncoder.encode(webAuthToken, "UTF-8")}")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
@@ -181,6 +188,7 @@ class CloudKitCoreManager private constructor() {
                     if (responseObj.has("records")) {
                         val records = responseObj.getJSONArray("records")
                         for (i in 0 until records.length()) {
+                            coroutineContext.ensureActive()
                             val record = records.getJSONObject(i)
                             val ckRecordId = record.optString("recordName", "")
                             
@@ -204,6 +212,8 @@ class CloudKitCoreManager private constructor() {
             }
             
             Result.success(Pair(totalCount, "Success: Synced $totalCount records"))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             e.printStackTrace()
             Result.failure(e)

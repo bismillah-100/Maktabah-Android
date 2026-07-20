@@ -3,6 +3,8 @@ package com.maktabah.ui.history
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,9 +21,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.staggeredgrid.LazyHorizontalStaggeredGrid
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
-import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -209,21 +211,26 @@ fun HistoryScreen(
                 onRemoveHistory = {
                     val entry = historyViewModel.removeFromHistory(it)
                     if (entry != null) scope.launch {
-                        cloudKitSyncManager.syncHistoryAndFavorites(
+                        val res = cloudKitSyncManager.syncHistoryAndFavorites(
                             context,
                             listOf(entry)
                         )
+                        if (res.startsWith("Failed")) {
+                            android.widget.Toast.makeText(context, res, android.widget.Toast.LENGTH_LONG).show()
+                        }
                     }
                     selectedHistoryItem = null
                 },
                 onToggleFavorite = {
-                    historyViewModel.toggleFavorite(it)
-                    val entry = historyViewModel.entriesByBookId.value[it]
-                    if (entry != null) scope.launch {
-                        cloudKitSyncManager.syncHistoryAndFavorites(
+                    val entry = historyViewModel.toggleFavorite(it)
+                    scope.launch {
+                        val res = cloudKitSyncManager.syncHistoryAndFavorites(
                             context,
                             listOf(entry)
                         )
+                        if (res.startsWith("Failed")) {
+                            android.widget.Toast.makeText(context, res, android.widget.Toast.LENGTH_LONG).show()
+                        }
                     }
                     selectedHistoryItem = null
                 }
@@ -235,13 +242,15 @@ fun HistoryScreen(
                 bookId = selectedFavoriteItem!!,
                 onDismiss = { selectedFavoriteItem = null },
                 onRemoveFavorite = {
-                    historyViewModel.toggleFavorite(it)
-                    val entry = historyViewModel.entriesByBookId.value[it]
-                    if (entry != null) scope.launch {
-                        cloudKitSyncManager.syncHistoryAndFavorites(
+                    val entry = historyViewModel.toggleFavorite(it)
+                    scope.launch {
+                        val res = cloudKitSyncManager.syncHistoryAndFavorites(
                             context,
                             listOf(entry)
                         )
+                        if (res.startsWith("Failed")) {
+                            android.widget.Toast.makeText(context, res, android.widget.Toast.LENGTH_LONG).show()
+                        }
                     }
                     selectedFavoriteItem = null
                 }
@@ -254,13 +263,15 @@ fun HistoryScreen(
                 entriesByBookId = entriesByBookId,
                 onDismiss = { showAddFavoriteSheet = false },
                 onToggleFavorite = { bookId ->
-                    historyViewModel.toggleFavorite(bookId)
-                    val entry = historyViewModel.entriesByBookId.value[bookId]
-                    if (entry != null) scope.launch {
-                        cloudKitSyncManager.syncHistoryAndFavorites(
+                    val entry = historyViewModel.toggleFavorite(bookId)
+                    scope.launch {
+                        val res = cloudKitSyncManager.syncHistoryAndFavorites(
                             context,
                             listOf(entry)
                         )
+                        if (res.startsWith("Failed")) {
+                            android.widget.Toast.makeText(context, res, android.widget.Toast.LENGTH_LONG).show()
+                        }
                     }
                 }
             )
@@ -348,50 +359,58 @@ private fun LazyListScope.historySection(
                     in 5..8 -> 2
                     else -> 3
                 }
-                val gridHeight = (rowCount * 46 + (rowCount - 1) * 8).dp
+                val scrollState = rememberScrollState()
 
-                LazyHorizontalStaggeredGrid(
-                    rows = StaggeredGridCells.Fixed(rowCount),
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                    horizontalItemSpacing = 8.dp,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(gridHeight)
-                        .animateItem(),
-                ) {
-                    items(items = historyItems, key = { bookId -> "hist_book_$bookId" }) { bookId ->
-                        val entry = entriesByBookId[bookId]
-                        val bookName = bookById(bookId)?.name ?: "Unknown"
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(scrollState)
+                            .animateItem()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            for (rowIndex in 0 until rowCount) {
+                                val rowItems = historyItems.filterIndexed { index, _ -> index % rowCount == rowIndex }
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    for (bookId in rowItems) {
+                                        val entry = entriesByBookId[bookId]
+                                        val bookName = bookById(bookId)?.name ?: "Unknown"
 
-                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                            InsetGroupedItem(
-                                index = 0,
-                                lastIndex = 0,
-                                onClick = {
-                                    onNavigateToReader(
-                                        bookId,
-                                        entry?.lastContentId,
-                                        null,
-                                        null,
-                                        null
-                                    )
-                                },
-                                onLongClick = { onLongClick(bookId) },
-                                contentPadding = PaddingValues(
-                                    horizontal = 16.dp,
-                                    vertical = 12.dp
-                                ),
-                                outerPadding = PaddingValues(0.dp),
-                                fillMaxWidth = false,
-                                modifier = Modifier.widthIn(max = 200.dp),
-                            ) {
-                                Text(
-                                    bookName,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                        InsetGroupedItem(
+                                            index = 0,
+                                            lastIndex = 0,
+                                            onClick = {
+                                                onNavigateToReader(
+                                                    bookId,
+                                                    entry?.lastContentId,
+                                                    null,
+                                                    null,
+                                                    null
+                                                )
+                                            },
+                                            onLongClick = { onLongClick(bookId) },
+                                            contentPadding = PaddingValues(
+                                                horizontal = 16.dp,
+                                                vertical = 12.dp
+                                            ),
+                                            outerPadding = PaddingValues(0.dp),
+                                            fillMaxWidth = false,
+                                            modifier = Modifier.widthIn(max = 200.dp),
+                                        ) {
+                                            Text(
+                                                bookName,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

@@ -46,6 +46,7 @@ import com.maktabah.ui.common.AnnotationSpan
 import com.maktabah.ui.common.ArabicTextRenderer
 import com.maktabah.utils.HONORIFIC_PHRASES
 import com.maktabah.utils.isArabicHarakat
+import com.maktabah.utils.normalizeArabic
 
 @Composable
 fun IbarotReaderContentView(
@@ -508,8 +509,8 @@ private fun findQueryRange(
     text: CharSequence,
     query: String,
 ): Pair<Int, Int>? {
-    val cleanQuery = query.filter { !it.isArabicHarakat() && it.code != 0x0640 }
-    if (cleanQuery.isEmpty()) return null
+    val normalizedQuery = query.normalizeArabic()
+    if (normalizedQuery.isEmpty()) return null
 
     val renderedStr = text.toString()
     val cleanToOrig = IntArray(renderedStr.length * 2)
@@ -520,19 +521,20 @@ private fun findQueryRange(
         val char = renderedStr[i]
         val expansion = HONORIFIC_PHRASES.find { it.second == char.toString() }?.first
         if (expansion != null) {
-            for (c in expansion) {
-                if (!c.isArabicHarakat() && c.code != 0x0640) {
-                    if (cleanIdx < cleanToOrig.size) cleanToOrig[cleanIdx++] = i
-                    cleanText.append(normalizeArabicChar(c))
-                }
+            val normalizedExpansion = expansion.normalizeArabic()
+            for (c in normalizedExpansion) {
+                if (cleanIdx < cleanToOrig.size) cleanToOrig[cleanIdx++] = i
+                cleanText.append(c)
             }
-        } else if (!char.isArabicHarakat() && char.code != 0x0640) {
-            if (cleanIdx < cleanToOrig.size) cleanToOrig[cleanIdx++] = i
-            cleanText.append(normalizeArabicChar(char))
+        } else {
+            val normalizedChar = char.toString().normalizeArabic()
+            if (normalizedChar.isNotEmpty()) {
+                if (cleanIdx < cleanToOrig.size) cleanToOrig[cleanIdx++] = i
+                cleanText.append(normalizedChar)
+            }
         }
     }
 
-    val normalizedQuery = queryToNormalized(cleanQuery)
     val idx = cleanText.indexOf(normalizedQuery, ignoreCase = true)
 
     if (idx != -1 && idx < cleanIdx) {
@@ -546,17 +548,4 @@ private fun findQueryRange(
         return start to end
     }
     return null
-}
-
-private fun normalizeArabicChar(c: Char): Char {
-    val v = c.code
-    return if (v == 0x0623 || v == 0x0625 || v == 0x0622 || v == 0x0671) '\u0627' else c
-}
-
-private fun queryToNormalized(query: String): String {
-    val sb = StringBuilder()
-    for (char in query) {
-        sb.append(normalizeArabicChar(char))
-    }
-    return sb.toString()
 }

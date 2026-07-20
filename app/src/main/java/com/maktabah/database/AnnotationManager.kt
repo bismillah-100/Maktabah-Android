@@ -2,6 +2,8 @@ package com.maktabah.database
 
 import com.maktabah.models.Annotation
 import com.maktabah.models.AnnotationChange
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.flow.MutableSharedFlow
 import java.io.File
 
@@ -184,12 +186,13 @@ class AnnotationManager(
         return newId
     }
 
-    fun getAllAnnotations(): List<Annotation> {
+    suspend fun getAllAnnotations(): List<Annotation> {
         val list = mutableListOf<Annotation>()
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
             val sql = "SELECT * FROM annotations_v2 ORDER BY createdAt DESC"
             db.prepare(sql)?.use { stmt ->
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                    yield()
                     list.add(mapRowToAnnotation(stmt))
                 }
             }
@@ -197,12 +200,13 @@ class AnnotationManager(
         return list
     }
 
-    fun getAnnotationsForBook(bkId: Int): List<Annotation> {
+    suspend fun getAnnotationsForBook(bkId: Int): List<Annotation> {
         val list = mutableListOf<Annotation>()
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
             db.prepare("SELECT * FROM annotations_v2 WHERE bkId = ? ORDER BY createdAt DESC")?.use { stmt ->
                 stmt.bindInt(1, bkId)
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                    yield()
                     list.add(mapRowToAnnotation(stmt))
                 }
             }
@@ -254,11 +258,12 @@ class AnnotationManager(
         updates.tryEmit(AnnotationChange.Delete(id, fromSync = false))
     }
 
-    fun getDeletedRecordIds(): List<String> {
+    suspend fun getDeletedRecordIds(): List<String> {
         val list = mutableListOf<String>()
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
             db.prepare("SELECT ckRecordId FROM deleted_records")?.use { stmt ->
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                    yield()
                     list.add(stmt.columnText(0) ?: "")
                 }
             }
@@ -266,13 +271,14 @@ class AnnotationManager(
         return list
     }
 
-    fun clearDeletedRecordIds(ids: List<String>) {
+    suspend fun clearDeletedRecordIds(ids: List<String>) {
         if (ids.isEmpty()) return
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
             db.prepare("BEGIN TRANSACTION")?.use { it.step() }
             try {
                 db.prepare("DELETE FROM deleted_records WHERE ckRecordId = ?")?.use { stmt ->
                     for (id in ids) {
+                        yield()
                         stmt.bindText(1, id)
                         stmt.step()
                         stmt.reset()
@@ -280,6 +286,9 @@ class AnnotationManager(
                     }
                 }
                 db.prepare("COMMIT")?.use { it.step() }
+            } catch (e: CancellationException) {
+                db.prepare("ROLLBACK")?.use { it.step() }
+                throw e
             } catch (e: Exception) {
                 db.prepare("ROLLBACK")?.use { it.step() }
                 throw e
@@ -301,9 +310,9 @@ class AnnotationManager(
         updates.tryEmit(AnnotationChange.ReloadAll)
     }
 
-    fun getUnsyncedAnnotations(): List<Annotation> = getPendingUploads()
+    suspend fun getUnsyncedAnnotations(): List<Annotation> = getPendingUploads()
 
-    fun getPendingUploads(): List<Annotation> {
+    suspend fun getPendingUploads(): List<Annotation> {
         val list = mutableListOf<Annotation>()
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
             val sql = """
@@ -312,6 +321,7 @@ class AnnotationManager(
             """
             db.prepare(sql)?.use { stmt ->
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                    yield()
                     list.add(mapRowToAnnotation(stmt))
                 }
             }
@@ -319,13 +329,14 @@ class AnnotationManager(
         return list
     }
 
-    fun clearPendingUploads(ckRecordIds: List<String>) {
+    suspend fun clearPendingUploads(ckRecordIds: List<String>) {
         if (ckRecordIds.isEmpty()) return
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
             db.prepare("BEGIN TRANSACTION")?.use { it.step() }
             try {
                 db.prepare("DELETE FROM pending_uploads WHERE ckRecordId = ?")?.use { stmt ->
                     for (id in ckRecordIds) {
+                        yield()
                         stmt.bindText(1, id)
                         stmt.step()
                         stmt.reset()
@@ -333,6 +344,9 @@ class AnnotationManager(
                     }
                 }
                 db.prepare("COMMIT")?.use { it.step() }
+            } catch (e: CancellationException) {
+                db.prepare("ROLLBACK")?.use { it.step() }
+                throw e
             } catch (e: Exception) {
                 db.prepare("ROLLBACK")?.use { it.step() }
                 throw e

@@ -118,9 +118,11 @@ class HistoryViewModel : ViewModel() {
             bookId = bookId,
             ckRecordId = bookId.toString()
         )
-        entry.lastOpenedAt = System.currentTimeMillis()
-        entry.updatedAt = System.currentTimeMillis()
-        entries[bookId] = entry
+        val newEntry = entry.copy(
+            lastOpenedAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis()
+        )
+        entries[bookId] = newEntry
 
         val order = _historyOrder.value.toMutableList()
         order.remove(bookId)
@@ -138,12 +140,14 @@ class HistoryViewModel : ViewModel() {
 
     fun updateLastContentId(contentId: Int, bookId: Int) {
         val entries = _entriesByBookId.value.toMutableMap()
-        if (entries.containsKey(bookId)) {
-            val entry = entries[bookId]!!
-            entry.lastContentId = contentId
-            entry.positionUpdatedAt = System.currentTimeMillis()
-            entry.updatedAt = System.currentTimeMillis()
-            entries[bookId] = entry
+        val entry = entries[bookId]
+        if (entry != null) {
+            val newEntry = entry.copy(
+                lastContentId = contentId,
+                positionUpdatedAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+            entries[bookId] = newEntry
             _entriesByBookId.value = entries
             saveToFile()
         } else {
@@ -152,20 +156,26 @@ class HistoryViewModel : ViewModel() {
         }
     }
 
-    fun toggleFavorite(bookId: Int) {
+    fun toggleFavorite(bookId: Int): ReadingEntry {
         val entries = _entriesByBookId.value.toMutableMap()
         val entry = entries[bookId] ?: ReadingEntry(
             bookId = bookId,
             ckRecordId = bookId.toString()
         )
-        entry.isFavorite = !entry.isFavorite
-        if (entry.isFavorite) {
-            entry.favoritedAt = System.currentTimeMillis()
+        val isFav = !entry.isFavorite
+        val newEntry = entry.copy(
+            isFavorite = isFav,
+            favoritedAt = if (isFav) System.currentTimeMillis() else entry.favoritedAt,
+            updatedAt = System.currentTimeMillis()
+        )
+        if (!newEntry.isFavorite && newEntry.lastOpenedAt == null) {
+            entries.remove(bookId)
+        } else {
+            entries[bookId] = newEntry
         }
-        entry.updatedAt = System.currentTimeMillis()
-        entries[bookId] = entry
         _entriesByBookId.value = entries
         saveToFile()
+        return newEntry
     }
 
     fun removeFromHistory(bookId: Int): ReadingEntry? {
@@ -176,14 +186,22 @@ class HistoryViewModel : ViewModel() {
         val entries = _entriesByBookId.value.toMutableMap()
         val entry = entries[bookId]
         if (entry != null) {
-            entry.lastOpenedAt = null
-            entry.lastContentId = null
-            entry.updatedAt = System.currentTimeMillis()
-            entries[bookId] = entry
+            val newEntry = entry.copy(
+                lastOpenedAt = null,
+                lastContentId = null,
+                updatedAt = System.currentTimeMillis()
+            )
+            if (!newEntry.isFavorite) {
+                entries.remove(bookId)
+            } else {
+                entries[bookId] = newEntry
+            }
             _entriesByBookId.value = entries
+            saveToFile()
+            return newEntry
         }
         saveToFile()
-        return entry
+        return null
     }
 
     private fun saveToFile() {
@@ -287,33 +305,53 @@ class HistoryViewModel : ViewModel() {
         }
     }
 
-    fun applyCloudKitChanges(entriesToSave: List<ReadingEntry>) {
+    fun applyCloudKitChanges(entriesToSave: List<ReadingEntry>, recordIdsToDelete: List<String>) {
         isSyncing = true
         try {
             val entries = _entriesByBookId.value.toMutableMap()
+            var didChange = false
+
+            // Process Deletions
+            if (recordIdsToDelete.isNotEmpty()) {
+                val bookIdsToDelete = entries.values.filter { entry ->
+                    val ckId = entry.ckRecordId ?: entry.bookId.toString()
+                    recordIdsToDelete.contains(ckId)
+                }.map { it.bookId }
+
+                for (bookId in bookIdsToDelete) {
+                    entries.remove(bookId)
+                    didChange = true
+                }
+            }
+
+            // Process Updates/Insertions
             for (incoming in entriesToSave) {
                 val existing = entries[incoming.bookId]
                 if (existing == null || incoming.updatedAt > existing.updatedAt) {
                     entries[incoming.bookId] = incoming
+                    didChange = true
                 }
             }
 
-            // Ensure order has the incoming items at the top or update their positions
-            val order = _historyOrder.value.toMutableList()
-            for (incoming in entriesToSave.sortedBy { it.updatedAt }) {
-                order.remove(incoming.bookId)
-                order.add(0, incoming.bookId)
+            // Sync history order based on lastOpenedAt
+            val validHistoryEntries = entries.values.filter { it.lastOpenedAt != null }
+            val sortedIds = validHistoryEntries
+                .sortedByDescending { it.lastOpenedAt ?: 0L }
+                .map { it.bookId }
+            
+            val newOrder = if (sortedIds.size > maxHistoryCount) {
+                sortedIds.subList(0, maxHistoryCount)
+            } else {
+                sortedIds
             }
 
-            if (order.size > maxHistoryCount) {
-                val toRemove = order.subList(maxHistoryCount, order.size)
-                order.removeAll(toRemove)
+            val currentOrder = _historyOrder.value
+            if (newOrder != currentOrder || didChange) {
+                _entriesByBookId.value = entries
+                _historyOrder.value = newOrder
+                saveToFile()
+                notifyRefresh()
             }
-
-            _entriesByBookId.value = entries
-            _historyOrder.value = order
-            saveToFile()
-            notifyRefresh()
         } finally {
             isSyncing = false
         }

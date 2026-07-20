@@ -189,10 +189,6 @@ class GroupedCardDecoration(
                         val visibleBottom = snap(if (clipBounds != null) translatedTop + clipBounds.bottom else translatedBottom)
 
                         if (visibleTop < visibleBottom) {
-                            if (groupChild.isSelected) {
-                                c.drawRect(left, visibleTop, right, visibleBottom, highlightPaint)
-                            }
-                            
                             c.save()
                             c.clipRect(left, visibleTop, right, visibleBottom)
                             c.translate(left, snap(translatedTop))
