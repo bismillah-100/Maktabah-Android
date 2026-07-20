@@ -142,6 +142,7 @@ class GroupedCardDecoration(
         var currentBottom = -Float.MAX_VALUE
         var currentIsFirst = false
         var currentIsLast = false
+        var currentTranslationX = 0f
         var hasVisibleGroup = false
         currentGroupChildren.clear()
 
@@ -151,8 +152,8 @@ class GroupedCardDecoration(
             val topRadius = if (currentIsFirst) cornerRadius else 0f
             val bottomRadius = if (currentIsLast) cornerRadius else 0f
 
-            val left = marginHorizontal + halfStroke
-            val right = parent.width - marginHorizontal - halfStroke
+            val left = marginHorizontal + halfStroke + currentTranslationX
+            val right = parent.width - marginHorizontal - halfStroke + currentTranslationX
             val top = snap(currentTop) + halfStroke
             val bottom = snap(currentBottom) - halfStroke
 
@@ -202,11 +203,42 @@ class GroupedCardDecoration(
                 highlightPaint.color = highlightColor
             }
 
-            c.drawPath(path, strokePaint)
+            if (strokePaint.color != Color.TRANSPARENT) {
+                if (topRadius > 0f && bottomRadius > 0f) {
+                    c.drawPath(path, strokePaint)
+                } else {
+                    val strokePath = Path()
+                    val rTop = topRadius
+                    val rBot = bottomRadius
+
+                    if (rTop > 0f && rBot == 0f) {
+                        strokePath.moveTo(left, bottom)
+                        strokePath.lineTo(left, top + rTop)
+                        strokePath.arcTo(left, top, left + 2 * rTop, top + 2 * rTop, 180f, 90f, false)
+                        strokePath.lineTo(right - rTop, top)
+                        strokePath.arcTo(right - 2 * rTop, top, right, top + 2 * rTop, 270f, 90f, false)
+                        strokePath.lineTo(right, bottom)
+                    } else if (rTop == 0f && rBot > 0f) {
+                        strokePath.moveTo(left, top)
+                        strokePath.lineTo(left, bottom - rBot)
+                        strokePath.arcTo(left, bottom - 2 * rBot, left + 2 * rBot, bottom, 180f, -90f, false)
+                        strokePath.lineTo(right - rBot, bottom)
+                        strokePath.arcTo(right - 2 * rBot, bottom - 2 * rBot, right, bottom, 90f, -90f, false)
+                        strokePath.lineTo(right, top)
+                    } else {
+                        strokePath.moveTo(left, top)
+                        strokePath.lineTo(left, bottom)
+                        strokePath.moveTo(right, top)
+                        strokePath.lineTo(right, bottom)
+                    }
+                    c.drawPath(strokePath, strokePaint)
+                }
+            }
 
             hasVisibleGroup = false
             currentTop = Float.MAX_VALUE
             currentBottom = -Float.MAX_VALUE
+            currentTranslationX = 0f
             currentGroupChildren.clear()
         }
 
@@ -246,6 +278,8 @@ class GroupedCardDecoration(
 
             val childTop = getVisibleTop(child)
             val childBottom = getVisibleBottom(child)
+            val rawTx = child.translationX
+            val childTx = if (kotlin.math.abs(rawTx) > 0.5f) rawTx else 0f
 
             if (!hasVisibleGroup) {
                 hasVisibleGroup = true
@@ -253,15 +287,17 @@ class GroupedCardDecoration(
                 currentBottom = childBottom
                 currentIsFirst = isFirst
                 currentIsLast = isLast
+                currentTranslationX = childTx
                 currentGroupChildren.add(child)
             } else {
-                if (isFirst) {
+                if (isFirst || childTx != currentTranslationX) {
                     drawCurrentGroup()
                     hasVisibleGroup = true
                     currentTop = childTop
                     currentBottom = childBottom
-                    currentIsFirst = true
+                    currentIsFirst = isFirst
                     currentIsLast = isLast
+                    currentTranslationX = childTx
                     currentGroupChildren.add(child)
                 } else {
                     currentTop = minOf(currentTop, childTop)
