@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -44,83 +45,85 @@ fun BookInfoSheet(
             androidx.compose.runtime.CompositionLocalProvider(
                 LocalLayoutDirection provides LayoutDirection.Rtl,
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState()),
-                ) {
-                    Text(
-                        text = book?.name ?: defaultTitle,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 8.dp),
-                    )
-
-                    val authorName = book?.auth?.trim() ?: ""
-                    if (authorName.isNotEmpty()) {
+                SelectionContainer {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState()),
+                    ) {
                         Text(
-                            text = authorName,
+                            text = book?.name ?: defaultTitle,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.secondary,
+                            color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(bottom = 8.dp),
                         )
-                    }
 
-                    val authInfo = book?.authInf?.trim() ?: ""
-                    if (authInfo.isNotEmpty()) {
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                        Text(
-                            text = stringResource(R.string.reader_info_author),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(bottom = 4.dp),
-                        )
-                        Text(
-                            text = authInfo,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                        val authorName = book?.auth?.trim() ?: ""
+                        if (authorName.isNotEmpty()) {
+                            Text(
+                                text = authorName,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.padding(bottom = 8.dp),
+                            )
+                        }
 
-                    val betakaInfo = book?.betaka?.trim() ?: ""
-                    if (betakaInfo.isNotEmpty()) {
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                        Text(
-                            text = stringResource(R.string.reader_info_betaka),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(bottom = 4.dp),
-                        )
-                        Text(
-                            text = betakaInfo,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                        val authInfo = book?.authInf?.trim() ?: ""
+                        if (authInfo.isNotEmpty()) {
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                            Text(
+                                text = stringResource(R.string.reader_info_author),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(bottom = 4.dp),
+                            )
+                            Text(
+                                text = authInfo,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
 
-                    val infoText = book?.info?.trim() ?: ""
-                    if (infoText.isNotEmpty()) {
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                        Text(
-                            text = stringResource(R.string.reader_info_about_book),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(bottom = 4.dp),
-                        )
-                        Text(
-                            text = infoText,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    } else if (authInfo.isEmpty() && betakaInfo.isEmpty()) {
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                        Text(
-                            text = stringResource(R.string.reader_info_not_available),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        val betakaInfo = book?.betaka?.trim() ?: ""
+                        if (betakaInfo.isNotEmpty()) {
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                            Text(
+                                text = stringResource(R.string.reader_info_betaka),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(bottom = 4.dp),
+                            )
+                            Text(
+                                text = betakaInfo,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+
+                        val infoText = book?.info?.trim() ?: ""
+                        if (infoText.isNotEmpty()) {
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                            Text(
+                                text = stringResource(R.string.reader_info_about_book),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(bottom = 4.dp),
+                            )
+                            Text(
+                                text = infoText,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else if (authInfo.isEmpty() && betakaInfo.isEmpty()) {
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                            Text(
+                                text = stringResource(R.string.reader_info_not_available),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
