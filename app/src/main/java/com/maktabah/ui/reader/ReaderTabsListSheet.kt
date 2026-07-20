@@ -117,17 +117,24 @@ fun ReaderTabsListSheet(
                             positionalThreshold = { it * 0.5f },
                             confirmValueChange = { value ->
                                 if (value == SwipeToDismissBoxValue.EndToStart) {
-                                    if (dismissStateRef?.isSwipeTargetReached(itemWidth) != true) {
-                                        return@rememberSwipeToDismissBoxState false
-                                    }
-                                    onClose(tab.id)
-                                    true
+                                    dismissStateRef?.isSwipeTargetReached(itemWidth) == true
                                 } else {
                                     true
                                 }
                             },
                         )
                     dismissStateRef = dismissState
+
+                    androidx.compose.runtime.LaunchedEffect(dismissState.targetValue, itemWidth) {
+                        androidx.compose.runtime.snapshotFlow {
+                            val offset = try { dismissState.requireOffset() } catch (_: Exception) { 0f }
+                            dismissState.targetValue to offset
+                        }.collect { (target, offset) ->
+                            if (target == SwipeToDismissBoxValue.EndToStart && itemWidth > 0 && kotlin.math.abs(offset) >= itemWidth * 0.95f) {
+                                onClose(tab.id)
+                            }
+                        }
+                    }
 
                     SwipeToDismissBox(
                         modifier = Modifier.onSizeChanged { itemWidth = it.width }.animateItem(),
