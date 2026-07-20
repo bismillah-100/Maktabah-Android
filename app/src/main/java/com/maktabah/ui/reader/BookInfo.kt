@@ -79,10 +79,8 @@ fun BookInfoSheet(
                                 color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.padding(bottom = 4.dp),
                             )
-                            Text(
+                            ParagraphText(
                                 text = authInfo,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
 
@@ -95,10 +93,8 @@ fun BookInfoSheet(
                                 color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.padding(bottom = 4.dp),
                             )
-                            Text(
+                            ParagraphText(
                                 text = betakaInfo,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
 
@@ -111,10 +107,8 @@ fun BookInfoSheet(
                                 color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.padding(bottom = 4.dp),
                             )
-                            Text(
+                            ParagraphText(
                                 text = infoText,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         } else if (authInfo.isEmpty() && betakaInfo.isEmpty()) {
                             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -127,6 +121,28 @@ fun BookInfoSheet(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ParagraphText(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    val paragraphs = androidx.compose.runtime.remember(text) {
+        text.split(Regex("(?:\r?\n|\\\\n)"))
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+    }
+    Column(modifier = modifier) {
+        paragraphs.forEachIndexed { index, paragraph ->
+            Text(
+                text = paragraph,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = if (index < paragraphs.lastIndex) Modifier.padding(bottom = 6.dp) else Modifier,
+            )
         }
     }
 }
