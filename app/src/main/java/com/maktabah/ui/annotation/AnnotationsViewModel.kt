@@ -27,6 +27,9 @@ class AnnotationsViewModel : ViewModel() {
     private val _annotations = MutableStateFlow<List<Annotation>>(emptyList())
     val annotations: StateFlow<List<Annotation>> = _annotations.asStateFlow()
 
+    private val _isLoading = MutableStateFlow(true)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
     val searchQuery = MutableStateFlow("")
 
     private val _searchScope = MutableStateFlow(AnnotationSearchScope.ALL)
@@ -96,7 +99,7 @@ class AnnotationsViewModel : ViewModel() {
         val initialExpanded = expandedKeys.associateWith { true }
         _expandedGroups.value = initialExpanded
 
-        loadAnnotations(annotationManager)
+        loadAnnotations(annotationManager, isInitial = true)
         observeAnnotationUpdates(annotationManager)
     }
 
@@ -137,9 +140,15 @@ class AnnotationsViewModel : ViewModel() {
         _annotations.value = currentList
     }
 
-    private fun loadAnnotations(annotationManager: AnnotationManager) {
+    private fun loadAnnotations(annotationManager: AnnotationManager, isInitial: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
+            if (isInitial) {
+                _isLoading.value = true
+            }
             _annotations.value = annotationManager.getAllAnnotations()
+            if (isInitial) {
+                _isLoading.value = false
+            }
         }
     }
 
@@ -161,7 +170,9 @@ class AnnotationsViewModel : ViewModel() {
             _bookIdFilter
         ) { query, scope, grouping, sort, bookFilter ->
             FilterAndSortParams(query, scope, grouping, sort, bookFilter)
-        }.debounce(500)
+        }.debounce { params ->
+            if (params.query.isEmpty()) 0L else 500L
+        }
 
     val groupedAnnotations: StateFlow<List<AnnotationGroup>> =
         combine(_annotations, filterAndSortParams) { annotationsList, params ->

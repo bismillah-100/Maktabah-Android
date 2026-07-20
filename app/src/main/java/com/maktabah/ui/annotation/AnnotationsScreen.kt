@@ -87,6 +87,8 @@ fun AnnotationsScreen(
     hasDonated: Boolean,
 ) {
     val context = LocalContext.current
+    val isDataLoaded by libraryViewModel.isDataLoaded.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
     val scope = rememberCoroutineScope()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchScope by viewModel.searchScope.collectAsState()
@@ -153,7 +155,16 @@ fun AnnotationsScreen(
                 )
             },
         ) { padding ->
-            if (groupedAnnotations.isEmpty()) {
+            if (!isDataLoaded || isLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else if (groupedAnnotations.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()

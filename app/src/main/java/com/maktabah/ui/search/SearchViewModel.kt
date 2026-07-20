@@ -48,6 +48,9 @@ class SearchViewModel : ViewModel() {
     private val _flatVisibleItems = MutableStateFlow<List<FlatLibraryItem>>(emptyList())
     val flatVisibleItems: StateFlow<List<FlatLibraryItem>> = _flatVisibleItems.asStateFlow()
 
+    private val _isTreeLoaded = MutableStateFlow(false)
+    val isTreeLoaded: StateFlow<Boolean> = _isTreeLoaded.asStateFlow()
+
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
 
@@ -372,6 +375,7 @@ class SearchViewModel : ViewModel() {
 
             traverse(roots, 0, null)
             _flatVisibleItems.value = result
+            _isTreeLoaded.value = true
         }
     }
 

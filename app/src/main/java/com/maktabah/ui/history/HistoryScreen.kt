@@ -89,6 +89,7 @@ fun HistoryScreen(
     onNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
     hasDonated: Boolean,
 ) {
+    val isDataLoaded by libraryViewModel.isDataLoaded.collectAsState()
     val context = LocalContext.current
     val sharedPrefs = remember { context.getSharedPreferences("HistoryPrefs", android.content.Context.MODE_PRIVATE) }
     var historyExpanded by remember { mutableStateOf(sharedPrefs.getBoolean("historyExpanded", true)) }
@@ -150,54 +151,63 @@ fun HistoryScreen(
                 )
             },
         ) { padding ->
-            val listState = rememberLazyListState()
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .fadingEdge(listState, padding.calculateTopPadding()),
-                contentPadding = PaddingValues(
-                    top = padding.calculateTopPadding() + 16.dp,
-                    bottom = bottomPadding + 16.dp,
-                ),
-            ) {
-                historySection(
-                    isExpanded = historyExpanded,
-                    onToggleExpand = { 
-                        historyExpanded = !historyExpanded
-                        sharedPrefs.edit().putBoolean("historyExpanded", historyExpanded).apply()
-                    },
-                    historyItems = filteredHistory,
-                    entriesByBookId = entriesByBookId,
-                    bookById = { libraryViewModel.dataManager.booksById[it] },
-                    onNavigateToReader = onNavigateToReader,
-                    onLongClick = { selectedHistoryItem = it }
-                )
-
-                item(key = "history_favorites_spacer") {
-                    Spacer(
-                        modifier = Modifier
-                            .height(16.dp)
-                            .animateItem()
-                    )
+            if (!isDataLoaded) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
                 }
+            } else {
+                val listState = rememberLazyListState()
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .fadingEdge(listState, padding.calculateTopPadding()),
+                    contentPadding = PaddingValues(
+                        top = padding.calculateTopPadding() + 16.dp,
+                        bottom = bottomPadding + 16.dp,
+                    ),
+                ) {
+                    historySection(
+                        isExpanded = historyExpanded,
+                        onToggleExpand = { 
+                            historyExpanded = !historyExpanded
+                            sharedPrefs.edit().putBoolean("historyExpanded", historyExpanded).apply()
+                        },
+                        historyItems = filteredHistory,
+                        entriesByBookId = entriesByBookId,
+                        bookById = { libraryViewModel.dataManager.booksById[it] },
+                        onNavigateToReader = onNavigateToReader,
+                        onLongClick = { selectedHistoryItem = it }
+                    )
 
-                favoritesSection(
-                    isExpanded = favoritesExpanded,
-                    onToggleExpand = { 
-                        favoritesExpanded = !favoritesExpanded
-                        sharedPrefs.edit().putBoolean("favoritesExpanded", favoritesExpanded).apply()
-                    },
-                    favoriteItems = filteredFavorites,
-                    entriesByBookId = entriesByBookId,
-                    bookById = { libraryViewModel.dataManager.booksById[it] },
-                    onNavigateToReader = onNavigateToReader,
-                    onLongClick = { selectedFavoriteItem = it }
-                )
+                    item(key = "history_favorites_spacer") {
+                        Spacer(
+                            modifier = Modifier
+                                .height(16.dp)
+                                .animateItem()
+                        )
+                    }
 
-                if (!hasDonated) {
-                    item(key = "donation_card") {
-                        DonationCard(modifier = Modifier.animateItem())
+                    favoritesSection(
+                        isExpanded = favoritesExpanded,
+                        onToggleExpand = { 
+                            favoritesExpanded = !favoritesExpanded
+                            sharedPrefs.edit().putBoolean("favoritesExpanded", favoritesExpanded).apply()
+                        },
+                        favoriteItems = filteredFavorites,
+                        entriesByBookId = entriesByBookId,
+                        bookById = { libraryViewModel.dataManager.booksById[it] },
+                        onNavigateToReader = onNavigateToReader,
+                        onLongClick = { selectedFavoriteItem = it }
+                    )
+
+                    if (!hasDonated) {
+                        item(key = "donation_card") {
+                            DonationCard(modifier = Modifier.animateItem())
+                        }
                     }
                 }
             }
