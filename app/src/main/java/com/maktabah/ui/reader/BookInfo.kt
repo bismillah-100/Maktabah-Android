@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.maktabah.R
 import com.maktabah.ui.library.LibraryViewModel
+import com.maktabah.ui.common.fadingEdge
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,11 +46,17 @@ fun BookInfoSheet(
             androidx.compose.runtime.CompositionLocalProvider(
                 LocalLayoutDirection provides LayoutDirection.Rtl,
             ) {
+                val scrollState = rememberScrollState()
                 SelectionContainer {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .verticalScroll(rememberScrollState()),
+                            .fadingEdge(
+                                canScrollForward = scrollState.canScrollForward,
+                                topPad = 0.dp,
+                                bottomFade = 48.dp,
+                            )
+                            .verticalScroll(scrollState),
                     ) {
                         Text(
                             text = book?.name ?: defaultTitle,
