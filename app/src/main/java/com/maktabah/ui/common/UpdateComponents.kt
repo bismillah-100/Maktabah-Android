@@ -1,12 +1,15 @@
 package com.maktabah.ui.common
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -25,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import com.maktabah.R
 import com.maktabah.update.UpdateUIState
 import com.maktabah.update.UpdateViewModel
+import com.mikepenz.markdown.m3.Markdown
 
 @Composable
 fun UpdateDialog(viewModel: UpdateViewModel) {
@@ -53,11 +57,16 @@ fun UpdateDialog(viewModel: UpdateViewModel) {
                             Text("Versi ${state.release.tagName} sudah tersedia. Apakah Anda ingin memperbarui aplikasi?")
                             if (state.release.body.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = state.release.body,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .weight(1f, fill = false)
+                                        .verticalScroll(rememberScrollState())
+                                ) {
+                                    Markdown(
+                                        content = state.release.body,
+                                    )
+                                }
                             }
                         }
                         is UpdateUIState.Downloading -> {
@@ -98,13 +107,5 @@ fun UpdateDialog(viewModel: UpdateViewModel) {
                 }
             }
         )
-    }
-}
-
-// Helper to wrap the Box in Installing state
-@Composable
-private fun Box(modifier: Modifier, contentAlignment: Alignment, content: @Composable () -> Unit) {
-    androidx.compose.foundation.layout.Box(modifier = modifier, contentAlignment = contentAlignment) {
-        content()
     }
 }

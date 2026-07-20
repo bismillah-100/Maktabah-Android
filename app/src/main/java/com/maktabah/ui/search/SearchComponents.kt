@@ -405,9 +405,9 @@ fun buildHighlightedText(
         val normalized = query.normalizeArabic()
         if (normalized.isBlank()) return@remember emptyList()
         when (mode) {
-            SearchMode.PHRASE -> sequenceOf(normalized)
-            else -> normalized.split(" ").asSequence().filter { it.isNotBlank() }
-        }.map { it.convertToArabicDigits() }.toList()
+            SearchMode.PHRASE -> listOf(normalized)
+            else -> normalized.split(" ").filter { it.isNotBlank() }
+        }.map { it.convertToArabicDigits() }
     }
 
     return remember(text, searchKeywords) {

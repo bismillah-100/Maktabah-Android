@@ -15,6 +15,7 @@ enum class IntegratePhase {
     FTS
 }
 
+@androidx.compose.runtime.Immutable
 data class BookDownloadState(
     val id: String = java.util.UUID.randomUUID().toString(),
     val bookId: Int,

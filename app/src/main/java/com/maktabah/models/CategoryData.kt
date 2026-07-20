@@ -1,5 +1,6 @@
 package com.maktabah.models
 
+@androidx.compose.runtime.Stable
 data class CategoryData(
     val id: Int,
     val name: String,

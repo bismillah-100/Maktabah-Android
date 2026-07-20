@@ -150,6 +150,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.browser:browser:1.10.0")
+    implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.27.0-rc02")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 

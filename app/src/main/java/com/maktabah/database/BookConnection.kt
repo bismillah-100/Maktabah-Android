@@ -144,25 +144,7 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
                     val id = stmt.columnInt(0)
                     var nassText = ""
                     if (stmt.columnType(1) == SQLiteDB.SQLITE_BLOB) {
-                        val blob = stmt.columnBlobDirect(1)
-                        if (blob != null) {
-                            val decompressedSize = Zstd.getFrameContentSize(blob).toInt()
-                            if (decompressedSize > 0) {
-                                val ctx = ZstdContextPool.getDecompressCtx()
-                                val decompressed = try {
-                                    val dstBuf = ZstdContextPool.getDirectBuffer(decompressedSize)
-                                    ctx.decompressDirectByteBuffer(dstBuf, 0, decompressedSize, blob, 0, blob.limit())
-                                    val dst = ByteArray(decompressedSize)
-                                    dstBuf.get(dst)
-                                    ZstdContextPool.releaseDirectBuffer(dstBuf)
-
-                                    dst
-                                } finally {
-                                    ZstdContextPool.releaseDecompressCtx(ctx)
-                                }
-                                nassText = String(decompressed)
-                            }
-                        }
+                        nassText = decompressBlob(stmt.columnBlobDirect(1))
                     } else {
                         nassText = stmt.columnText(1) ?: ""
                     }
@@ -175,14 +157,7 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
                     val page = stmt.columnInt(2)
                     val part = parsePartValue(stmt, 3)
 
-                    content = BookContent(id, nassText, page, part).apply {
-                        /*
-                        if (isQuran) {
-                            surah = stmt.columnInt(4)
-                            aya = stmt.columnInt(5)
-                        }
-                         */
-                    }
+                    content = BookContent(id, nassText, page, part)
                 }
             }
         }
@@ -204,25 +179,7 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
                     val id = stmt.columnInt(0)
                     var nassText = ""
                     if (stmt.columnType(1) == SQLiteDB.SQLITE_BLOB) {
-                        val blob = stmt.columnBlobDirect(1)
-                        if (blob != null) {
-                            val decompressedSize = Zstd.getFrameContentSize(blob).toInt()
-                            if (decompressedSize > 0) {
-                                val ctx = ZstdContextPool.getDecompressCtx()
-                                val decompressed = try {
-                                    val dstBuf = ZstdContextPool.getDirectBuffer(decompressedSize)
-                                    ctx.decompressDirectByteBuffer(dstBuf, 0, decompressedSize, blob, 0, blob.limit())
-                                    val dst = ByteArray(decompressedSize)
-                                    dstBuf.get(dst)
-                                    ZstdContextPool.releaseDirectBuffer(dstBuf)
-
-                                    dst
-                                } finally {
-                                    ZstdContextPool.releaseDecompressCtx(ctx)
-                                }
-                                nassText = String(decompressed)
-                            }
-                        }
+                        nassText = decompressBlob(stmt.columnBlobDirect(1))
                     } else {
                         nassText = stmt.columnText(1) ?: ""
                     }
@@ -349,25 +306,7 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
                     val id = stmt.columnInt(0)
                     var nassText = ""
                     if (stmt.columnType(1) == SQLiteDB.SQLITE_BLOB) {
-                        val blob = stmt.columnBlobDirect(1)
-                        if (blob != null) {
-                            val decompressedSize = Zstd.getFrameContentSize(blob).toInt()
-                            if (decompressedSize > 0) {
-                                val ctx = ZstdContextPool.getDecompressCtx()
-                                val decompressed = try {
-                                    val dstBuf = ZstdContextPool.getDirectBuffer(decompressedSize)
-                                    ctx.decompressDirectByteBuffer(dstBuf, 0, decompressedSize, blob, 0, blob.limit())
-                                    val dst = ByteArray(decompressedSize)
-                                    dstBuf.get(dst)
-                                    ZstdContextPool.releaseDirectBuffer(dstBuf)
-
-                                    dst
-                                } finally {
-                                    ZstdContextPool.releaseDecompressCtx(ctx)
-                                }
-                                nassText = String(decompressed)
-                            }
-                        }
+                        nassText = decompressBlob(stmt.columnBlobDirect(1))
                     } else {
                         nassText = stmt.columnText(1) ?: ""
                     }
