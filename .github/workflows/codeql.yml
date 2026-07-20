@@ -31,7 +31,19 @@ jobs:
       with:
         distribution: 'zulu'
         java-version: '17'
-        cache: 'gradle'
+
+    - name: Setup Gradle Cache
+      uses: gradle/actions/setup-gradle@v4
+
+    - name: Cache CMake Build Artifacts
+      uses: actions/cache@v4
+      with:
+        path: |
+          .cxx
+          app/.cxx
+        key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt', 'app/src/main/cpp/**') }}
+        restore-keys: |
+          ${{ runner.os }}-cmake-
 
     - name: Create dummy google-services.json
       run: |
