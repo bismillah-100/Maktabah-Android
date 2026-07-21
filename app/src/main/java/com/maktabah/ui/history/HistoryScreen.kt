@@ -26,7 +26,12 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
@@ -569,78 +574,115 @@ private fun AddFavoriteSheet(
     onDismiss: () -> Unit,
     onToggleFavorite: (Int) -> Unit
 ) {
+    val listState = rememberLazyListState()
+    val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
     var searchFavQuery by remember { mutableStateOf("") }
-    val filteredBooks = remember(searchFavQuery) {
-        val cleanQuery = searchFavQuery.normalizeArabic()
-        if (cleanQuery.isBlank()) books
-        else books.filter { it.name.normalizeArabic().contains(cleanQuery, ignoreCase = true) }
+    var debouncedQuery by remember { mutableStateOf(searchFavQuery) }
+
+    androidx.compose.runtime.LaunchedEffect(searchFavQuery) {
+        if (searchFavQuery.isNotBlank()) {
+            delay(300.milliseconds)
+        }
+        debouncedQuery = searchFavQuery
     }
+
+    var filteredBooks by remember { mutableStateOf(books) }
+
+    androidx.compose.runtime.LaunchedEffect(books, debouncedQuery) {
+        if (debouncedQuery.isBlank()) {
+            filteredBooks = books
+        } else {
+            val result = withContext(Dispatchers.Default) {
+                val cleanQuery = debouncedQuery.normalizeArabic()
+                books.filter { it.name.normalizeArabic().contains(cleanQuery, ignoreCase = true) }
+            }
+            filteredBooks = result
+        }
+    }
+
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
+        skipPartiallyExpanded = true
+    )
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = { WindowInsets(0.dp) },
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.85f)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.history_add_favorite_title),
-                    style = MaterialTheme.typography.titleLarge
-                )
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        Icons.Default.Close,
-                        contentDescription = stringResource(R.string.reader_tabs_close)
+            val topPadding = 54.dp
+
+            if (filteredBooks.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = topPadding),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        stringResource(R.string.history_empty),
+                        modifier = Modifier.padding(16.dp)
                     )
                 }
-            }
-            SearchTextField(
-                value = searchFavQuery,
-                onValueChange = { searchFavQuery = it },
-                placeholder = stringResource(R.string.library_search_books_placeholder),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 16.dp)
-            ) {
-                items(
-                    count = filteredBooks.size,
-                    key = { index -> filteredBooks[index].id }
-                ) { index ->
-                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                        val book = filteredBooks[index]
-                        val isFav = entriesByBookId[book.id]?.isFavorite == true
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onToggleFavorite(book.id) }
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = book.name,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.weight(1f)
-                            )
-                            if (isFav) Icon(
-                                Icons.Default.Star,
-                                contentDescription = "Favorite",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+            } else {
+                CompositionLocalProvider(
+                    LocalLayoutDirection provides LayoutDirection.Rtl,
+                ) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .nestedScroll(nestedScrollConnection)
+                            .fillMaxSize()
+                            .fadingEdge(listState, 48.dp),
+                        state = listState,
+                        contentPadding = PaddingValues(top = topPadding, bottom = 32.dp)
+                    ) {
+                        itemsIndexed(
+                            items = filteredBooks,
+                            key = { _, book -> book.id }
+                        ) { index, book ->
+                            val isFav = entriesByBookId[book.id]?.isFavorite == true
+                            InsetGroupedItem(
+                                index = index,
+                                lastIndex = filteredBooks.lastIndex,
+                                onClick = { onToggleFavorite(book.id) },
+                                contentPadding = PaddingValues(vertical = 12.dp, horizontal = 16.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = book.name,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    if (isFav) {
+                                        Icon(
+                                            Icons.Default.Star,
+                                            contentDescription = "Favorite",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
+            }
+
+            Box(modifier = Modifier.padding(start = 16.dp, end = 16.dp)) {
+                SearchTextField(
+                    value = searchFavQuery,
+                    onValueChange = { searchFavQuery = it },
+                    placeholder = stringResource(R.string.library_search_books_placeholder),
+                    onClearClick = { searchFavQuery = "" }
+                )
             }
         }
     }
