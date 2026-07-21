@@ -1,5 +1,6 @@
 package com.maktabah.ui.reader
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -36,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -292,13 +294,14 @@ fun BookTOCSheet(
                             val isSelected = visibleNode.isSelected
 
                             InsetGroupedItem(
+                                modifier = Modifier.animateItem(),
                                 index = index,
                                 lastIndex = visibleNodes.lastIndex,
                                 onClick = {
                                     viewModel.loadContentById(node.id)
                                     onDismissRequest()
                                 },
-                                contentPadding = PaddingValues(vertical = 8.dp, horizontal = 16.dp),
+                                contentPadding = PaddingValues(vertical = 10.dp, horizontal = 16.dp),
                                 dividerStartPadding = 48.dp + (depth * 16).dp
                             ) {
                                 Row(
@@ -308,9 +311,11 @@ fun BookTOCSheet(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     if (hasChildren) {
-                                        Icon(
-                                            imageVector = if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                            contentDescription = stringResource(R.string.reader_toc_expand_collapse),
+                                        val rotationAngle by animateFloatAsState(
+                                            targetValue = if (isExpanded) 0f else 90f,
+                                            label = "TOCArrowRotation"
+                                        )
+                                        Box(
                                             modifier = Modifier
                                                 .size(32.dp)
                                                 .clickable {
@@ -319,11 +324,19 @@ fun BookTOCSheet(
                                                         node.uuid
                                                     )
                                                     expandedTOCNodes.value = set
-                                                }
-                                                .padding(end = 8.dp)
-                                        )
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.KeyboardArrowDown,
+                                                contentDescription = stringResource(R.string.reader_toc_expand_collapse),
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .rotate(rotationAngle)
+                                            )
+                                        }
                                     } else {
-                                        Spacer(modifier = Modifier.width(32.dp))
+                                        Spacer(modifier = Modifier.size(32.dp))
                                     }
                                     Text(
                                         text = node.title,
