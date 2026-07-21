@@ -6,6 +6,8 @@ import com.maktabah.models.AuthorRow
 import com.maktabah.models.BooksData
 import com.maktabah.models.CategoryData
 import com.maktabah.models.ImportBookMetadata
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
 import java.io.File
 
 object BookImportManager {
@@ -203,6 +205,8 @@ object BookImportManager {
             if (!success) return Result.failure(Exception("Gagal mengintegrasikan konten buku"))
 
             Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "importBook", e)
             Result.failure(e)

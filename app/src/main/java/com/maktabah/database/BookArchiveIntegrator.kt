@@ -8,6 +8,8 @@ import com.github.luben.zstd.Zstd
 import com.maktabah.models.IntegratePhase
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.removingHarakat
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
 import java.io.File
 
 object BookArchiveIntegrator {
@@ -71,6 +73,7 @@ object BookArchiveIntegrator {
             var sourceTableId: String? = null
             db.prepare("SELECT name FROM sourceDB.sqlite_master WHERE type='table' AND name LIKE 'b%' AND name NOT LIKE '%_fts' LIMIT 1;")?.use { stmt ->
                 if (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                    coroutineContext.ensureActive()
                     val name = stmt.columnText(0)
                     if (name != null && name.startsWith("b")) {
                         sourceTableId = name.substring(1)
@@ -94,6 +97,7 @@ object BookArchiveIntegrator {
             val columns = mutableListOf<TableColumnInfo>()
             db.prepare("PRAGMA sourceDB.table_info('$sourceTableName');")?.use { stmt ->
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                    coroutineContext.ensureActive()
                     val name = stmt.columnText(1) ?: continue
                     val type = stmt.columnText(2) ?: "TEXT"
                     val isPk = stmt.columnInt(5) == 1
@@ -129,6 +133,7 @@ object BookArchiveIntegrator {
                     Log.d(TAG, "nass column index: $nassIndex")
 
                     while (selectStmt.step() == SQLiteDB.SQLITE_ROW) {
+                        coroutineContext.ensureActive()
                         insertStmt.reset()
                         insertStmt.clearBindings()
 
@@ -183,6 +188,7 @@ object BookArchiveIntegrator {
             val tocColumns = mutableListOf<TableColumnInfo>()
             db.prepare("PRAGMA sourceDB.table_info('$sourceTocTableName');")?.use { stmt ->
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                    coroutineContext.ensureActive()
                     val name = stmt.columnText(1) ?: continue
                     val type = stmt.columnText(2) ?: "TEXT"
                     val isPk = stmt.columnInt(5) == 1
@@ -206,6 +212,7 @@ object BookArchiveIntegrator {
                 db.prepare(insertTocSql)?.use { insertTocStmt ->
                     db.prepare("SELECT * FROM sourceDB.\"$sourceTocTableName\";")?.use { selectTocStmt ->
                         while (selectTocStmt.step() == SQLiteDB.SQLITE_ROW) {
+                            coroutineContext.ensureActive()
                             insertTocStmt.reset()
                             insertTocStmt.clearBindings()
                             for (i in tocColumns.indices) {
@@ -266,6 +273,7 @@ object BookArchiveIntegrator {
                 // Re-open main table to read nass blob, decompress, and build FTS
                 db.prepare("SELECT id, nass FROM main.\"$targetTableName\" WHERE nass IS NOT NULL;")?.use { ftsSelectStmt ->
                     while (ftsSelectStmt.step() == SQLiteDB.SQLITE_ROW) {
+                        coroutineContext.ensureActive()
                         val id = ftsSelectStmt.columnLong(0)
                         val nassText = decompressBlob(ftsSelectStmt.columnBlobDirect(1))
                         if (nassText.isNotEmpty()) {
@@ -292,6 +300,10 @@ object BookArchiveIntegrator {
             Log.d(TAG, "Built FTS for $ftsCount rows")
 
             return@run true
+        } catch (e: CancellationException) {
+            db?.prepare("ROLLBACK;")?.use { it.step() }
+            ftsDb?.prepare("ROLLBACK;")?.use { it.step() }
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Error integrating database for book $bookId", e)
             db?.prepare("ROLLBACK;")?.use { it.step() }

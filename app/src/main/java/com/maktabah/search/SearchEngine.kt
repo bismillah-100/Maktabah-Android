@@ -7,7 +7,9 @@ import com.maktabah.database.SQLiteDB
 import com.maktabah.models.BookContent
 import com.maktabah.models.SearchMode
 import com.maktabah.utils.normalizeArabic
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -35,8 +37,10 @@ class SearchEngine {
             db = SQLiteDB(archiveFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY)
 
             // Attach FTS database
-            val attachSql = "ATTACH DATABASE '${archiveFtsFile.absolutePath}' AS fts_db;"
-            db.prepare(attachSql)?.use { it.step() }
+            db.prepare("ATTACH DATABASE ? AS fts_db;")?.use { stmt ->
+                stmt.bindText(1, archiveFtsFile.absolutePath)
+                stmt.step()
+            }
 
             val tableName = "b$bookId"
             val ftsTableName = "${tableName}_fts"
@@ -88,6 +92,7 @@ class SearchEngine {
                 var nassType = -1
                 var partType = -1
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                    coroutineContext.ensureActive()
                     val id = stmt.columnInt(0)
                     var nassText = ""
 
@@ -149,6 +154,8 @@ class SearchEngine {
                     onRowProgress(currentFetched, totalCount)
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(tag, "Search error", e)
         } finally {
