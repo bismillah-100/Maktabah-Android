@@ -64,6 +64,7 @@ fun InsetGroupedItem(
     contentPadding: PaddingValues = PaddingValues(16.dp),
     outerPadding: PaddingValues = PaddingValues(horizontal = 16.dp),
     dividerStartPadding: Dp = 16.dp,
+    dividerEndPadding: Dp = 16.dp,
     fillMaxWidth: Boolean = true,
     content: @Composable () -> Unit,
 ) {
@@ -125,7 +126,7 @@ fun InsetGroupedItem(
         ) { content() }
         if (!isLast) {
             HorizontalDivider(
-                modifier = Modifier.padding(start = dividerStartPadding, end = 0.5.dp),
+                modifier = Modifier.padding(start = dividerStartPadding, end = dividerEndPadding),
                 thickness = Dp.Hairline,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
             )

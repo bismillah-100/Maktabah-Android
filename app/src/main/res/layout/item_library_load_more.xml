@@ -13,6 +13,8 @@
         android:focusable="true"
         android:gravity="center"
         android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
         android:paddingTop="12dp"
         android:paddingBottom="12dp">
 
@@ -30,6 +32,7 @@
         android:id="@+id/divider"
         android:layout_width="match_parent"
         android:layout_height="1.px"
+        android:layout_marginEnd="16dp"
         android:alpha="0.5"
         android:background="?attr/colorOnSurface" />
 
