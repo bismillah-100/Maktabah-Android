@@ -8,6 +8,7 @@ import com.github.luben.zstd.Zstd
 import com.maktabah.models.IntegratePhase
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.removingHarakat
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import java.io.File
@@ -272,27 +273,32 @@ object BookArchiveIntegrator {
             ftsDb.prepare("INSERT INTO main.\"$ftsTableName\" (rowid, nass_clean) VALUES (?, ?);")?.use { ftsInsertStmt ->
                 // Re-open main table to read nass blob, decompress, and build FTS
                 db.prepare("SELECT id, nass FROM main.\"$targetTableName\" WHERE nass IS NOT NULL;")?.use { ftsSelectStmt ->
-                    while (ftsSelectStmt.step() == SQLiteDB.SQLITE_ROW) {
-                        coroutineContext.ensureActive()
-                        val id = ftsSelectStmt.columnLong(0)
-                        val nassText = decompressBlob(ftsSelectStmt.columnBlobDirect(1))
-                        if (nassText.isNotEmpty()) {
-                            val cleanText =
-                                nassText
-                                    .replace("\n", " ")
-                                    .replace("\r", " ")
-                                    .removingHarakat()
-                                    .normalizeArabic()
+                    val ctx = ZstdContextPool.getDecompressCtx()
+                    try {
+                        while (ftsSelectStmt.step() == SQLiteDB.SQLITE_ROW) {
+                            coroutineContext.ensureActive()
+                            val id = ftsSelectStmt.columnLong(0)
+                            val nassText = decompressBlob(ftsSelectStmt.columnBlobDirect(1), ctx)
+                            if (nassText.isNotEmpty()) {
+                                val cleanText =
+                                    nassText
+                                        .replace("\n", " ")
+                                        .replace("\r", " ")
+                                        .removingHarakat()
+                                        .normalizeArabic()
 
-                            if (cleanText.isNotBlank()) {
-                                ftsInsertStmt.reset()
-                                ftsInsertStmt.clearBindings()
-                                ftsInsertStmt.bindLong(1, id)
-                                ftsInsertStmt.bindText(2, cleanText)
-                                ftsInsertStmt.step()
-                                ftsCount++
+                                if (cleanText.isNotBlank()) {
+                                    ftsInsertStmt.reset()
+                                    ftsInsertStmt.clearBindings()
+                                    ftsInsertStmt.bindLong(1, id)
+                                    ftsInsertStmt.bindText(2, cleanText)
+                                    ftsInsertStmt.step()
+                                    ftsCount++
+                                }
                             }
                         }
+                    } finally {
+                        ZstdContextPool.releaseDecompressCtx(ctx)
                     }
                 }
             }
