@@ -221,26 +221,20 @@ fun HistoryScreen(
                 onRemoveHistory = {
                     val entry = historyViewModel.removeFromHistory(it)
                     if (entry != null) scope.launch {
-                        val res = cloudKitSyncManager.syncHistoryAndFavorites(
+                        cloudKitSyncManager.syncHistoryAndFavorites(
                             context,
                             listOf(entry)
                         )
-                        if (res.startsWith("Failed")) {
-                            android.widget.Toast.makeText(context, res, android.widget.Toast.LENGTH_LONG).show()
-                        }
                     }
                     selectedHistoryItem = null
                 },
                 onToggleFavorite = {
                     val entry = historyViewModel.toggleFavorite(it)
                     scope.launch {
-                        val res = cloudKitSyncManager.syncHistoryAndFavorites(
+                        cloudKitSyncManager.syncHistoryAndFavorites(
                             context,
                             listOf(entry)
                         )
-                        if (res.startsWith("Failed")) {
-                            android.widget.Toast.makeText(context, res, android.widget.Toast.LENGTH_LONG).show()
-                        }
                     }
                     selectedHistoryItem = null
                 }
@@ -254,13 +248,10 @@ fun HistoryScreen(
                 onRemoveFavorite = {
                     val entry = historyViewModel.toggleFavorite(it)
                     scope.launch {
-                        val res = cloudKitSyncManager.syncHistoryAndFavorites(
+                        cloudKitSyncManager.syncHistoryAndFavorites(
                             context,
                             listOf(entry)
                         )
-                        if (res.startsWith("Failed")) {
-                            android.widget.Toast.makeText(context, res, android.widget.Toast.LENGTH_LONG).show()
-                        }
                     }
                     selectedFavoriteItem = null
                 }
@@ -275,13 +266,10 @@ fun HistoryScreen(
                 onToggleFavorite = { bookId ->
                     val entry = historyViewModel.toggleFavorite(bookId)
                     scope.launch {
-                        val res = cloudKitSyncManager.syncHistoryAndFavorites(
+                        cloudKitSyncManager.syncHistoryAndFavorites(
                             context,
                             listOf(entry)
                         )
-                        if (res.startsWith("Failed")) {
-                            android.widget.Toast.makeText(context, res, android.widget.Toast.LENGTH_LONG).show()
-                        }
                     }
                 }
             )

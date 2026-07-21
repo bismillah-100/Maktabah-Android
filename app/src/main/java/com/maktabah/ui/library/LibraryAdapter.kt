@@ -86,17 +86,11 @@ class LibraryAdapter(
                 val position = holder.bindingAdapterPosition
                 if (position == RecyclerView.NO_POSITION || position >= itemCount) continue
                 val isLast = position == itemCount - 1
-                applyDecorationState(child, position)
                 holder.updateDividerForLast(isLast)
             }
             recyclerView.invalidateItemDecorations()
             recyclerView.invalidate()
         }
-    }
-
-    private fun applyDecorationState(view: View, position: Int) {
-        view.setTag(R.id.tag_is_first, position == 0)
-        view.setTag(R.id.tag_is_last, position == itemCount - 1)
     }
 
     var viewMode: LibraryViewMode = LibraryViewMode.CATEGORY
@@ -319,13 +313,14 @@ class LibraryAdapter(
             val dividerParams = divider?.layoutParams as? ViewGroup.MarginLayoutParams
             if (dividerParams != null) {
                 val strokeWidth = (1 * density).toInt()
+                val marginEndPx = (16 * density).toInt()
                 if (item is LoadMoreData || item is LoadMoreAuthors) {
                     dividerParams.marginStart = strokeWidth
-                    dividerParams.marginEnd = strokeWidth
+                    dividerParams.marginEnd = marginEndPx
                 } else {
                     val dividerIndent = (80 + (flatItem.level * 16)) * density
                     dividerParams.marginStart = dividerIndent.toInt()
-                    dividerParams.marginEnd = strokeWidth
+                    dividerParams.marginEnd = marginEndPx
                 }
                 divider.layoutParams = dividerParams
             }
@@ -434,7 +429,7 @@ class LibraryAdapter(
                         typeIcon?.scaleX = 1f
                     } else {
                         itemView.isSelected = false
-                        val isDownloaded = isBookDownloadedById(item.id)
+                        val isDownloaded = flatItem.isDownloaded
                         if (isDownloaded) {
                             typeIcon?.setImageResource(R.drawable.ic_import_contacts)
                         } else {
