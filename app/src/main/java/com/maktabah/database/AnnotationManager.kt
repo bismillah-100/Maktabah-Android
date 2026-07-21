@@ -23,6 +23,8 @@ class AnnotationManager(
             dbFile.absolutePath,
             SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_CREATE,
         ).use { db ->
+            db.prepare("PRAGMA journal_mode=WAL;")?.use { it.step() }
+            db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
             val sql = """
                 CREATE TABLE IF NOT EXISTS annotations_v2 (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,86 +105,96 @@ class AnnotationManager(
     ): Long {
         var newId: Long = -1
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
-
-            val sql = """
-                INSERT INTO annotations_v2 (
-                    bkId, contentId, color, note, type, createdAt, page, context,
-                    rangeLocation, rangeLength, rangeDiacLocation, rangeDiacLength,
-                    part, tags, ckRecordId, lastModified
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(ckRecordId) DO UPDATE SET
-                    bkId = excluded.bkId,
-                    contentId = excluded.contentId,
-                    color = excluded.color,
-                    note = excluded.note,
-                    type = excluded.type,
-                    createdAt = excluded.createdAt,
-                    page = excluded.page,
-                    context = excluded.context,
-                    rangeLocation = excluded.rangeLocation,
-                    rangeLength = excluded.rangeLength,
-                    rangeDiacLocation = excluded.rangeDiacLocation,
-                    rangeDiacLength = excluded.rangeDiacLength,
-                    part = excluded.part,
-                    tags = excluded.tags,
-                    lastModified = excluded.lastModified;
-            """
-            db.prepare(sql)?.use { stmt ->
-                stmt.bindInt(1, annotation.bkId)
-                stmt.bindInt(2, annotation.contentId)
-                stmt.bindText(3, annotation.colorHex)
-                if (annotation.note != null) stmt.bindText(4, annotation.note) else stmt.bindNull(4)
-                stmt.bindInt(5, annotation.type)
-                stmt.bindLong(6, annotation.createdAt)
-                stmt.bindInt(7, annotation.page)
-                stmt.bindText(8, annotation.context)
-                stmt.bindInt(9, annotation.rangeLocation)
-                stmt.bindInt(10, annotation.rangeLength)
-                stmt.bindInt(11, annotation.rangeDiacLocation)
-                stmt.bindInt(12, annotation.rangeDiacLength)
-                stmt.bindInt(13, annotation.part)
-                stmt.bindText(14, annotation.tags)
-                if (annotation.ckRecordId != null) stmt.bindText(15, annotation.ckRecordId) else stmt.bindNull(15)
-                val lastMod =
-                    if (fromSync && annotation.lastModified != null) {
-                        annotation.lastModified
-                    } else {
-                        System.currentTimeMillis() / 1000
-                    }
-                stmt.bindLong(16, lastMod)
-
-                if (stmt.step() == SQLiteDB.SQLITE_DONE) {
-                    newId = annotation.id ?: db.lastInsertRowId()
-                }
-            }
-
-            // If ON CONFLICT DO UPDATE happened, lastInsertRowId() might not reflect the updated row.
-            if ((newId <= 0 || newId == annotation.id) && annotation.ckRecordId != null) {
-                db.prepare("SELECT id FROM annotations_v2 WHERE ckRecordId = ?")?.use { stmt ->
-                    stmt.bindText(1, annotation.ckRecordId)
-                    if (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                        newId = stmt.columnLong(0)
-                    }
-                }
-            }
-
-            if (annotation.ckRecordId != null) {
-                if (fromSync) {
-                    db.prepare("DELETE FROM pending_uploads WHERE ckRecordId = ?")?.use { stmt ->
-                        stmt.bindText(1, annotation.ckRecordId)
-                        stmt.step()
-                    }
-                } else {
-                    db.prepare("INSERT OR IGNORE INTO pending_uploads (ckRecordId) VALUES (?)")?.use { stmt ->
-                        stmt.bindText(1, annotation.ckRecordId)
-                        stmt.step()
-                    }
-                }
-            }
+            newId = executeInsertOrUpdate(db, annotation, fromSync)
         }
         if (newId > 0L) {
             updates.tryEmit(AnnotationChange.Upsert(annotation.copy(id = newId), fromSync = fromSync))
         }
+        return newId
+    }
+
+    private fun executeInsertOrUpdate(
+        db: SQLiteDB,
+        annotation: Annotation,
+        fromSync: Boolean = false,
+    ): Long {
+        var newId: Long = -1
+        val sql = """
+            INSERT INTO annotations_v2 (
+                bkId, contentId, color, note, type, createdAt, page, context,
+                rangeLocation, rangeLength, rangeDiacLocation, rangeDiacLength,
+                part, tags, ckRecordId, lastModified
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(ckRecordId) DO UPDATE SET
+                bkId = excluded.bkId,
+                contentId = excluded.contentId,
+                color = excluded.color,
+                note = excluded.note,
+                type = excluded.type,
+                createdAt = excluded.createdAt,
+                page = excluded.page,
+                context = excluded.context,
+                rangeLocation = excluded.rangeLocation,
+                rangeLength = excluded.rangeLength,
+                rangeDiacLocation = excluded.rangeDiacLocation,
+                rangeDiacLength = excluded.rangeDiacLength,
+                part = excluded.part,
+                tags = excluded.tags,
+                lastModified = excluded.lastModified;
+        """
+        db.prepare(sql)?.use { stmt ->
+            stmt.bindInt(1, annotation.bkId)
+            stmt.bindInt(2, annotation.contentId)
+            stmt.bindText(3, annotation.colorHex)
+            if (annotation.note != null) stmt.bindText(4, annotation.note) else stmt.bindNull(4)
+            stmt.bindInt(5, annotation.type)
+            stmt.bindLong(6, annotation.createdAt)
+            stmt.bindInt(7, annotation.page)
+            stmt.bindText(8, annotation.context)
+            stmt.bindInt(9, annotation.rangeLocation)
+            stmt.bindInt(10, annotation.rangeLength)
+            stmt.bindInt(11, annotation.rangeDiacLocation)
+            stmt.bindInt(12, annotation.rangeDiacLength)
+            stmt.bindInt(13, annotation.part)
+            stmt.bindText(14, annotation.tags)
+            if (annotation.ckRecordId != null) stmt.bindText(15, annotation.ckRecordId) else stmt.bindNull(15)
+            val lastMod =
+                if (fromSync && annotation.lastModified != null) {
+                    annotation.lastModified
+                } else {
+                    System.currentTimeMillis() / 1000
+                }
+            stmt.bindLong(16, lastMod)
+
+            if (stmt.step() == SQLiteDB.SQLITE_DONE) {
+                newId = annotation.id ?: db.lastInsertRowId()
+            }
+        }
+
+        // If ON CONFLICT DO UPDATE happened, lastInsertRowId() might not reflect the updated row.
+        if ((newId <= 0 || newId == annotation.id) && annotation.ckRecordId != null) {
+            db.prepare("SELECT id FROM annotations_v2 WHERE ckRecordId = ?")?.use { stmt ->
+                stmt.bindText(1, annotation.ckRecordId)
+                if (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                    newId = stmt.columnLong(0)
+                }
+            }
+        }
+
+        if (annotation.ckRecordId != null) {
+            if (fromSync) {
+                db.prepare("DELETE FROM pending_uploads WHERE ckRecordId = ?")?.use { stmt ->
+                    stmt.bindText(1, annotation.ckRecordId)
+                    stmt.step()
+                }
+            } else {
+                db.prepare("INSERT OR IGNORE INTO pending_uploads (ckRecordId) VALUES (?)")?.use { stmt ->
+                    stmt.bindText(1, annotation.ckRecordId)
+                    stmt.step()
+                }
+            }
+        }
+
         return newId
     }
 

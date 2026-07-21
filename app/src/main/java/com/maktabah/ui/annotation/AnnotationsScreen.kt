@@ -18,11 +18,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.CallMade
+import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Output
 import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Refresh
@@ -406,7 +407,7 @@ private fun AnnotationsTopBar(
                                 )
                                 AnnotationMenuItem(
                                     text = stringResource(R.string.annotations_menu_export_json),
-                                    icon = Icons.Default.FileUpload,
+                                    icon = Icons.AutoMirrored.Filled.CallMade,
                                     onClick = {
                                         showSelectionExportMenu = false
                                         onExportJsonRequested(true)
@@ -583,23 +584,23 @@ private fun AnnotationsTopBar(
                                     }
                                 },
                             )
-                            AnnotationMenuItem(
-                                text = stringResource(R.string.annotations_menu_export_json),
-                                icon = Icons.Default.FileUpload,
-                                onClick = {
-                                    showMainMenu = false
-                                    onExportJsonRequested(false)
-                                },
-                            )
-                            HorizontalDivider()
-                            AnnotationMenuItem(
-                                text = stringResource(R.string.annotations_menu_import_json),
-                                icon = Icons.Default.FileDownload,
-                                onClick = {
-                                    showMainMenu = false
-                                    onImportJsonRequested()
-                                },
-                            )
+							AnnotationMenuItem(
+								text = stringResource(R.string.annotations_menu_export_json),
+								icon = Icons.AutoMirrored.Filled.CallMade,
+								onClick = {
+									showMainMenu = false
+									onExportJsonRequested(false)
+								},
+							)
+							HorizontalDivider()
+							AnnotationMenuItem(
+								text = stringResource(R.string.annotations_menu_import_json),
+								icon = Icons.AutoMirrored.Filled.CallReceived,
+								onClick = {
+									showMainMenu = false
+									onImportJsonRequested()
+								},
+							)
                         }
                     }
                 }
