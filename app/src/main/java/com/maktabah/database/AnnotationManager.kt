@@ -354,6 +354,48 @@ class AnnotationManager(
         }
     }
 
+    private fun existsAnnotation(db: SQLiteDB, ann: Annotation): Boolean {
+        if (ann.ckRecordId != null) {
+            db.prepare("SELECT 1 FROM annotations_v2 WHERE ckRecordId = ?")?.use { stmt ->
+                stmt.bindText(1, ann.ckRecordId)
+                if (stmt.step() == SQLiteDB.SQLITE_ROW) return true
+            }
+        }
+        val sql = "SELECT 1 FROM annotations_v2 WHERE bkId = ? AND contentId = ? AND rangeLocation = ? AND rangeLength = ?"
+        db.prepare(sql)?.use { stmt ->
+            stmt.bindInt(1, ann.bkId)
+            stmt.bindInt(2, ann.contentId)
+            stmt.bindInt(3, ann.rangeLocation)
+            stmt.bindInt(4, ann.rangeLength)
+            if (stmt.step() == SQLiteDB.SQLITE_ROW) return true
+        }
+        return false
+    }
+
+    fun importAnnotations(
+        annotations: List<Annotation>,
+        overwrite: Boolean = true,
+    ): Int {
+        var count = 0
+        SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
+            for (ann in annotations) {
+                if (!overwrite && existsAnnotation(db, ann)) {
+                    continue
+                }
+                val recordId = ann.ckRecordId ?: java.util.UUID.randomUUID().toString()
+                val annToSave = ann.copy(ckRecordId = recordId)
+                val newId = insertOrUpdate(annToSave, fromSync = false)
+                if (newId > 0L) {
+                    count++
+                }
+            }
+        }
+        if (count > 0) {
+            updates.tryEmit(AnnotationChange.ReloadAll)
+        }
+        return count
+    }
+
     fun clearAll() {
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
             db.prepare("DELETE FROM annotations_v2")?.use { it.step() }

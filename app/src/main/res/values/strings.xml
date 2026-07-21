@@ -181,8 +181,16 @@
     <string name="annotations_menu_select">Select…</string>
     <string name="annotations_menu_reload">Sync / Reload</string>
     <string name="annotations_menu_export_rtf">Export to RTF</string>
+    <string name="annotations_menu_export_json">Export to JSON</string>
+    <string name="annotations_menu_import_json">Import from JSON</string>
     <string name="annotations_selected_count">%1$d Selected</string>
     <string name="annotations_export_failed">Export RTF Failed</string>
+    <string name="annotations_import_success">%1$d annotations imported successfully</string>
+    <string name="annotations_import_failed">Failed to import annotations</string>
+    <string name="annotations_import_dialog_title">Import Annotations</string>
+    <string name="annotations_import_dialog_msg">Some annotations may already exist. How would you like to handle duplicates?</string>
+    <string name="annotations_import_overwrite">Overwrite Existing</string>
+    <string name="annotations_import_skip">Skip Duplicates</string>
     <string name="annotations_sort_options">Sort Options</string>
     <string name="annotations_empty_hint">No annotations found. Tap refresh to sync from CloudKit.</string>
     <string name="annotations_search_all">All</string>

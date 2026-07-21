@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -37,6 +38,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -118,6 +120,100 @@ fun AnnotationsScreen(
         viewModel.setBookIdFilter(bookIdFilter)
     }
 
+    var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
+    var isExportSelectedOnly by remember { mutableStateOf(false) }
+
+    val importJsonLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            pendingImportUri = uri
+        }
+    }
+
+    val exportJsonLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            viewModel.exportJsonToUri(context, uri, selectedOnly = isExportSelectedOnly) { success ->
+                if (!success) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.annotations_export_failed),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+
+    if (pendingImportUri != null) {
+        val targetUri = pendingImportUri
+        AlertDialog(
+            onDismissRequest = { pendingImportUri = null },
+            title = { Text(stringResource(R.string.annotations_import_dialog_title)) },
+            text = { Text(stringResource(R.string.annotations_import_dialog_msg)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingImportUri = null
+                        if (targetUri != null) {
+                            viewModel.importJsonFromUri(context, targetUri, overwrite = true) { result ->
+                                result.fold(
+                                    onSuccess = { count ->
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.annotations_import_success, count),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    },
+                                    onFailure = {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.annotations_import_failed),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                )
+                            }
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.annotations_import_overwrite))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        pendingImportUri = null
+                        if (targetUri != null) {
+                            viewModel.importJsonFromUri(context, targetUri, overwrite = false) { result ->
+                                result.fold(
+                                    onSuccess = { count ->
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.annotations_import_success, count),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    },
+                                    onFailure = {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.annotations_import_failed),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                )
+                            }
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.annotations_import_skip))
+                }
+            }
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -168,6 +264,11 @@ fun AnnotationsScreen(
                     onToggleSelectionMode = { viewModel.toggleSelectionMode() },
                     groupedAnnotations = groupedAnnotations,
                     dataManager = libraryViewModel.dataManager,
+                    onExportJsonRequested = { selectedOnly ->
+                        isExportSelectedOnly = selectedOnly
+                        exportJsonLauncher.launch("maktabah_annotations.json")
+                    },
+                    onImportJsonRequested = { importJsonLauncher.launch(arrayOf("application/json", "*/*")) },
                 )
             },
         ) { padding ->
@@ -235,10 +336,13 @@ private fun AnnotationsTopBar(
     onToggleSelectionMode: () -> Unit,
     groupedAnnotations: List<AnnotationGroup>,
     dataManager: com.maktabah.manager.LibraryDataManager,
+    onExportJsonRequested: (Boolean) -> Unit,
+    onImportJsonRequested: () -> Unit,
 ) {
     var isSyncing by remember { mutableStateOf(false) }
     var showMainMenu by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
+    var showSelectionExportMenu by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     Column(
@@ -275,20 +379,40 @@ private fun AnnotationsTopBar(
             actions = {
                 if (isSelectionMode) {
                     if (selectedAnnotationIds.isNotEmpty()) {
-                        IconButton(
-                            onClick = {
-                                RtfAnnotationExporter.exportAndShareRtf(
-                                    context = context,
-                                    groups = groupedAnnotations,
-                                    dataManager = dataManager,
-                                    selectedAnnotationIds = selectedAnnotationIds
+                        Box {
+                            IconButton(onClick = { showSelectionExportMenu = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = stringResource(R.string.annotations_menu_export_rtf),
                                 )
                             }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Share,
-                                contentDescription = stringResource(R.string.annotations_menu_export_rtf),
-                            )
+                            DropdownMenu(
+                                expanded = showSelectionExportMenu,
+                                onDismissRequest = { showSelectionExportMenu = false },
+                                containerColor = MaterialTheme.colorScheme.surface,
+                            ) {
+                                AnnotationMenuItem(
+                                    text = stringResource(R.string.annotations_menu_export_rtf),
+                                    icon = Icons.Default.Share,
+                                    onClick = {
+                                        showSelectionExportMenu = false
+                                        RtfAnnotationExporter.exportAndShareRtf(
+                                            context = context,
+                                            groups = groupedAnnotations,
+                                            dataManager = dataManager,
+                                            selectedAnnotationIds = selectedAnnotationIds
+                                        )
+                                    },
+                                )
+                                AnnotationMenuItem(
+                                    text = stringResource(R.string.annotations_menu_export_json),
+                                    icon = Icons.Default.FileUpload,
+                                    onClick = {
+                                        showSelectionExportMenu = false
+                                        onExportJsonRequested(true)
+                                    },
+                                )
+                            }
                         }
                     }
                     IconButton(onClick = onToggleSelectionMode) {
@@ -343,6 +467,7 @@ private fun AnnotationsTopBar(
                                     )
                                 },
                             )
+
                             HorizontalDivider()
                             Text(
                                 text = stringResource(R.string.annotations_sort_by),
@@ -408,22 +533,17 @@ private fun AnnotationsTopBar(
                             onDismissRequest = { showMainMenu = false },
                             containerColor = MaterialTheme.colorScheme.surface,
                         ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.annotations_menu_select)) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.CheckCircleOutline,
-                                        contentDescription = stringResource(R.string.annotations_menu_select),
-                                    )
-                                },
+                            AnnotationMenuItem(
+                                text = stringResource(R.string.annotations_menu_select),
+                                icon = Icons.Default.CheckCircleOutline,
                                 onClick = {
                                     showMainMenu = false
                                     onToggleSelectionMode()
                                 },
                             )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.annotations_menu_reload)) },
-                                leadingIcon = {
+                            AnnotationMenuItemCustomIcon(
+                                text = stringResource(R.string.annotations_menu_reload),
+                                icon = {
                                     if (isSyncing) {
                                         CircularProgressIndicator(
                                             modifier = Modifier.size(24.dp),
@@ -443,14 +563,10 @@ private fun AnnotationsTopBar(
                                     isSyncing = false
                                 },
                             )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.annotations_menu_export_rtf)) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Share,
-                                        contentDescription = stringResource(R.string.annotations_menu_export_rtf),
-                                    )
-                                },
+                            HorizontalDivider()
+                            AnnotationMenuItem(
+                                text = stringResource(R.string.annotations_menu_export_rtf),
+                                icon = Icons.Default.Share,
                                 onClick = {
                                     showMainMenu = false
                                     val success = RtfAnnotationExporter.exportAndShareRtf(
@@ -465,6 +581,23 @@ private fun AnnotationsTopBar(
                                             Toast.LENGTH_SHORT
                                         ).show()
                                     }
+                                },
+                            )
+                            AnnotationMenuItem(
+                                text = stringResource(R.string.annotations_menu_export_json),
+                                icon = Icons.Default.FileUpload,
+                                onClick = {
+                                    showMainMenu = false
+                                    onExportJsonRequested(false)
+                                },
+                            )
+                            HorizontalDivider()
+                            AnnotationMenuItem(
+                                text = stringResource(R.string.annotations_menu_import_json),
+                                icon = Icons.Default.FileDownload,
+                                onClick = {
+                                    showMainMenu = false
+                                    onImportJsonRequested()
                                 },
                             )
                         }
@@ -819,4 +952,35 @@ private fun AnnotationsList(
         )
 
     }
+}
+
+@Composable
+private fun AnnotationMenuItem(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+) {
+    DropdownMenuItem(
+        text = { Text(text) },
+        leadingIcon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = text,
+            )
+        },
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun AnnotationMenuItemCustomIcon(
+    text: String,
+    icon: @Composable () -> Unit,
+    onClick: () -> Unit,
+) {
+    DropdownMenuItem(
+        text = { Text(text) },
+        leadingIcon = icon,
+        onClick = onClick,
+    )
 }

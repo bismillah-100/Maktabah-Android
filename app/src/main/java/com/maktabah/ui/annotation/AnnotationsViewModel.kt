@@ -124,6 +124,7 @@ class AnnotationsViewModel : ViewModel() {
 
     private lateinit var dataManager: LibraryDataManager
     private lateinit var sharedPrefs: android.content.SharedPreferences
+    private var annotationManager: AnnotationManager? = null
     private var isInitialized = false
 
     fun initialize(
@@ -133,6 +134,7 @@ class AnnotationsViewModel : ViewModel() {
     ) {
         if (isInitialized) return
         isInitialized = true
+        this.annotationManager = annotationManager
         this.dataManager = libraryDataManager
         this.sharedPrefs = context.getSharedPreferences("AnnotationsPrefs", android.content.Context.MODE_PRIVATE)
 
@@ -142,6 +144,64 @@ class AnnotationsViewModel : ViewModel() {
 
         loadAnnotations(annotationManager, isInitial = true)
         observeAnnotationUpdates(annotationManager)
+    }
+
+    fun exportJsonToUri(
+        context: android.content.Context,
+        uri: android.net.Uri,
+        selectedOnly: Boolean = false,
+        onResult: (Boolean) -> Unit
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val listToExport = if (selectedOnly && _selectedAnnotationIds.value.isNotEmpty()) {
+                    _annotations.value.filter { it.id != null && _selectedAnnotationIds.value.contains(it.id) }
+                } else {
+                    _annotations.value
+                }
+                val jsonString = com.maktabah.database.AnnotationJsonSerializer.encodeToJson(listToExport)
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    output.write(jsonString.toByteArray(Charsets.UTF_8))
+                }
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    onResult(true)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    onResult(false)
+                }
+            }
+        }
+    }
+
+    fun importJsonFromUri(
+        context: android.content.Context,
+        uri: android.net.Uri,
+        overwrite: Boolean = true,
+        onResult: (Result<Int>) -> Unit
+    ) {
+        val manager = annotationManager ?: run {
+            onResult(Result.failure(IllegalStateException("AnnotationManager not initialized")))
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val jsonString = context.contentResolver.openInputStream(uri)?.use { input ->
+                    input.bufferedReader(Charsets.UTF_8).readText()
+                } ?: ""
+                val decoded = com.maktabah.database.AnnotationJsonSerializer.decodeFromJson(jsonString)
+                val importedCount = manager.importAnnotations(decoded, overwrite = overwrite)
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    onResult(Result.success(importedCount))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    onResult(Result.failure(e))
+                }
+            }
+        }
     }
 
     private fun observeAnnotationUpdates(annotationManager: AnnotationManager) {
