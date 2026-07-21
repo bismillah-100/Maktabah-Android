@@ -236,4 +236,8 @@
     <string name="annotation_group_unknown_book">Unknown Book</string>
     <string name="format_mb">%.2f MB</string>
     <string name="downloading">Downloading…</string>
+    <string name="download_notification_channel_name">Book Downloads</string>
+    <string name="download_notification_channel_desc">Shows ongoing download progress for books</string>
+    <string name="download_notification_completed_title">Download Completed</string>
+    <string name="download_notification_completed_desc">Books downloaded successfully</string>
 </resources>

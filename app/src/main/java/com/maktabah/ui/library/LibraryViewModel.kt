@@ -35,8 +35,15 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
     private val _downloadedBookIds = MutableStateFlow<Set<Int>>(emptySet())
     val downloadedBookIds: StateFlow<Set<Int>> = _downloadedBookIds
 
-    private val _activeDownloadStates = MutableStateFlow<List<BookDownloadState>>(emptyList())
-    val activeDownloadStates: StateFlow<List<BookDownloadState>> = _activeDownloadStates
+    val activeDownloadStates: StateFlow<List<BookDownloadState>> = com.maktabah.downloader.BookDownloadService.activeDownloadStates
+
+    init {
+        viewModelScope.launch {
+            com.maktabah.downloader.BookDownloadNotifier.downloadedBookEvents.collect { bookId ->
+                markBookAsDownloaded(bookId)
+            }
+        }
+    }
 
     private var downloadIndex: List<BundleBookIndexEntry>? = null
 
@@ -63,7 +70,7 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
     private val _flatVisibleItems = MutableStateFlow<List<FlatLibraryItem>>(emptyList())
     val flatVisibleItems: StateFlow<List<FlatLibraryItem>> = _flatVisibleItems
 
-    val isBulkDownloading: StateFlow<Boolean> = _activeDownloadStates.map { states ->
+    val isBulkDownloading: StateFlow<Boolean> = activeDownloadStates.map { states ->
         states.any { it.isBulk && it.isDownloading }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
@@ -269,7 +276,7 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
             updateSelectionDownloadState(context)
         } else {
             // Remove pending bulk confirmation
-            _activeDownloadStates.value = _activeDownloadStates.value.filter { !(it.isBulk && !it.isDownloading) }
+            com.maktabah.downloader.BookDownloadService.updateStates { states -> states.filter { !(it.isBulk && !it.isDownloading) } }
         }
     }
 
@@ -322,14 +329,14 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
         val downloaded = _downloadedBookIds.value
 
         if (!isSelection || selected.isEmpty()) {
-            _activeDownloadStates.value = _activeDownloadStates.value.filter { !(it.isBulk && !it.isDownloading) }
+            com.maktabah.downloader.BookDownloadService.updateStates { states -> states.filter { !(it.isBulk && !it.isDownloading) } }
             return
         }
 
         // If currently downloading bulk, don't overwrite/add another bulk confirmation
-        if (_activeDownloadStates.value.any { it.isBulk && it.isDownloading }) return
+        if (com.maktabah.downloader.BookDownloadService.activeDownloadStates.value.any { it.isBulk && it.isDownloading }) return
 
-        val existingBulkState = _activeDownloadStates.value.find { it.isBulk && !it.isDownloading }
+        val existingBulkState = com.maktabah.downloader.BookDownloadService.activeDownloadStates.value.find { it.isBulk && !it.isDownloading }
         val needDownload = selected.filter { !downloaded.contains(it) }
 
         // Compute total size
@@ -366,11 +373,11 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
         )
 
         if (existingBulkState != null) {
-            _activeDownloadStates.value = _activeDownloadStates.value.map {
-                if (it.id == existingBulkState.id) newState else it
+            com.maktabah.downloader.BookDownloadService.updateStates { states ->
+                states.map { if (it.id == existingBulkState.id) newState else it }
             }
         } else {
-            _activeDownloadStates.value += newState
+            com.maktabah.downloader.BookDownloadService.updateStates { states -> states + newState }
         }
     }
 
@@ -607,7 +614,7 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
         query: String? = null
     ) {
         // Prevent duplicate confirmation for the same book
-        if (_activeDownloadStates.value.any { it.bookId == bookId && !it.isBulk }) return
+        if (com.maktabah.downloader.BookDownloadService.activeDownloadStates.value.any { it.bookId == bookId && !it.isBulk }) return
 
         viewModelScope.launch {
             val bookName = dataManager.booksById[bookId]?.name
@@ -630,12 +637,17 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
                 isDownloading = false,
                 progress = 0
             )
-            _activeDownloadStates.value += newState
+            com.maktabah.downloader.BookDownloadService.updateStates { states -> states + newState }
         }
     }
 
     fun cancelDownload(id: String) {
-        _activeDownloadStates.value = _activeDownloadStates.value.filter { it.id != id }
+        val state = com.maktabah.downloader.BookDownloadService.getState(id)
+        if (state != null && state.isDownloading) {
+            com.maktabah.downloader.BookDownloadService.cancelDownload(id)
+        } else {
+            com.maktabah.downloader.BookDownloadService.updateStates { states -> states.filter { it.id != id } }
+        }
     }
 
     fun confirmDownload(
@@ -643,66 +655,17 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
         stateId: String,
         onComplete: (Int, Int?, Int?, Int?, String?) -> Unit
     ) {
-        val currentState = _activeDownloadStates.value.find { it.id == stateId } ?: return
+        val currentState = com.maktabah.downloader.BookDownloadService.getState(stateId) ?: return
 
-        // Update state to downloading
-        _activeDownloadStates.value = _activeDownloadStates.value.map {
-            if (it.id == stateId) it.copy(isDownloading = true, progress = 0) else it
-        }
+        com.maktabah.downloader.BookDownloadService.startDownload(context, stateId)
 
         if (currentState.isBulk) {
-            viewModelScope.launch {
-                val manager = BookDownloadManager(context)
-                val index = manager.fetchIndex()
-                val toDownload = currentState.bulkBookIds
-                var successCount = 0
-
-                for ((idx, bookId) in toDownload.withIndex()) {
-                    val entry = index.find { it.bkid == bookId }
-                    if (entry != null) {
-                        _activeDownloadStates.value = _activeDownloadStates.value.map {
-                            if (it.id == stateId) it.copy(progress = (idx * 100 / toDownload.size)) else it
-                        }
-
-                        val success = manager.downloadBook(entry, onPhaseChanged = { phase ->
-                            _activeDownloadStates.value = _activeDownloadStates.value.map {
-                                if (it.id == stateId) it.copy(phase = phase) else it
-                            }
-                        }) { progress ->
-                            val overallProgress = (idx * 100 + progress) / toDownload.size
-                            _activeDownloadStates.value = _activeDownloadStates.value.map {
-                                if (it.id == stateId) it.copy(progress = overallProgress) else it
-                            }
-                        }
-                        if (success) {
-                            markBookAsDownloaded(bookId)
-                            successCount++
-                        }
-                    }
-                }
-
-                _activeDownloadStates.value = _activeDownloadStates.value.filter { it.id != stateId }
-                _isSelectionMode.value = false
-                _selectedBookIds.value = emptySet()
-            }
+            _isSelectionMode.value = false
+            _selectedBookIds.value = emptySet()
         } else {
             viewModelScope.launch {
-                val manager = BookDownloadManager(context)
-                val index = manager.fetchIndex()
-                val entry = index.find { it.bkid == currentState.bookId }
-                if (entry != null) {
-                    val success = manager.downloadBook(entry, onPhaseChanged = { phase ->
-                        _activeDownloadStates.value = _activeDownloadStates.value.map {
-                            if (it.id == stateId) it.copy(phase = phase) else it
-                        }
-                    }) { progress ->
-                        _activeDownloadStates.value = _activeDownloadStates.value.map {
-                            if (it.id == stateId) it.copy(progress = progress) else it
-                        }
-                    }
-                    if (success) {
-                        markBookAsDownloaded(currentState.bookId)
-                        _activeDownloadStates.value = _activeDownloadStates.value.filter { it.id != stateId }
+                com.maktabah.downloader.BookDownloadNotifier.downloadedBookEvents.collect { bId ->
+                    if (bId == currentState.bookId) {
                         onComplete(
                             currentState.bookId,
                             currentState.contentId,
@@ -710,20 +673,6 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
                             currentState.len,
                             currentState.query
                         )
-                    } else {
-                        _activeDownloadStates.value = _activeDownloadStates.value.map {
-                            if (it.id == stateId) it.copy(
-                                isDownloading = false,
-                                error = context.getString(R.string.library_download_failed)
-                            ) else it
-                        }
-                    }
-                } else {
-                    _activeDownloadStates.value = _activeDownloadStates.value.map {
-                        if (it.id == stateId) it.copy(
-                            isDownloading = false,
-                            error = context.getString(R.string.library_book_not_found_index)
-                        ) else it
                     }
                 }
             }
