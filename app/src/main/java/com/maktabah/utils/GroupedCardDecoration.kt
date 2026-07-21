@@ -255,18 +255,11 @@ class GroupedCardDecoration(
         ))
 
         for (child in sortedChildren) {
-            val tagFirst = child.getTag(com.maktabah.R.id.tag_is_first) as? Boolean
-            val tagLast = child.getTag(com.maktabah.R.id.tag_is_last) as? Boolean
-
             var isFirst: Boolean
             var isLast: Boolean
 
-            if (tagFirst != null && tagLast != null) {
-                isFirst = tagFirst
-                isLast = tagLast
-            } else {
-                val pos = parent.getChildAdapterPosition(child)
-                if (pos == RecyclerView.NO_POSITION) continue
+            val pos = parent.getChildAdapterPosition(child)
+            if (pos != RecyclerView.NO_POSITION) {
                 val info = getGroupInfo(pos)
                 if (info == null) {
                     drawCurrentGroup()
@@ -274,6 +267,17 @@ class GroupedCardDecoration(
                 }
                 isFirst = info.isFirst
                 isLast = info.isLast
+                child.setTag(com.maktabah.R.id.tag_is_first, isFirst)
+                child.setTag(com.maktabah.R.id.tag_is_last, isLast)
+            } else {
+                val tagFirst = child.getTag(com.maktabah.R.id.tag_is_first) as? Boolean
+                val tagLast = child.getTag(com.maktabah.R.id.tag_is_last) as? Boolean
+                if (tagFirst != null && tagLast != null) {
+                    isFirst = tagFirst
+                    isLast = tagLast
+                } else {
+                    continue
+                }
             }
 
             val childTop = getVisibleTop(child)
