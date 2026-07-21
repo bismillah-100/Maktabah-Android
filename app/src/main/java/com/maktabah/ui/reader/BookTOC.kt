@@ -298,7 +298,8 @@ fun BookTOCSheet(
                                     viewModel.loadContentById(node.id)
                                     onDismissRequest()
                                 },
-                                contentPadding = PaddingValues(vertical = 8.dp, horizontal = 16.dp)
+                                contentPadding = PaddingValues(vertical = 8.dp, horizontal = 16.dp),
+                                dividerStartPadding = 48.dp + (depth * 16).dp
                             ) {
                                 Row(
                                     modifier = Modifier
