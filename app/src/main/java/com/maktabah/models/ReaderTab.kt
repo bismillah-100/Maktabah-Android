@@ -16,5 +16,7 @@ data class FlashTarget(
     val annotationId: String? = null,
     val query: String? = null,
     val loc: Int? = null,
-    val len: Int? = null
+    val len: Int? = null,
+    val isParagraphStart: Boolean = false,
+    val targetContentId: Int? = null,
 )
