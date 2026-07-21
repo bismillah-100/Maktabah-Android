@@ -437,6 +437,7 @@ fun ReaderScreen(
 
                 IbarotReaderContentView(
                     viewModel = viewModel,
+                    bookId = bookId,
                     contentId = content!!.id,
                     nass = content!!.nass,
                     textSize = textSize,

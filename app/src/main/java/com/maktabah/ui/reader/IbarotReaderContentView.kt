@@ -52,6 +52,7 @@ import com.maktabah.utils.normalizeArabic
 fun IbarotReaderContentView(
     modifier: Modifier = Modifier,
     viewModel: ReaderViewModel,
+    bookId: Int = -1,
     contentId: Int,
     nass: String,
     textSize: Float,
@@ -167,6 +168,8 @@ fun IbarotReaderContentView(
                     this.text =
                         renderContent(
                             nass = nass,
+                            bookId = bookId,
+                            contentId = contentId,
                             textColor = textColor,
                             backgroundColor = backgroundColor,
                             highlightColor = highlightColorInt,
@@ -283,6 +286,8 @@ fun IbarotReaderContentView(
                 textView.text =
                     renderContent(
                         nass = nass,
+                        bookId = bookId,
+                        contentId = contentId,
                         textColor = textColor,
                         backgroundColor = backgroundColor,
                         highlightColor = currentHighlightColorInt,
@@ -481,6 +486,8 @@ fun IbarotReaderContentView(
 
 private fun renderContent(
     nass: String,
+    bookId: Int,
+    contentId: Int,
     textColor: Color,
     backgroundColor: Color,
     highlightColor: Int,
@@ -500,6 +507,8 @@ private fun renderContent(
 
     return ArabicTextRenderer.render(
         text = nass,
+        bookId = bookId,
+        contentId = contentId,
         highlightColor = highlightColor,
         footnoteColor = footnoteColorInt,
         showHarakat = showHarakat,
