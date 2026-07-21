@@ -43,6 +43,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.maktabah.R
+import com.maktabah.models.FlashTarget
 import com.maktabah.models.TOCNode
 import com.maktabah.models.VisibleTOCNode
 import com.maktabah.ui.common.InsetGroupedItem
@@ -295,7 +296,16 @@ fun BookTOCSheet(
                                 index = index,
                                 lastIndex = visibleNodes.lastIndex,
                                 onClick = {
-                                    viewModel.loadContentById(node.id)
+                                    if (viewModel.currentContent.value?.id != node.id) {
+                                        viewModel.loadContentById(node.id)
+                                    }
+                                    viewModel.setFlashTarget(
+                                        FlashTarget(
+                                            query = node.title,
+                                            isParagraphStart = true,
+                                            targetContentId = node.id
+                                        )
+                                    )
                                     onDismissRequest()
                                 },
                                 contentPadding = PaddingValues(vertical = 8.dp, horizontal = 16.dp)
