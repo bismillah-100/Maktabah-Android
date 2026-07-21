@@ -1,6 +1,6 @@
 package com.maktabah.models
 
-data class FlatLibraryItem(val item: Any, val level: Int)
+data class FlatLibraryItem(val item: Any, val level: Int, val isDownloaded: Boolean = false)
 data class LoadMoreData(val categoryId: Int, val hiddenCount: Int)
 
 enum class LibraryViewMode(val value: Int) {

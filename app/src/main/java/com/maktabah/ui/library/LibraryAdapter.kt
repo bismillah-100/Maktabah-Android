@@ -435,7 +435,7 @@ class LibraryAdapter(
                         typeIcon?.scaleX = 1f
                     } else {
                         itemView.isSelected = false
-                        val isDownloaded = isBookDownloadedById(item.id)
+                        val isDownloaded = flatItem.isDownloaded
                         if (isDownloaded) {
                             typeIcon?.setImageResource(R.drawable.ic_import_contacts)
                         } else {
