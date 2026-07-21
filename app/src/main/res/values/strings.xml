@@ -178,6 +178,12 @@
     <string name="annotations_menu_part">Part</string>
     <string name="annotations_menu_asc">Ascending</string>
     <string name="annotations_menu_desc">Descending</string>
+    <string name="annotations_menu_select">Select…</string>
+    <string name="annotations_menu_reload">Sync / Reload</string>
+    <string name="annotations_menu_export_rtf">Export to RTF</string>
+    <string name="annotations_selected_count">%1$d Selected</string>
+    <string name="annotations_export_failed">Export RTF Failed</string>
+    <string name="annotations_sort_options">Sort Options</string>
     <string name="annotations_empty_hint">No annotations found. Tap refresh to sync from CloudKit.</string>
     <string name="annotations_search_all">All</string>
     <string name="annotations_search_book">Book</string>
