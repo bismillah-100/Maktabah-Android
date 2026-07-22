@@ -548,6 +548,7 @@ class ResultsViewModel : ViewModel() {
  */
 object CloudKitResultSyncHelper {
     val syncEvent = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
 
     fun uploadFolders(context: android.content.Context, folders: List<com.maktabah.models.SyncFolder>) {
         triggerSync(context)
@@ -562,7 +563,7 @@ object CloudKitResultSyncHelper {
     }
 
     private fun triggerSync(context: android.content.Context) {
-        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+        scope.launch {
             val result = com.maktabah.cloudKit.CloudKitSyncManager().syncResults(context)
             if (com.maktabah.BuildConfig.DEBUG) {
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
