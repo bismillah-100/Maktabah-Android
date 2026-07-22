@@ -154,8 +154,6 @@ fun SearchScreen(
 
     val pagerState = rememberPagerState(pageCount = { 2 })
     var userScrollEnabled by remember { mutableStateOf(true) }
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val edgeWidthPx = remember { with(density) { 50.dp.toPx() } }
 
     LaunchedEffect(showSavedResults) {
         if (showSavedResults) {
@@ -184,17 +182,33 @@ fun SearchScreen(
 
     HorizontalPager(
         state = pagerState,
+        userScrollEnabled = userScrollEnabled,
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
+                val touchSlop = viewConfiguration.touchSlop
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    val x = down.position.x
-                    val width = size.width
-                    userScrollEnabled = x < edgeWidthPx || x > (width - edgeWidthPx)
+                    var isDirectionDetermined = false
+
+                    do {
+                        val event = awaitPointerEvent()
+                        val currentPointer = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                        if (!isDirectionDetermined) {
+                            val dx = kotlin.math.abs(currentPointer.position.x - down.position.x)
+                            val dy = kotlin.math.abs(currentPointer.position.y - down.position.y)
+
+                            if (dx > touchSlop || dy > touchSlop) {
+                                isDirectionDetermined = true
+                                userScrollEnabled = dx > dy
+                            }
+                        }
+                    } while (event.changes.any { it.pressed })
+
+                    userScrollEnabled = true
                 }
             },
-        userScrollEnabled = userScrollEnabled
     ) { page ->
         val pageOffset = page - (pagerState.currentPage + pagerState.currentPageOffsetFraction)
 
