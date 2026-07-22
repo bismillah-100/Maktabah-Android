@@ -9,6 +9,8 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +31,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -59,6 +63,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -146,157 +152,238 @@ fun SearchScreen(
         if (results.isEmpty()) bookFilter = ""
     }
 
-    BackHandler(enabled = results.isNotEmpty()) {
+    val pagerState = rememberPagerState(pageCount = { 2 })
+    var userScrollEnabled by remember { mutableStateOf(true) }
+
+    LaunchedEffect(showSavedResults) {
+        if (showSavedResults) {
+            if (pagerState.currentPage != 1) {
+                pagerState.animateScrollToPage(1)
+            }
+        } else {
+            if (pagerState.currentPage != 0) {
+                pagerState.animateScrollToPage(0)
+            }
+        }
+    }
+
+    LaunchedEffect(pagerState.currentPage) {
+        val showSaved = pagerState.currentPage == 1
+        if (showSavedResults != showSaved) {
+            viewModel.setShowSavedResults(showSaved)
+        }
+    }
+
+    BackHandler(enabled = results.isNotEmpty() && !showSavedResults) {
         viewModel.clearResults()
         query = ""
         onClearGlobalQuery()
     }
 
-    Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .pointerInput(Unit) {
-                    detectTapGestures(onTap = {
-                        focusManager.clearFocus()
-                    })
-                },
-    ) {
-        val searchQuery by viewModel.searchQuery.collectAsState()
-        val expandedCategories by viewModel.expandedCategories.collectAsState()
+    HorizontalPager(
+        state = pagerState,
+        userScrollEnabled = userScrollEnabled,
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                val touchSlop = viewConfiguration.touchSlop
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var isDirectionDetermined = false
 
-        FilterAndCategoryContent(
-            viewModel = viewModel,
-            libraryViewModel = libraryViewModel,
-            flatVisibleItems = flatVisibleItems,
-            selectedBookIds = selectedBookIds,
-            expandedCategories = expandedCategories,
-            searchQuery = searchQuery,
-            bottomContentPadding = bottomPadding + 88.dp,
-            hasDonated = hasDonated,
-            isDataLoaded = isDataLoaded && isTreeLoaded,
-            onOpenSavedResults = { viewModel.setShowSavedResults(true) }
-        )
+                    do {
+                        val event = awaitPointerEvent()
+                        val currentPointer = event.changes.firstOrNull { it.id == down.id } ?: break
 
-        QueryInputBar(
-            query = query,
-            onQueryChange = { newQuery -> 
-                query = newQuery 
-                if (newQuery.isEmpty()) {
-                    viewModel.clearResults()
-                    onClearGlobalQuery()
+                        if (!isDirectionDetermined) {
+                            val dx = kotlin.math.abs(currentPointer.position.x - down.position.x)
+                            val dy = kotlin.math.abs(currentPointer.position.y - down.position.y)
+
+                            if (dx > touchSlop || dy > touchSlop) {
+                                isDirectionDetermined = true
+                                userScrollEnabled = dx > dy
+                            }
+                        }
+                    } while (event.changes.any { it.pressed })
+
+                    userScrollEnabled = true
                 }
             },
-            onSearch = {
-                focusManager.clearFocus()
-                viewModel.performSearch(
-                    context,
-                    query,
-                    activeSearchMode,
-                    libraryViewModel.dataManager
-                )
-            },
-            canSearch = query.isNotBlank() && selectedBookIds.isNotEmpty(),
-            placeholder = stringResource(R.string.search_query_placeholder),
-            modifier =
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = androidx.compose.ui.unit.max(bottomPadding, imeBottom) + 8.dp),
-            onFocusChanged = { isFocused = it }
-        )
+    ) { page ->
+        val pageOffset = page - (pagerState.currentPage + pagerState.currentPageOffsetFraction)
 
-        if (isFocused) {
-            SearchHistoryOverlay(
-                searchHistory = searchHistory,
-                onClearAll = { viewModel.clearHistory(context) },
-                onHistoryClick = { historyQuery ->
-                    query = historyQuery
-                    focusManager.clearFocus()
-                    viewModel.performSearch(
-                        context,
-                        historyQuery,
-                        activeSearchMode,
-                        libraryViewModel.dataManager
+        val pageModifier = Modifier
+            .fillMaxSize()
+            .zIndex(if (page == 1) 1f else 0f)
+            .graphicsLayer {
+                if (page == 0) {
+                    if (pageOffset < 0f) {
+                        translationX = -pageOffset * size.width * 0.7f
+                        scaleX = 1f + (pageOffset * 0.05f)
+                        scaleY = 1f + (pageOffset * 0.05f)
+                        alpha = 1f + (pageOffset * 0.5f)
+                    } else {
+                        translationX = 0f
+                        scaleX = 1f
+                        scaleY = 1f
+                        alpha = 1f
+                    }
+                } else if (page == 1) {
+                    translationX = 0f
+                    scaleX = 1f
+                    scaleY = 1f
+                    alpha = 1f
+                }
+            }
+
+        Box(modifier = pageModifier) {
+            when (page) {
+                0 -> {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background)
+                                .pointerInput(Unit) {
+                                    detectTapGestures(onTap = {
+                                        focusManager.clearFocus()
+                                    })
+                                },
+                    ) {
+                        val searchQuery by viewModel.searchQuery.collectAsState()
+                        val expandedCategories by viewModel.expandedCategories.collectAsState()
+
+                        FilterAndCategoryContent(
+                            viewModel = viewModel,
+                            libraryViewModel = libraryViewModel,
+                            flatVisibleItems = flatVisibleItems,
+                            selectedBookIds = selectedBookIds,
+                            expandedCategories = expandedCategories,
+                            searchQuery = searchQuery,
+                            bottomContentPadding = bottomPadding + 88.dp,
+                            hasDonated = hasDonated,
+                            isDataLoaded = isDataLoaded && isTreeLoaded,
+                            onOpenSavedResults = { viewModel.setShowSavedResults(true) }
+                        )
+
+                        QueryInputBar(
+                            query = query,
+                            onQueryChange = { newQuery -> 
+                                query = newQuery 
+                                if (newQuery.isEmpty()) {
+                                    viewModel.clearResults()
+                                    onClearGlobalQuery()
+                                }
+                            },
+                            onSearch = {
+                                focusManager.clearFocus()
+                                viewModel.performSearch(
+                                    context,
+                                    query,
+                                    activeSearchMode,
+                                    libraryViewModel.dataManager
+                                )
+                            },
+                            canSearch = query.isNotBlank() && selectedBookIds.isNotEmpty(),
+                            placeholder = stringResource(R.string.search_query_placeholder),
+                            modifier =
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = androidx.compose.ui.unit.max(bottomPadding, imeBottom) + 8.dp),
+                            onFocusChanged = { isFocused = it }
+                        )
+
+                        if (isFocused) {
+                            SearchHistoryOverlay(
+                                searchHistory = searchHistory,
+                                onClearAll = { viewModel.clearHistory(context) },
+                                onHistoryClick = { historyQuery ->
+                                    query = historyQuery
+                                    focusManager.clearFocus()
+                                    viewModel.performSearch(
+                                        context,
+                                        historyQuery,
+                                        activeSearchMode,
+                                        libraryViewModel.dataManager
+                                    )
+                                },
+                                onRemoveHistory = { historyQuery ->
+                                    viewModel.removeFromHistory(context, historyQuery)
+                                },
+                                activeMode = activeSearchMode,
+                                onModeSelect = { activeSearchMode = it },
+                                onHelpClick = { showHelpDialog = true },
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = androidx.compose.ui.unit.max(bottomPadding, imeBottom) + 88.dp)
+                            )
+                        }
+
+                        if (showHelpDialog) {
+                            SearchHelpDialog(onDismiss = { showHelpDialog = false })
+                        }
+
+                        AnimatedVisibility(
+                            visible = results.isNotEmpty(),
+                            enter =
+                                slideInVertically(
+                                    initialOffsetY = { fullHeight -> fullHeight },
+                                    animationSpec = tween(durationMillis = 400),
+                                ) + fadeIn(animationSpec = tween(300)),
+                            exit =
+                                slideOutVertically(
+                                    targetOffsetY = { fullHeight -> fullHeight },
+                                    animationSpec = tween(durationMillis = 300),
+                                ) + fadeOut(animationSpec = tween(200)),
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            SearchResultsOverlay(
+                                results = results,
+                                query = lastSearchQuery,
+                                searchMode = activeSearchMode,
+                                bookFilter = bookFilter,
+                                onBookFilterChange = { bookFilter = it },
+                                onClearResults = {
+                                    viewModel.clearResults()
+                                    query = ""
+                                    onClearGlobalQuery()
+                                },
+                                onSelect = onNavigateToReader,
+                                bottomPadding = bottomPadding,
+                                libraryViewModel = libraryViewModel,
+                                onOpenSavedResults = { viewModel.setShowSavedResults(true) },
+                                onSaveResults = { showResultWriter = true }
+                            )
+                        }
+
+                        SearchProgressBars(
+                            isSearching = isSearching,
+                            completedBooks = completedBooks,
+                            totalBooks = totalBooks,
+                            currentBookProgress = currentBookProgress,
+                            currentBookName = currentBookName,
+                            modifier =
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = androidx.compose.ui.unit.max(bottomPadding, imeBottom)),
+                        )
+                    }
+                }
+                1 -> {
+                    SavedResultsScreen(
+                        resultsViewModel = resultsViewModel,
+                        onSelectResult = { items ->
+                            viewModel.setShowSavedResults(false)
+                            viewModel.loadSavedResults(items, context, libraryViewModel.dataManager)
+                        },
+                        onRefresh = { resultsViewModel.reloadFromSync() },
+                        onDismiss = { viewModel.setShowSavedResults(false) },
+                        bottomPadding = bottomPadding,
+                        backHandlerEnabled = pagerState.currentPage == 1
                     )
-                },
-                onRemoveHistory = { historyQuery ->
-                    viewModel.removeFromHistory(context, historyQuery)
-                },
-                activeMode = activeSearchMode,
-                onModeSelect = { activeSearchMode = it },
-                onHelpClick = { showHelpDialog = true },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = androidx.compose.ui.unit.max(bottomPadding, imeBottom) + 88.dp)
-            )
+                }
+            }
         }
-
-        if (showHelpDialog) {
-            SearchHelpDialog(onDismiss = { showHelpDialog = false })
-        }
-
-        AnimatedVisibility(
-            visible = results.isNotEmpty(),
-            enter =
-                slideInVertically(
-                    initialOffsetY = { fullHeight -> fullHeight },
-                    animationSpec = tween(durationMillis = 400),
-                ) + fadeIn(animationSpec = tween(300)),
-            exit =
-                slideOutVertically(
-                    targetOffsetY = { fullHeight -> fullHeight },
-                    animationSpec = tween(durationMillis = 300),
-                ) + fadeOut(animationSpec = tween(200)),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            SearchResultsOverlay(
-                results = results,
-                query = lastSearchQuery,
-                searchMode = activeSearchMode,
-                bookFilter = bookFilter,
-                onBookFilterChange = { bookFilter = it },
-                onClearResults = {
-                    viewModel.clearResults()
-                    query = ""
-                    onClearGlobalQuery()
-                },
-                onSelect = onNavigateToReader,
-                bottomPadding = bottomPadding,
-                libraryViewModel = libraryViewModel,
-                onOpenSavedResults = { viewModel.setShowSavedResults(true) },
-                onSaveResults = { showResultWriter = true }
-            )
-        }
-
-        SearchProgressBars(
-            isSearching = isSearching,
-            completedBooks = completedBooks,
-            totalBooks = totalBooks,
-            currentBookProgress = currentBookProgress,
-            currentBookName = currentBookName,
-            modifier =
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = androidx.compose.ui.unit.max(bottomPadding, imeBottom)),
-        )
-    }
-
-    androidx.compose.animation.AnimatedVisibility(
-        visible = showSavedResults,
-        enter = androidx.compose.animation.slideInHorizontally(initialOffsetX = { it }),
-        exit = androidx.compose.animation.slideOutHorizontally(targetOffsetX = { it })
-    ) {
-        SavedResultsScreen(
-            resultsViewModel = resultsViewModel,
-            onSelectResult = { items ->
-                viewModel.setShowSavedResults(false)
-                viewModel.loadSavedResults(items, context, libraryViewModel.dataManager)
-            },
-            onRefresh = { resultsViewModel.reloadFromSync() },
-            onDismiss = { viewModel.setShowSavedResults(false) },
-            bottomPadding = bottomPadding
-        )
     }
 
     if (showResultWriter) {

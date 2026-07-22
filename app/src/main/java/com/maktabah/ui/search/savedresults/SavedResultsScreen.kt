@@ -79,7 +79,8 @@ fun SavedResultsScreen(
     onSelectResult: (List<SavedResultsItem>) -> Unit,
     onRefresh: () -> Unit,
     onDismiss: () -> Unit,
-    bottomPadding: androidx.compose.ui.unit.Dp = 0.dp
+    bottomPadding: androidx.compose.ui.unit.Dp = 0.dp,
+    backHandlerEnabled: Boolean = true
 ) {
     val folderStack by resultsViewModel.folderStack.collectAsState()
     val currentFolder = folderStack.lastOrNull()
@@ -95,7 +96,7 @@ fun SavedResultsScreen(
     var renameText by remember { mutableStateOf("") }
     var itemToMove by remember { mutableStateOf<MoveTarget?>(null) }
 
-    BackHandler {
+    BackHandler(enabled = backHandlerEnabled) {
         if (!resultsViewModel.popFolder()) {
             onDismiss()
         }

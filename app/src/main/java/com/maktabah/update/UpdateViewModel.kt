@@ -15,9 +15,9 @@ class UpdateViewModel(
     var updateState by mutableStateOf<UpdateUIState>(UpdateUIState.Idle)
         private set
 
-    fun checkForUpdates() {
+    fun checkForUpdates(force: Boolean = false, onNoUpdate: (() -> Unit)? = null) {
         if (updateState != UpdateUIState.Idle) return
-        if (!manager.shouldCheckForUpdates()) return
+        if (!force && !manager.shouldCheckForUpdates()) return
         
         updateState = UpdateUIState.Checking
         viewModelScope.launch {
@@ -26,6 +26,9 @@ class UpdateViewModel(
                 updateState = UpdateUIState.UpdateAvailable(release)
             } else {
                 updateState = UpdateUIState.Idle
+                if (force) {
+                    onNoUpdate?.invoke()
+                }
             }
         }
     }
