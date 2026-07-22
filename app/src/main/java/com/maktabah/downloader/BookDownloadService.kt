@@ -284,6 +284,19 @@ class BookDownloadService : Service() {
         }
     }
 
+    private fun createMainActivityPendingIntent(): PendingIntent {
+        val intent = Intent(applicationContext, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        intent.setPackage(packageName)
+        return PendingIntent.getActivity(
+            applicationContext,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
     private fun createNotification(
         title: String,
         contentText: String,
@@ -300,37 +313,17 @@ class BookDownloadService : Service() {
         } else {
             setProgress(0, 0, true)
         }
-        val intent = Intent(applicationContext, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            setPackage(packageName)
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            applicationContext,
-            0,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        setContentIntent(pendingIntent)
+        setContentIntent(createMainActivityPendingIntent())
     }.build()
 
     private fun showCompletedNotification(title: String, message: String) {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val intent = Intent(applicationContext, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            setPackage(packageName)
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            applicationContext,
-            0,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(message)
             .setSmallIcon(R.drawable.ic_cloud)
             .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(createMainActivityPendingIntent())
             .build()
 
         notificationManager.notify(COMPLETED_NOTIFICATION_ID + (System.currentTimeMillis() % 1000).toInt(), notification)
