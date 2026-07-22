@@ -248,6 +248,10 @@
     <string name="annotation_group_unknown_book">Buku Tidak Diketahui</string>
     <string name="format_mb">%.2f MB</string>
     <string name="downloading">Mengunduh…</string>
+    <string name="download_notification_channel_name">Unduhan Buku</string>
+    <string name="download_notification_channel_desc">Menampilkan kemajuan unduhan buku yang sedang berlangsung</string>
+    <string name="download_notification_completed_title">Unduhan Selesai</string>
+    <string name="download_notification_completed_desc">Buku berhasil diunduh</string>
     <string name="saved_results_title">Hasil Tersimpan</string>
     <string name="saved_results_empty">Belum Ada Hasil Tersimpan</string>
     <string name="saved_results_empty_hint">Simpan hasil pencarian untuk diakses nanti.</string>
