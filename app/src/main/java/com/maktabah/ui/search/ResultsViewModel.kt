@@ -202,22 +202,47 @@ class ResultsViewModel : ViewModel() {
         }
     }
 
+    private fun hasDescendantWithId(node: FolderNode, id: Long): Boolean {
+        if (node.id == id) return true
+        return node.children.any { hasDescendantWithId(it, id) }
+    }
+
+    private fun replaceFolderNodeInTree(nodes: List<FolderNode>, id: Long, newName: String): List<FolderNode> {
+        return nodes.map { node ->
+            if (node.id == id) {
+                node.copy(name = newName)
+            } else if (hasDescendantWithId(node, id)) {
+                val newChildren = replaceFolderNodeInTree(node.children, id, newName).toMutableList()
+                node.copy(children = newChildren)
+            } else {
+                node
+            }
+        }
+    }
+
     fun updateFolderName(folderId: Long, newName: String): Boolean {
         val handler = resultsHandler ?: return false
         return try {
             handler.updateFolderName(folderId, newName)
-            folderById[folderId]?.name = newName
+
+            _folderRoots.value = replaceFolderNodeInTree(_folderRoots.value, folderId, newName)
+            rebuildFolderIndex()
 
             // Re-sort siblings
             val parentId = parentById[folderId]
             if (parentId != null) {
                 folderById[parentId]?.children?.sortWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+                _folderRoots.value = _folderRoots.value.toList()
             } else {
                 val roots = _folderRoots.value.toMutableList()
                 roots.sortWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
                 _folderRoots.value = roots
             }
-            _folderRoots.value = _folderRoots.value.toList()
+
+            _folderStack.value = _folderStack.value.map {
+                folderById[it.id] ?: it
+            }
+
             uploadFolderSync(folderId)
             true
         } catch (e: Exception) {
@@ -305,11 +330,19 @@ class ResultsViewModel : ViewModel() {
 
         return try {
             handler.updateResultQueryName(folderId, node.name, newName)
-            node.name = newName
 
-            // Re-sort
+            val newNode = node.copy(name = newName)
+            resultById[resultId] = newNode
+
             val current = _folderResults.value.toMutableMap()
             val list = current[folderId]?.toMutableList() ?: return true
+
+            // Replace old node with new node
+            val index = list.indexOfFirst { it.id == resultId }
+            if (index != -1) {
+                list[index] = newNode
+            }
+
             list.sortWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
             current[folderId] = list
             _folderResults.value = current
@@ -338,14 +371,16 @@ class ResultsViewModel : ViewModel() {
             else current[oldFolderId] = oldList
 
             // Add to new
-            node.parentId = newFolderId
+            val newNode = node.copy(parentId = newFolderId)
+            resultById[resultId] = newNode
+
             val newList = (current[newFolderId] ?: emptyList()).toMutableList()
-            newList.add(node)
+            newList.add(newNode)
             newList.sortWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
             current[newFolderId] = newList
 
             _folderResults.value = current
-            uploadResultSyncByName(newFolderId, node.name)
+            uploadResultSyncByName(newFolderId, newNode.name)
             true
         } catch (e: Exception) {
             false
@@ -457,10 +492,9 @@ class ResultsViewModel : ViewModel() {
 
     private fun rebuildResultIndex() {
         resultById.clear()
-        for ((folderId, results) in _folderResults.value) {
+        for ((_, results) in _folderResults.value) {
             for (r in results) {
                 resultById[r.id] = r
-                r.parentId = folderId
             }
         }
     }
@@ -514,6 +548,7 @@ class ResultsViewModel : ViewModel() {
  */
 object CloudKitResultSyncHelper {
     val syncEvent = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
 
     fun uploadFolders(context: android.content.Context, folders: List<com.maktabah.models.SyncFolder>) {
         triggerSync(context)
@@ -528,7 +563,7 @@ object CloudKitResultSyncHelper {
     }
 
     private fun triggerSync(context: android.content.Context) {
-        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+        scope.launch {
             val result = com.maktabah.cloudKit.CloudKitSyncManager().syncResults(context)
             if (com.maktabah.BuildConfig.DEBUG) {
                 kotlinx.coroutines.withContext(Dispatchers.Main) {

@@ -109,6 +109,7 @@ fun registerFcmToken(context: Context, token: String? = null, email: String? = n
         fcmTokenCallback(token)
     } else {
         try {
+            @Suppress("DEPRECATION")
             Firebase.messaging.token.addOnCompleteListener { task ->
                 if (task.isSuccessful && task.result != null) {
                     fcmTokenCallback(task.result)

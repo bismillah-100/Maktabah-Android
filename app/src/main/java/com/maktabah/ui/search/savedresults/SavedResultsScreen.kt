@@ -123,7 +123,7 @@ fun SavedResultsScreen(
                     val displayFolders = if (isSearching) {
                         resultsViewModel.searchFoldersInMemory(searchQuery)
                     } else {
-                        currentFolder?.children ?: folderRoots
+                        (currentFolder?.children ?: folderRoots).toList()
                     }
 
                     val displayResults = if (isSearching) {
