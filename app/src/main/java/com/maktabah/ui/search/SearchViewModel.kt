@@ -285,6 +285,7 @@ class SearchViewModel : ViewModel() {
         _totalBooks.value = 0
         _currentBookProgress.value = null
         _currentBookName.value = ""
+        _lastSearchQuery.value = ""
     }
 
     fun refreshData(dataManager: LibraryDataManager) {

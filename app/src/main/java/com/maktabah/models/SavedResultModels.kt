@@ -26,14 +26,14 @@ data class SyncResult(
 
 data class FolderNode(
     val id: Long,
-    var name: String,
+    val name: String,
     val children: MutableList<FolderNode> = mutableListOf(),
 )
 
 data class ResultNode(
     val id: Long,
-    var parentId: Long?,
-    var name: String,
+    val parentId: Long?,
+    val name: String,
     val items: List<SavedResultsItem>,
 )
 
