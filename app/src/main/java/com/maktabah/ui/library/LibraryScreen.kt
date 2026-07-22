@@ -71,6 +71,7 @@ fun LibraryScreen(
     tabManager: ReaderTabManager,
     onNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
     onNavigateToCloudKit: () -> Unit,
+    onCheckForUpdates: () -> Unit,
     bottomPadding: androidx.compose.ui.unit.Dp,
     hasDonated: Boolean,
 ) {
@@ -213,7 +214,8 @@ fun LibraryScreen(
     if (showSettings) {
         SettingsDialog(
             onDismiss = { showSettings = false },
-            onNavigateToCloudKit = onNavigateToCloudKit
+            onNavigateToCloudKit = onNavigateToCloudKit,
+            onCheckForUpdates = onCheckForUpdates
         )
     }
 

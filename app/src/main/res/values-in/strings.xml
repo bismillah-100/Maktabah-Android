@@ -219,6 +219,8 @@
     <string name="history_settings_import_font">Import Font</string>
     <string name="history_settings_select_font_folder">Pilih Folder Font</string>
     <string name="history_settings_font_import_success">Font berhasil diimport!</string>
+    <string name="history_settings_check_update">Periksa Pembaruan</string>
+    <string name="history_settings_no_update_found">Tidak ada pembaruan. Anda menggunakan versi terbaru.</string>
     <string name="history_menu_remove_history">Hapus dari Riwayat</string>
     <string name="history_menu_remove_favorite">Hapus dari Favorit</string>
     <string name="history_menu_add_favorite">Tambah ke Favorit</string>

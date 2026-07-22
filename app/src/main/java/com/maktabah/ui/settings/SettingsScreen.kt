@@ -1,13 +1,18 @@
 package com.maktabah.ui.settings
 
 import android.widget.Toast
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,6 +30,7 @@ import com.maktabah.R
 fun SettingsDialog(
     onDismiss: () -> Unit,
     onNavigateToCloudKit: () -> Unit,
+    onCheckForUpdates: () -> Unit,
     viewModel: SettingsViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -115,7 +121,25 @@ fun SettingsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.reader_tabs_close)) }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = onCheckForUpdates,
+                    contentPadding = PaddingValues(4.dp),
+                    modifier = Modifier.defaultMinSize(minWidth = 1.dp, minHeight = 1.dp)
+                ) {
+                    Text(stringResource(R.string.history_settings_check_update))
+                }
+                TextButton(
+                    onClick = onDismiss,
+                    contentPadding = PaddingValues(4.dp),
+                    modifier = Modifier.defaultMinSize(minWidth = 1.dp, minHeight = 1.dp)
+                ) {
+                    Text(stringResource(R.string.reader_tabs_close))
+                }
+            }
         },
     )
 }

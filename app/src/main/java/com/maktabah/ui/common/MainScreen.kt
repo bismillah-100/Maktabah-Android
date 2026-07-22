@@ -108,6 +108,7 @@ fun MainScreen(
     libraryViewModel: LibraryViewModel,
     annotationManager: AnnotationManager,
     cloudKitSyncManager: CloudKitSyncManager,
+    onCheckForUpdates: () -> Unit,
 ) {
     val isDataLoaded by libraryViewModel.isDataLoaded.collectAsState()
     var hasLoadedInitially by remember { mutableStateOf(false) }
@@ -313,6 +314,7 @@ fun MainScreen(
                 tabManager = tabManager,
                 handleNavigateToReader = handleNavigateToReader,
                 hasDonated = hasDonated,
+                onCheckForUpdates = onCheckForUpdates,
             )
 
             BookNotFoundPopover(
@@ -489,6 +491,7 @@ private fun AppNavHost(
     tabManager: ReaderTabManager,
     handleNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
     hasDonated: Boolean,
+    onCheckForUpdates: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -573,6 +576,7 @@ private fun AppNavHost(
                 tabManager = tabManager,
                 onNavigateToReader = handleNavigateToReader,
                 onNavigateToCloudKit = { navController.navigate("cloudkit_login") },
+                onCheckForUpdates = onCheckForUpdates,
                 bottomPadding = innerPadding.calculateBottomPadding(),
                 hasDonated = hasDonated,
             )

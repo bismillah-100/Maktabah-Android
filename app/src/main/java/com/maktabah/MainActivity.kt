@@ -174,7 +174,23 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        MainScreen(libraryViewModel, annotationManager, cloudKitSyncManager)
+                        MainScreen(
+                            libraryViewModel = libraryViewModel,
+                            annotationManager = annotationManager,
+                            cloudKitSyncManager = cloudKitSyncManager,
+                            onCheckForUpdates = {
+                                updateViewModel.checkForUpdates(
+                                    force = true,
+                                    onNoUpdate = {
+                                        android.widget.Toast.makeText(
+                                            this@MainActivity,
+                                            R.string.history_settings_no_update_found,
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                )
+                            }
+                        )
                     } else {
                         BootstrapScreen(onFinished = {
                             isBootstrapped = true
