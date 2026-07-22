@@ -7,7 +7,9 @@ import com.maktabah.database.SQLiteDB
 import com.maktabah.models.BookContent
 import com.maktabah.models.SearchMode
 import com.maktabah.utils.normalizeArabic
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -35,8 +37,10 @@ class SearchEngine {
             db = SQLiteDB(archiveFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY)
 
             // Attach FTS database
-            val attachSql = "ATTACH DATABASE '${archiveFtsFile.absolutePath}' AS fts_db;"
-            db.prepare(attachSql)?.use { it.step() }
+            db.prepare("ATTACH DATABASE ? AS fts_db;")?.use { stmt ->
+                stmt.bindText(1, archiveFtsFile.absolutePath)
+                stmt.step()
+            }
 
             val tableName = "b$bookId"
             val ftsTableName = "${tableName}_fts"
@@ -87,68 +91,72 @@ class SearchEngine {
                 var currentFetched = 0
                 var nassType = -1
                 var partType = -1
-                while (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                    val id = stmt.columnInt(0)
-                    var nassText = ""
 
-                    if (nassType == -1) {
-                        nassType = stmt.columnType(1)
-                    }
 
-                    if (nassType == SQLiteDB.SQLITE_BLOB) {
-                        val blob = stmt.columnBlobDirect(1)
-                        if (blob != null) {
-                            val decompressedSize =
-                                Zstd.getFrameContentSize(blob).toInt()
-                            if (decompressedSize > 0) {
-                                val ctx = ZstdContextPool.getDecompressCtx()
-                                val decompressed = try {
+                val zstdCtx = ZstdContextPool.getDecompressCtx()
+                try {
+                    while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                        coroutineContext.ensureActive()
+                        val id = stmt.columnInt(0)
+                        var nassText = ""
+
+                        if (nassType == -1) {
+                            nassType = stmt.columnType(1)
+                        }
+
+                        if (nassType == SQLiteDB.SQLITE_BLOB) {
+                            val blob = stmt.columnBlobDirect(1)
+                            if (blob != null) {
+                                val decompressedSize =
+                                    Zstd.getFrameContentSize(blob).toInt()
+                                if (decompressedSize > 0) {
                                     val dstBuf = ZstdContextPool.getDirectBuffer(decompressedSize)
-                                    ctx.decompressDirectByteBuffer(dstBuf, 0, decompressedSize, blob, 0, blob.limit())
+                                    zstdCtx.decompressDirectByteBuffer(dstBuf, 0, decompressedSize, blob, 0, blob.limit())
                                     val dst = ByteArray(decompressedSize)
                                     dstBuf.get(dst)
                                     ZstdContextPool.releaseDirectBuffer(dstBuf)
 
-                                    dst
-                                } finally {
-                                    ZstdContextPool.releaseDecompressCtx(ctx)
+                                    nassText = String(dst)
                                 }
-                                nassText = String(decompressed)
                             }
+                        } else {
+                            nassText = stmt.columnText(1) ?: ""
                         }
-                    } else {
-                        nassText = stmt.columnText(1) ?: ""
-                    }
 
-                    val page = stmt.columnInt(2)
+                        val page = stmt.columnInt(2)
 
-                    // Helper to parse part
-                    if (partType == -1) {
-                        partType = stmt.columnType(3)
-                    }
-                    val part = if (partType == SQLiteDB.SQLITE_INTEGER) {
-                        stmt.columnInt(3)
-                    } else if (partType == SQLiteDB.SQLITE_TEXT) {
-                        val strValue = stmt.columnText(3)
-                        if (strValue != null) {
-                            val dashIndex = strValue.indexOf('-')
-                            if (dashIndex != -1) {
-                                strValue.substring(0, dashIndex).toIntOrNull() ?: 1
+                        // Helper to parse part
+                        if (partType == -1) {
+                            partType = stmt.columnType(3)
+                        }
+                        val part = if (partType == SQLiteDB.SQLITE_INTEGER) {
+                            stmt.columnInt(3)
+                        } else if (partType == SQLiteDB.SQLITE_TEXT) {
+                            val strValue = stmt.columnText(3)
+                            if (strValue != null) {
+                                val dashIndex = strValue.indexOf('-')
+                                if (dashIndex != -1) {
+                                    strValue.substring(0, dashIndex).toIntOrNull() ?: 1
+                                } else {
+                                    strValue.toIntOrNull() ?: 1
+                                }
                             } else {
-                                strValue.toIntOrNull() ?: 1
+                                1
                             }
                         } else {
                             1
                         }
-                    } else {
-                        1
-                    }
 
-                    results.add(BookContent(id, nassText, page, part))
-                    currentFetched++
-                    onRowProgress(currentFetched, totalCount)
+                        results.add(BookContent(id, nassText, page, part))
+                        currentFetched++
+                        onRowProgress(currentFetched, totalCount)
+                    }
+                } finally {
+                    ZstdContextPool.releaseDecompressCtx(zstdCtx)
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(tag, "Search error", e)
         } finally {

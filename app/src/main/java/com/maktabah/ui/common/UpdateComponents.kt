@@ -29,6 +29,7 @@ import com.maktabah.R
 import com.maktabah.update.UpdateUIState
 import com.maktabah.update.UpdateViewModel
 import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.markdownTypography
 
 @Composable
 fun UpdateDialog(viewModel: UpdateViewModel) {
@@ -65,6 +66,14 @@ fun UpdateDialog(viewModel: UpdateViewModel) {
                                 ) {
                                     Markdown(
                                         content = state.release.body,
+                                        typography = markdownTypography(
+                                            h1 = MaterialTheme.typography.titleLarge,
+                                            h2 = MaterialTheme.typography.titleMedium,
+                                            h3 = MaterialTheme.typography.titleSmall,
+                                            h4 = MaterialTheme.typography.bodyLarge,
+                                            h5 = MaterialTheme.typography.bodyMedium,
+                                            h6 = MaterialTheme.typography.bodySmall,
+                                        )
                                     )
                                 }
                             }

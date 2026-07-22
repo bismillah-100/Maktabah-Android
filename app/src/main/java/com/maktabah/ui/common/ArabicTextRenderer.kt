@@ -20,6 +20,7 @@ import com.maktabah.utils.convertToArabicDigits
 import com.maktabah.utils.isArabicHarakat
 import com.maktabah.utils.removingHarakat
 import com.maktabah.utils.replacingHonorificPhrasesWithEvents
+import android.util.LruCache
 
 class AnnotationSpan(val annotation: Annotation)
 
@@ -34,6 +35,23 @@ class AnnotationSpan(val annotation: Annotation)
  * 7. Apply anotasi dengan remapped ranges
  */
 object ArabicTextRenderer {
+
+    private data class CacheKey(
+        val bookId: Int,
+        val contentId: Int,
+        val showHarakat: Boolean,
+        val isMultiLanguage: Boolean
+    )
+
+    private data class CachedParsedData(
+        val honorific: HonorificReplacementResult,
+        val finalHeaderRanges: List<IntRange>,
+        val finalColoredRanges: List<IntRange>,
+        val finalFootnoteRanges: List<IntRange>
+    )
+
+    private val parsedCache = LruCache<CacheKey, CachedParsedData>(100)
+
     private val tagRegex =
         Regex(
             """<span[^>]*data-type=(?:['"]?)title(?:['"]?)[^>]*>(.*?)</span>|<a\s[^>]*href="inr://[^"]*"[^>]*>(.*?)</a>|<hadeeth[^>]*>|<man[^>]*>(.*?)</man>""",
@@ -245,6 +263,8 @@ object ArabicTextRenderer {
 
     fun render(
         text: String,
+        bookId: Int = -1,
+        contentId: Int = -1,
         highlightColor: Int = "#8B0000".toColorInt(),
         footnoteColor: Int? = null,
         showHarakat: Boolean = true,
@@ -255,48 +275,69 @@ object ArabicTextRenderer {
         typeface: Typeface? = null,
         lateefTypeface: Typeface? = null,
     ): SpannableStringBuilder {
-        // 1. Digits + harakat
-        val step1 =
-            text.convertToArabicDigits().let { if (showHarakat) it else it.removingHarakat() }
+        val cacheKey = if (bookId != -1 && contentId != -1) CacheKey(bookId, contentId, showHarakat, isMultiLanguage) else null
+        var cachedData = cacheKey?.let { parsedCache.get(it) }
 
-        // 2. Strip HTML tags, kumpulkan header ranges
-        val (step2, headerRanges) = if (isImported) step1.stripSpanTagsWithRanges() else step1 to emptyList()
+        if (cachedData == null) {
+            // 1. Digits + harakat
+            val step1 =
+                text.convertToArabicDigits().let { if (showHarakat) it else it.removingHarakat() }
 
-        // 3. Clean \n / ¬ / § / {}, kumpulkan symbol ranges
-        val cleanedResult = step2.cleanedTextWithRanges(isMultiLanguage)
-        val step3 = cleanedResult.text
-        val coloredRanges = cleanedResult.coloredRanges
-        val footnoteRanges = cleanedResult.footnoteRanges
-        val cleanEvents = cleanedResult.events
+            // 2. Strip HTML tags, kumpulkan header ranges
+            val (step2, headerRanges) = if (isImported) step1.stripSpanTagsWithRanges() else step1 to emptyList()
 
-        // 4. Honorific replacement dengan event tracking
-        val honorific = step3.replacingHonorificPhrasesWithEvents()
+            // 3. Clean \n / ¬ / § / {}, kumpulkan symbol ranges
+            val cleanedResult = step2.cleanedTextWithRanges(isMultiLanguage)
+            val step3 = cleanedResult.text
+            val coloredRanges = cleanedResult.coloredRanges
+            val footnoteRanges = cleanedResult.footnoteRanges
+            val cleanEvents = cleanedResult.events
 
-        // 5. Remap header ranges: step2 → step3 (cleanEvents) → final (honorific)
-        val finalHeaderRanges =
-            headerRanges.map { r ->
-                val (s, l) = remapCleanedRange(r.first, r.last - r.first + 1, cleanEvents)
-                val (hs, hl) = honorific.remapDisplayedRange(s, l)
-                hs until hs + hl
-            }
+            // 4. Honorific replacement dengan event tracking
+            val honorific = step3.replacingHonorificPhrasesWithEvents()
 
-        // 6. coloredRanges sudah dalam step3 space (direkam saat membangun sb),
-        // jadi hanya perlu remap honorific saja (bukan cleanEvents).
-        // Tambah juga range glyph honorific agar diwarnai seperti iOS.
-        val finalColoredRanges: List<IntRange> =
-            buildList {
-                for (r in coloredRanges) {
-                    val (hs, hl) = honorific.remapDisplayedRange(r.first, r.last - r.first + 1)
-                    add(hs until hs + hl)
+            // 5. Remap header ranges: step2 → step3 (cleanEvents) → final (honorific)
+            val finalHeaderRanges =
+                headerRanges.map { r ->
+                    val (s, l) = remapCleanedRange(r.first, r.last - r.first + 1, cleanEvents)
+                    val (hs, hl) = honorific.remapDisplayedRange(s, l)
+                    hs until hs + hl
                 }
-                addAll(honorific.replacementDisplayRanges)
-            }
 
-        val finalFootnoteRanges: List<IntRange> =
-            footnoteRanges.map { r ->
-                val (hs, hl) = honorific.remapDisplayedRange(r.first, r.last - r.first + 1)
-                hs until hs + hl
+            // 6. coloredRanges sudah dalam step3 space (direkam saat membangun sb),
+            // jadi hanya perlu remap honorific saja (bukan cleanEvents).
+            // Tambah juga range glyph honorific agar diwarnai seperti iOS.
+            val finalColoredRanges: List<IntRange> =
+                buildList {
+                    for (r in coloredRanges) {
+                        val (hs, hl) = honorific.remapDisplayedRange(r.first, r.last - r.first + 1)
+                        add(hs until hs + hl)
+                    }
+                    addAll(honorific.replacementDisplayRanges)
+                }
+
+            val finalFootnoteRanges: List<IntRange> =
+                footnoteRanges.map { r ->
+                    val (hs, hl) = honorific.remapDisplayedRange(r.first, r.last - r.first + 1)
+                    hs until hs + hl
+                }
+
+            cachedData = CachedParsedData(
+                honorific = honorific,
+                finalHeaderRanges = finalHeaderRanges,
+                finalColoredRanges = finalColoredRanges,
+                finalFootnoteRanges = finalFootnoteRanges
+            )
+
+            if (cacheKey != null) {
+                parsedCache.put(cacheKey, cachedData)
             }
+        }
+
+        val honorific = cachedData.honorific
+        val finalHeaderRanges = cachedData.finalHeaderRanges
+        val finalColoredRanges = cachedData.finalColoredRanges
+        val finalFootnoteRanges = cachedData.finalFootnoteRanges
 
         val spannable = SpannableStringBuilder(honorific.text)
 

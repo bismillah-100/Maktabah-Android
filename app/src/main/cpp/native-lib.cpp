@@ -26,6 +26,7 @@ Java_com_maktabah_database_SQLiteDB_open(JNIEnv* env, jobject /* this */, jstrin
         throwSQLiteException(env, errMsg.c_str());
         return 0;
     }
+    sqlite3_busy_timeout(db, 5000);
     return reinterpret_cast<jlong>(db);
 }
 

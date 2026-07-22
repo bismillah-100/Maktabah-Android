@@ -52,6 +52,7 @@ import com.maktabah.utils.normalizeArabic
 fun IbarotReaderContentView(
     modifier: Modifier = Modifier,
     viewModel: ReaderViewModel,
+    bookId: Int = -1,
     contentId: Int,
     nass: String,
     textSize: Float,
@@ -167,6 +168,8 @@ fun IbarotReaderContentView(
                     this.text =
                         renderContent(
                             nass = nass,
+                            bookId = bookId,
+                            contentId = contentId,
                             textColor = textColor,
                             backgroundColor = backgroundColor,
                             highlightColor = highlightColorInt,
@@ -283,6 +286,8 @@ fun IbarotReaderContentView(
                 textView.text =
                     renderContent(
                         nass = nass,
+                        bookId = bookId,
+                        contentId = contentId,
                         textColor = textColor,
                         backgroundColor = backgroundColor,
                         highlightColor = currentHighlightColorInt,
@@ -356,7 +361,7 @@ fun IbarotReaderContentView(
             }
 
             val flashTargetValue = flashTarget
-            if (flashTargetValue != null) {
+            if (flashTargetValue != null && (flashTargetValue.targetContentId == null || flashTargetValue.targetContentId == contentId)) {
                 var targetStart = -1
                 var targetEnd = -1
 
@@ -380,7 +385,11 @@ fun IbarotReaderContentView(
                         }
                     }
                 } else if (flashTargetValue.query != null) {
-                    val range = findQueryRange(textView.text, flashTargetValue.query)
+                    val range = findQueryRange(
+                        textView.text,
+                        flashTargetValue.query,
+                        onlyParagraphStart = flashTargetValue.isParagraphStart
+                    )
                     if (range != null) {
                         targetStart = range.first
                         targetEnd = range.second
@@ -389,6 +398,8 @@ fun IbarotReaderContentView(
 
                 if (targetStart != -1 && targetEnd != -1) {
                     textView.flashRange(targetStart, targetEnd)
+                    viewModel.clearFlashTarget()
+                } else if (flashTargetValue.targetContentId == contentId) {
                     viewModel.clearFlashTarget()
                 }
             }
@@ -475,6 +486,8 @@ fun IbarotReaderContentView(
 
 private fun renderContent(
     nass: String,
+    bookId: Int,
+    contentId: Int,
     textColor: Color,
     backgroundColor: Color,
     highlightColor: Int,
@@ -494,6 +507,8 @@ private fun renderContent(
 
     return ArabicTextRenderer.render(
         text = nass,
+        bookId = bookId,
+        contentId = contentId,
         highlightColor = highlightColor,
         footnoteColor = footnoteColorInt,
         showHarakat = showHarakat,
@@ -505,17 +520,36 @@ private fun renderContent(
     )
 }
 
+private fun buildFuzzyQuery(query: String): String {
+    val sb = StringBuilder()
+    var lastWasSpace = true
+    val normalized = query.normalizeArabic()
+    for (c in normalized) {
+        if (c.isArabicHarakat() || c == '\u0640') continue
+        if (Character.isLetterOrDigit(c)) {
+            sb.append(c)
+            lastWasSpace = false
+        } else if (!lastWasSpace) {
+            sb.append(' ')
+            lastWasSpace = true
+        }
+    }
+    return sb.toString().trim()
+}
+
 private fun findQueryRange(
     text: CharSequence,
     query: String,
+    onlyParagraphStart: Boolean = false,
 ): Pair<Int, Int>? {
-    val normalizedQuery = query.normalizeArabic()
-    if (normalizedQuery.isEmpty()) return null
+    val fuzzyQuery = buildFuzzyQuery(query)
+    if (fuzzyQuery.isEmpty()) return null
 
     val renderedStr = text.toString()
     val cleanToOrig = IntArray(renderedStr.length * 2)
-    val cleanText = StringBuilder()
+    val fuzzyText = StringBuilder()
     var cleanIdx = 0
+    var lastWasSpace = true
 
     for (i in renderedStr.indices) {
         val char = renderedStr[i]
@@ -523,29 +557,105 @@ private fun findQueryRange(
         if (expansion != null) {
             val normalizedExpansion = expansion.normalizeArabic()
             for (c in normalizedExpansion) {
-                if (cleanIdx < cleanToOrig.size) cleanToOrig[cleanIdx++] = i
-                cleanText.append(c)
+                if (Character.isLetterOrDigit(c)) {
+                    if (cleanIdx < cleanToOrig.size) cleanToOrig[cleanIdx++] = i
+                    fuzzyText.append(c)
+                    lastWasSpace = false
+                } else if (!lastWasSpace) {
+                    if (cleanIdx < cleanToOrig.size) cleanToOrig[cleanIdx++] = i
+                    fuzzyText.append(' ')
+                    lastWasSpace = true
+                }
             }
         } else {
+            if (char.isArabicHarakat() || char == '\u0640') continue
             val normalizedChar = char.toString().normalizeArabic()
-            if (normalizedChar.isNotEmpty()) {
-                if (cleanIdx < cleanToOrig.size) cleanToOrig[cleanIdx++] = i
-                cleanText.append(normalizedChar)
+            for (c in normalizedChar) {
+                if (Character.isLetterOrDigit(c)) {
+                    if (cleanIdx < cleanToOrig.size) cleanToOrig[cleanIdx++] = i
+                    fuzzyText.append(c)
+                    lastWasSpace = false
+                } else if (!lastWasSpace) {
+                    if (cleanIdx < cleanToOrig.size) cleanToOrig[cleanIdx++] = i
+                    fuzzyText.append(' ')
+                    lastWasSpace = true
+                }
             }
         }
     }
 
-    val idx = cleanText.indexOf(normalizedQuery, ignoreCase = true)
+    val fuzzyStr = fuzzyText.toString().trimEnd()
 
-    if (idx != -1 && idx < cleanIdx) {
-        val start = cleanToOrig[idx]
-        val endIdx = idx + normalizedQuery.length
-        val end = if (endIdx < cleanIdx) {
-            cleanToOrig[endIdx] + 1
+    fun searchMatch(targetQuery: String): Pair<Int, Int>? {
+        if (targetQuery.isEmpty()) return null
+        if (onlyParagraphStart) {
+            var searchStart = 0
+            while (searchStart < fuzzyStr.length) {
+                val idx = fuzzyStr.indexOf(targetQuery, searchStart, ignoreCase = true)
+                if (idx == -1) break
+
+                val origStart = cleanToOrig[idx]
+                var isAtStart = false
+                var p = origStart - 1
+                while (p >= 0) {
+                    val c = renderedStr[p]
+                    if (c == '\n' || c == '\r') {
+                        isAtStart = true
+                        break
+                    }
+                    if (Character.isLetterOrDigit(c)) {
+                        isAtStart = false
+                        break
+                    }
+                    p--
+                }
+                if (p < 0) isAtStart = true
+
+                if (isAtStart) {
+                    val start = origStart
+                    val endIdx = idx + targetQuery.length - 1
+                    val end = if (endIdx < cleanIdx) {
+                        cleanToOrig[endIdx] + 1
+                    } else {
+                        renderedStr.length
+                    }
+                    return start to end
+                }
+                searchStart = idx + 1
+            }
+            return null
         } else {
-            renderedStr.length
+            val idx = fuzzyStr.indexOf(targetQuery, ignoreCase = true)
+            if (idx != -1) {
+                val start = cleanToOrig[idx]
+                val endIdx = idx + targetQuery.length - 1
+                val end = if (endIdx < cleanIdx) {
+                    cleanToOrig[endIdx] + 1
+                } else {
+                    renderedStr.length
+                }
+                return start to end
+            }
+            return null
         }
-        return start to end
     }
+
+    val directMatch = searchMatch(fuzzyQuery)
+    if (directMatch != null) return directMatch
+
+    if (onlyParagraphStart && fuzzyQuery.contains(" ")) {
+        val words = fuzzyQuery.split(" ")
+        if (words.size > 2) {
+            val prefixQuery = words.take(3).joinToString(" ")
+            val prefixMatch = searchMatch(prefixQuery)
+            if (prefixMatch != null) return prefixMatch
+        }
+        if (words.size > 1) {
+            val prefixQuery = words.take(2).joinToString(" ")
+            val prefixMatch = searchMatch(prefixQuery)
+            if (prefixMatch != null) return prefixMatch
+        }
+    }
+
     return null
 }

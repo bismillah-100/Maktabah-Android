@@ -481,7 +481,7 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
                             if (bookCount >= limit) {
                                 hiddenCount++
                             } else {
-                                result.add(FlatLibraryItem(item, level))
+                                result.add(FlatLibraryItem(item, level, isDownloaded = downloadedIds.contains(item.id)))
                                 hasVisibleContent = true
                                 bookCount++
                             }

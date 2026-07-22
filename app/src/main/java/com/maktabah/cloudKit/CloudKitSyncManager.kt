@@ -3,8 +3,11 @@ package com.maktabah.cloudKit
 import android.content.Context
 import androidx.core.content.edit
 import com.maktabah.database.AnnotationManager
+import com.maktabah.database.ResultsHandler
 import com.maktabah.models.Annotation
 import com.maktabah.models.ReadingEntry
+import com.maktabah.models.SyncFolder
+import com.maktabah.models.SyncResult
 import com.maktabah.ui.history.HistoryViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -13,6 +16,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.ensureActive
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.util.UUID
 
 class CloudKitSyncManager {
@@ -26,7 +30,10 @@ class CloudKitSyncManager {
         withContext(Dispatchers.IO) {
             val annotationsToSave = mutableListOf<Annotation>()
             val entriesToSave = mutableListOf<ReadingEntry>()
+            val foldersToSave = mutableListOf<SyncFolder>()
+            val resultsToSave = mutableListOf<SyncResult>()
             val recordIdsToDelete = mutableListOf<String>()
+            val resultRecordIdsToDelete = mutableListOf<String>()
 
             val result = CloudKitCoreManager.shared.fetchChanges(
                 context = context,
@@ -35,6 +42,44 @@ class CloudKitSyncManager {
                     val recordType = record.optString("recordType", "")
                     val ckRecordId = record.optString("recordName", "")
                     val fields = record.optJSONObject("fields") ?: return@fetchChanges
+
+                    if (recordType == "SearchFolder") {
+                        val name = fields.optJSONObject("name")?.optString("value", "") ?: ""
+                        val lastModifiedVal = fields.optJSONObject("lastModified")?.optLong("value", 0L) ?: 0L
+                        val parentCkRecordId = fields.optJSONObject("parentCkRecordId")?.let {
+                            val v = it.opt("value")
+                            if (v == null || v == JSONObject.NULL) null else v.toString()
+                        }
+                        foldersToSave.add(SyncFolder(
+                            name = name,
+                            ckRecordId = ckRecordId,
+                            lastModified = lastModifiedVal,
+                            parentCkRecordId = parentCkRecordId
+                        ))
+                        return@fetchChanges
+                    } else if (recordType == "SearchResult") {
+                        val name = fields.optJSONObject("name")?.optString("value", "") ?: ""
+                        val query = fields.optJSONObject("query")?.optString("value", "") ?: ""
+                        val archive = fields.optJSONObject("archive")?.optInt("value", 0) ?: 0
+                        val bkId = fields.optJSONObject("bkId")?.optInt("value", 0) ?: 0
+                        val contentId = fields.optJSONObject("contentId")?.optString("value", "") ?: ""
+                        val lastModifiedVal = fields.optJSONObject("lastModified")?.optLong("value", 0L) ?: 0L
+                        val folderCkRecordId = fields.optJSONObject("folderCkRecordId")?.let {
+                            val v = it.opt("value")
+                            if (v == null || v == JSONObject.NULL) null else v.toString()
+                        }
+                        resultsToSave.add(SyncResult(
+                            name = name,
+                            query = query,
+                            archive = archive,
+                            bkId = bkId,
+                            contentId = contentId,
+                            ckRecordId = ckRecordId,
+                            lastModified = lastModifiedVal,
+                            folderCkRecordId = folderCkRecordId
+                        ))
+                        return@fetchChanges
+                    }
 
                     if (recordType == "Annotation") {
                         val bkId = fields.optJSONObject("bkId")?.optInt("value", 0) ?: 0
@@ -163,6 +208,7 @@ class CloudKitSyncManager {
                 },
                 onRecordDeleted = { ckRecordId ->
                     recordIdsToDelete.add(ckRecordId)
+                    resultRecordIdsToDelete.add(ckRecordId)
                 }
             )
 
@@ -181,6 +227,14 @@ class CloudKitSyncManager {
                     // Apply ReadingEntry changes in batch
                     if (entriesToSave.isNotEmpty() || recordIdsToDelete.isNotEmpty()) {
                         historyViewModel.applyCloudKitChanges(entriesToSave, recordIdsToDelete)
+                    }
+
+                    // Apply SearchFolder/SearchResult changes
+                    if (foldersToSave.isNotEmpty() || resultsToSave.isNotEmpty() || resultRecordIdsToDelete.isNotEmpty()) {
+                        val resultsHandler = getResultsHandler(context)
+                        resultsHandler.applyCloudKitFolderChanges(foldersToSave, resultRecordIdsToDelete)
+                        resultsHandler.applyCloudKitResultChanges(resultsToSave, resultRecordIdsToDelete)
+                        com.maktabah.ui.search.CloudKitResultSyncHelper.syncEvent.tryEmit(Unit)
                     }
 
                     return@withContext it.second
@@ -359,6 +413,7 @@ class CloudKitSyncManager {
                 )
                 annotationManager.clearAll()
                 historyViewModel.clearAll()
+                getResultsHandler(context).nukeDatabase()
                 prefs.edit {
                     remove("ckSyncToken_AnnotationsZone")
                         .apply()
@@ -373,4 +428,79 @@ class CloudKitSyncManager {
             }
         }
     }
+
+    // region Search Results Sync
+
+    suspend fun syncResults(context: Context): String? = syncMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val handler = getResultsHandler(context)
+            val folders = handler.fetchAllSyncFolders()
+            val results = handler.fetchAllSyncResults()
+
+            val recordsToSave = JSONArray()
+
+            for (folder in folders) {
+                val recordName = folder.ckRecordId ?: continue
+                val record = JSONObject().apply {
+                    put("recordType", "SearchFolder")
+                    put("recordName", recordName)
+                    put("zoneID", JSONObject().apply {
+                        put("zoneName", "AnnotationsZone")
+                        put("ownerRecordName", "_defaultOwner_")
+                    })
+                    put("fields", JSONObject().apply {
+                        put("name", JSONObject().apply { put("value", folder.name) })
+                        put("lastModified", JSONObject().apply { put("value", folder.lastModified ?: (System.currentTimeMillis() / 1000L)) })
+                        if (folder.parentCkRecordId != null) {
+                            put("parentCkRecordId", JSONObject().apply { put("value", folder.parentCkRecordId) })
+                        }
+                    })
+                }
+                recordsToSave.put(record)
+            }
+
+            for (res in results) {
+                val recordName = res.ckRecordId ?: continue
+                val record = JSONObject().apply {
+                    put("recordType", "SearchResult")
+                    put("recordName", recordName)
+                    put("zoneID", JSONObject().apply {
+                        put("zoneName", "AnnotationsZone")
+                        put("ownerRecordName", "_defaultOwner_")
+                    })
+                    put("fields", JSONObject().apply {
+                        put("name", JSONObject().apply { put("value", res.name) })
+                        put("query", JSONObject().apply { put("value", res.query) })
+                        put("archive", JSONObject().apply { put("value", res.archive) })
+                        put("bkId", JSONObject().apply { put("value", res.bkId) })
+                        put("contentId", JSONObject().apply { put("value", res.contentId) })
+                        put("lastModified", JSONObject().apply { put("value", res.lastModified ?: (System.currentTimeMillis() / 1000L)) })
+                        if (res.folderCkRecordId != null) {
+                            put("folderCkRecordId", JSONObject().apply { put("value", res.folderCkRecordId) })
+                        }
+                    })
+                }
+                recordsToSave.put(record)
+            }
+
+            if (recordsToSave.length() == 0) return@withContext "No results to sync"
+
+            val result = CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, JSONArray())
+            if (result.isSuccess) "Success" else "Failed: ${result.exceptionOrNull()?.message}"
+        }
+    }
+
+    suspend fun deleteResultRecords(context: Context, ckRecordIds: List<String>): String? = withContext(Dispatchers.IO) {
+        if (ckRecordIds.isEmpty()) return@withContext null
+        val recordIDsToDelete = JSONArray()
+        ckRecordIds.forEach { recordIDsToDelete.put(it) }
+        val result = CloudKitCoreManager.shared.modifyRecords(context, JSONArray(), recordIDsToDelete)
+        if (result.isSuccess) "Success" else "Failed: ${result.exceptionOrNull()?.message}"
+    }
+
+    private fun getResultsHandler(context: Context): ResultsHandler {
+        return ResultsHandler(File(context.filesDir, "SearchResults.sqlite"))
+    }
+
+    // endregion
 }

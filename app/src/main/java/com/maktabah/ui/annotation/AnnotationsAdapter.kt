@@ -44,6 +44,8 @@ sealed class AnnotationFlatItem {
 class AnnotationsAdapter(
     private val onToggleGroup: (String) -> Unit,
     private val onAnnotationClick: (Int, Int?, Int?, Int?, String?) -> Unit,
+    private val onToggleGroupSelection: (AnnotationGroup) -> Unit,
+    private val onToggleAnnotationSelection: (Long) -> Unit,
 ) : ListAdapter<AnnotationFlatItem, RecyclerView.ViewHolder>(DiffCallback()) {
 
     private lateinit var recyclerView: RecyclerView
@@ -65,6 +67,22 @@ class AnnotationsAdapter(
     var onSurfaceColor: Int = Color.TRANSPARENT
     var onSurfaceVariantColor: Int = Color.TRANSPARENT
     var groupingMode: AnnotationGroupingMode = AnnotationGroupingMode.BOOK
+
+    var isSelectionMode: Boolean = false
+        set(value) {
+            if (field != value) {
+                field = value
+                if (itemCount > 0) notifyItemRangeChanged(0, itemCount)
+            }
+        }
+
+    var selectedAnnotationIds: Set<Long> = emptySet()
+        set(value) {
+            if (field != value) {
+                field = value
+                if (itemCount > 0) notifyItemRangeChanged(0, itemCount)
+            }
+        }
 
     companion object {
         private const val TYPE_HEADER = 0
@@ -248,14 +266,36 @@ class AnnotationsAdapter(
         fun bind(item: AnnotationFlatItem.Header, onToggle: () -> Unit) {
             nameText.text = item.group.title
 
-            // Set dynamic icon colors
             arrowIcon.setColorFilter(secondaryColor)
-            typeIcon.setColorFilter(secondaryColor)
 
-            if (groupingMode == AnnotationGroupingMode.TAG) {
-                typeIcon.setImageResource(R.drawable.ic_tag)
+            if (isSelectionMode) {
+                val groupAnnIds = item.group.annotations.mapNotNull { it.id }
+                val selectedCount = groupAnnIds.count { selectedAnnotationIds.contains(it) }
+                val allSelected = groupAnnIds.isNotEmpty() && selectedCount == groupAnnIds.size
+                val mixedSelected = groupAnnIds.isNotEmpty() && selectedCount > 0 && selectedCount < groupAnnIds.size
+
+                if (allSelected) {
+                    typeIcon.setImageResource(R.drawable.ic_check_circle)
+                    typeIcon.setColorFilter(primaryColor)
+                } else if (mixedSelected) {
+                    typeIcon.setImageResource(R.drawable.ic_check_indeterminate)
+                    typeIcon.setColorFilter(primaryColor)
+                } else {
+                    typeIcon.setImageResource(R.drawable.ic_circle)
+                    typeIcon.setColorFilter(onSurfaceVariantColor)
+                }
+                typeIcon.scaleX = 1f
+                typeIcon.setOnClickListener { onToggleGroupSelection(item.group) }
             } else {
-                typeIcon.setImageResource(R.drawable.ic_import_contacts)
+                typeIcon.setOnClickListener(null)
+                typeIcon.isClickable = false
+                typeIcon.setColorFilter(secondaryColor)
+                typeIcon.scaleX = -1f
+                if (groupingMode == AnnotationGroupingMode.TAG) {
+                    typeIcon.setImageResource(R.drawable.ic_tag)
+                } else {
+                    typeIcon.setImageResource(R.drawable.ic_import_contacts)
+                }
             }
 
             // Only set rotation if not currently performing a rotation animation
@@ -304,6 +344,7 @@ class AnnotationsAdapter(
 
     inner class ItemViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val itemContainer: View = itemView.findViewById(R.id.itemContainer)
+        private val selectIcon: ImageView? = itemView.findViewById(R.id.selectIcon)
         private val contextText: TextView = itemView.findViewById(R.id.contextText)
         private val noteText: TextView = itemView.findViewById(R.id.noteText)
         private val pageText: TextView = itemView.findViewById(R.id.pageText)
@@ -365,8 +406,26 @@ class AnnotationsAdapter(
             itemContainer.isClickable = false
             itemContainer.isFocusable = false
 
-            itemView.setOnClickListener {
-                onAnnotationClick(ann.bkId, ann.contentId, ann.rangeLocation, ann.rangeLength, null)
+            if (isSelectionMode) {
+                selectIcon?.visibility = View.VISIBLE
+                val isSelected = ann.id != null && selectedAnnotationIds.contains(ann.id)
+                if (isSelected) {
+                    selectIcon?.setImageResource(R.drawable.ic_check_circle)
+                    selectIcon?.setColorFilter(primaryColor)
+                } else {
+                    selectIcon?.setImageResource(R.drawable.ic_circle)
+                    selectIcon?.setColorFilter(onSurfaceVariantColor)
+                }
+                itemView.setOnClickListener {
+                    if (ann.id != null) {
+                        onToggleAnnotationSelection(ann.id)
+                    }
+                }
+            } else {
+                selectIcon?.visibility = View.GONE
+                itemView.setOnClickListener {
+                    onAnnotationClick(ann.bkId, ann.contentId, ann.rangeLocation, ann.rangeLength, null)
+                }
             }
 
             if (item.index == item.lastIndex) {

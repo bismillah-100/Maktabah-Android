@@ -86,17 +86,11 @@ class LibraryAdapter(
                 val position = holder.bindingAdapterPosition
                 if (position == RecyclerView.NO_POSITION || position >= itemCount) continue
                 val isLast = position == itemCount - 1
-                applyDecorationState(child, position)
                 holder.updateDividerForLast(isLast)
             }
             recyclerView.invalidateItemDecorations()
             recyclerView.invalidate()
         }
-    }
-
-    private fun applyDecorationState(view: View, position: Int) {
-        view.setTag(R.id.tag_is_first, position == 0)
-        view.setTag(R.id.tag_is_last, position == itemCount - 1)
     }
 
     var viewMode: LibraryViewMode = LibraryViewMode.CATEGORY
@@ -434,7 +428,7 @@ class LibraryAdapter(
                         typeIcon?.scaleX = 1f
                     } else {
                         itemView.isSelected = false
-                        val isDownloaded = isBookDownloadedById(item.id)
+                        val isDownloaded = flatItem.isDownloaded
                         if (isDownloaded) {
                             typeIcon?.setImageResource(R.drawable.ic_import_contacts)
                         } else {

@@ -1,10 +1,12 @@
 package com.maktabah.ui.history
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -26,12 +29,21 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,10 +71,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
 import com.maktabah.R
 import com.maktabah.cloudKit.CloudKitSyncManager
 import com.maktabah.database.AnnotationManager
@@ -72,8 +91,12 @@ import com.maktabah.ui.common.DonationCard
 import com.maktabah.ui.common.DonationIconButton
 import com.maktabah.ui.common.InsetGroupedItem
 import com.maktabah.ui.common.fadingEdge
+import com.maktabah.ui.common.PopoverArrowShape
+import com.maktabah.ui.common.PopoverMenuAction
+import com.maktabah.ui.common.TapCenteredPopover
 import com.maktabah.ui.library.LibraryViewModel
 import com.maktabah.ui.search.SearchTextField
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -107,8 +130,6 @@ fun HistoryScreen(
     }.collectAsState()
 
     var showAddFavoriteSheet by remember { mutableStateOf(false) }
-    var selectedHistoryItem by remember { mutableStateOf<Int?>(null) }
-    var selectedFavoriteItem by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
 
@@ -180,7 +201,30 @@ fun HistoryScreen(
                         entriesByBookId = entriesByBookId,
                         bookById = { libraryViewModel.dataManager.booksById[it] },
                         onNavigateToReader = onNavigateToReader,
-                        onLongClick = { selectedHistoryItem = it }
+                        onRemoveHistory = { id ->
+                            val entry = historyViewModel.removeFromHistory(id)
+                            if (entry != null) scope.launch {
+                                val res = cloudKitSyncManager.syncHistoryAndFavorites(
+                                    context,
+                                    listOf(entry)
+                                )
+                                if (res.startsWith("Failed")) {
+                                    android.widget.Toast.makeText(context, res, android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        },
+                        onToggleFavorite = { id ->
+                            val entry = historyViewModel.toggleFavorite(id)
+                            scope.launch {
+                                val res = cloudKitSyncManager.syncHistoryAndFavorites(
+                                    context,
+                                    listOf(entry)
+                                )
+                                if (res.startsWith("Failed")) {
+                                    android.widget.Toast.makeText(context, res, android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
                     )
 
                     item(key = "history_favorites_spacer") {
@@ -201,7 +245,18 @@ fun HistoryScreen(
                         entriesByBookId = entriesByBookId,
                         bookById = { libraryViewModel.dataManager.booksById[it] },
                         onNavigateToReader = onNavigateToReader,
-                        onLongClick = { selectedFavoriteItem = it }
+                        onRemoveFavorite = { id ->
+                            val entry = historyViewModel.toggleFavorite(id)
+                            scope.launch {
+                                val res = cloudKitSyncManager.syncHistoryAndFavorites(
+                                    context,
+                                    listOf(entry)
+                                )
+                                if (res.startsWith("Failed")) {
+                                    android.widget.Toast.makeText(context, res, android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
                     )
 
                     if (!hasDonated) {
@@ -213,60 +268,6 @@ fun HistoryScreen(
             }
         }
 
-        if (selectedHistoryItem != null) {
-            HistoryOptionsDialog(
-                bookId = selectedHistoryItem!!,
-                isFavorite = entriesByBookId[selectedHistoryItem]?.isFavorite == true,
-                onDismiss = { selectedHistoryItem = null },
-                onRemoveHistory = {
-                    val entry = historyViewModel.removeFromHistory(it)
-                    if (entry != null) scope.launch {
-                        val res = cloudKitSyncManager.syncHistoryAndFavorites(
-                            context,
-                            listOf(entry)
-                        )
-                        if (res.startsWith("Failed")) {
-                            android.widget.Toast.makeText(context, res, android.widget.Toast.LENGTH_LONG).show()
-                        }
-                    }
-                    selectedHistoryItem = null
-                },
-                onToggleFavorite = {
-                    val entry = historyViewModel.toggleFavorite(it)
-                    scope.launch {
-                        val res = cloudKitSyncManager.syncHistoryAndFavorites(
-                            context,
-                            listOf(entry)
-                        )
-                        if (res.startsWith("Failed")) {
-                            android.widget.Toast.makeText(context, res, android.widget.Toast.LENGTH_LONG).show()
-                        }
-                    }
-                    selectedHistoryItem = null
-                }
-            )
-        }
-
-        if (selectedFavoriteItem != null) {
-            FavoriteOptionsDialog(
-                bookId = selectedFavoriteItem!!,
-                onDismiss = { selectedFavoriteItem = null },
-                onRemoveFavorite = {
-                    val entry = historyViewModel.toggleFavorite(it)
-                    scope.launch {
-                        val res = cloudKitSyncManager.syncHistoryAndFavorites(
-                            context,
-                            listOf(entry)
-                        )
-                        if (res.startsWith("Failed")) {
-                            android.widget.Toast.makeText(context, res, android.widget.Toast.LENGTH_LONG).show()
-                        }
-                    }
-                    selectedFavoriteItem = null
-                }
-            )
-        }
-
         if (showAddFavoriteSheet) {
             AddFavoriteSheet(
                 books = libraryViewModel.dataManager.booksById.values.toList(),
@@ -275,13 +276,10 @@ fun HistoryScreen(
                 onToggleFavorite = { bookId ->
                     val entry = historyViewModel.toggleFavorite(bookId)
                     scope.launch {
-                        val res = cloudKitSyncManager.syncHistoryAndFavorites(
+                        cloudKitSyncManager.syncHistoryAndFavorites(
                             context,
                             listOf(entry)
                         )
-                        if (res.startsWith("Failed")) {
-                            android.widget.Toast.makeText(context, res, android.widget.Toast.LENGTH_LONG).show()
-                        }
                     }
                 }
             )
@@ -342,7 +340,8 @@ private fun LazyListScope.historySection(
     entriesByBookId: Map<Int, ReadingEntry>,
     bookById: (Int) -> com.maktabah.models.BooksData?,
     onNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
-    onLongClick: (Int) -> Unit
+    onRemoveHistory: (Int) -> Unit,
+    onToggleFavorite: (Int) -> Unit,
 ) {
     item(key = "history_header") {
         SectionHeader(
@@ -390,34 +389,61 @@ private fun LazyListScope.historySection(
                                     for (bookId in rowItems) {
                                         val entry = entriesByBookId[bookId]
                                         val bookName = bookById(bookId)?.name ?: "Unknown"
+                                        var showMenu by remember { mutableStateOf(false) }
 
-                                        InsetGroupedItem(
-                                            index = 0,
-                                            lastIndex = 0,
-                                            onClick = {
-                                                onNavigateToReader(
-                                                    bookId,
-                                                    entry?.lastContentId,
-                                                    null,
-                                                    null,
-                                                    null
+                                        Box {
+                                            InsetGroupedItem(
+                                                index = 0,
+                                                lastIndex = 0,
+                                                onClick = {
+                                                    onNavigateToReader(
+                                                        bookId,
+                                                        entry?.lastContentId,
+                                                        null,
+                                                        null,
+                                                        null
+                                                    )
+                                                },
+                                                onLongClick = { showMenu = true },
+                                                contentPadding = PaddingValues(
+                                                    horizontal = 16.dp,
+                                                    vertical = 12.dp
+                                                ),
+                                                outerPadding = PaddingValues(0.dp),
+                                                fillMaxWidth = false,
+                                                modifier = Modifier.widthIn(max = 200.dp),
+                                            ) {
+                                                Text(
+                                                    bookName,
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
-                                            },
-                                            onLongClick = { onLongClick(bookId) },
-                                            contentPadding = PaddingValues(
-                                                horizontal = 16.dp,
-                                                vertical = 12.dp
-                                            ),
-                                            outerPadding = PaddingValues(0.dp),
-                                            fillMaxWidth = false,
-                                            modifier = Modifier.widthIn(max = 200.dp),
-                                        ) {
-                                            Text(
-                                                bookName,
-                                                style = MaterialTheme.typography.titleMedium,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
+                                            }
+
+											TapCenteredPopover(
+												expanded = showMenu,
+												onDismiss = { showMenu = false },
+												actions = buildList {
+													add(
+														PopoverMenuAction(
+															label = stringResource(R.string.history_menu_remove_history),
+															icon = Icons.Default.Delete,
+															onClick = { onRemoveHistory(bookId) },
+														)
+													)
+													add(
+														PopoverMenuAction(
+															label = if (entry?.isFavorite == true)
+																stringResource(R.string.history_menu_remove_favorite)
+															else
+																stringResource(R.string.history_menu_add_favorite),
+															icon = if (entry?.isFavorite == true) Icons.Default.StarBorder else Icons.Default.Star,
+															onClick = { onToggleFavorite(bookId) },
+														)
+													)
+												},
+											)
                                         }
                                     }
                                 }
@@ -437,7 +463,7 @@ private fun LazyListScope.favoritesSection(
     entriesByBookId: Map<Int, ReadingEntry>,
     bookById: (Int) -> com.maktabah.models.BooksData?,
     onNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
-    onLongClick: (Int) -> Unit
+    onRemoveFavorite: (Int) -> Unit,
 ) {
     item(key = "favorites_header") {
         SectionHeader(
@@ -464,31 +490,51 @@ private fun LazyListScope.favoritesSection(
                 val bookId = favoriteItems[index]
                 val entry = entriesByBookId[bookId]
                 val bookName = bookById(bookId)?.name ?: "Unknown"
+                var showMenu by remember { mutableStateOf(false) }
 
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    InsetGroupedItem(
-                        index = 0,
-                        lastIndex = 0,
-                        onClick = {
-                            onNavigateToReader(
-                                bookId,
-                                entry?.lastContentId,
-                                null,
-                                null,
-                                null
-                            )
-                        },
-                        onLongClick = { onLongClick(bookId) },
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                        outerPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                        modifier = Modifier.animateItem(),
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .animateItem()
                     ) {
-                        Text(
-                            bookName,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        InsetGroupedItem(
+                            index = 0,
+                            lastIndex = 0,
+                            onClick = {
+                                onNavigateToReader(
+                                    bookId,
+                                    entry?.lastContentId,
+                                    null,
+                                    null,
+                                    null
+                                )
+                            },
+                            onLongClick = { showMenu = true },
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                            outerPadding = PaddingValues(0.dp),
+                        ) {
+                            Text(
+                                bookName,
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+						TapCenteredPopover(
+							expanded = showMenu,
+							onDismiss = { showMenu = false },
+							actions = buildList {
+								add(
+									PopoverMenuAction(
+										label = stringResource(R.string.history_menu_remove_favorite),
+										icon = Icons.Default.Delete,
+										onClick = { onRemoveFavorite(bookId) },
+									)
+								)
+							},
+						)
                     }
                 }
             }
@@ -528,51 +574,6 @@ private fun SectionHeader(
     }
 }
 
-@Composable
-private fun HistoryOptionsDialog(
-    bookId: Int,
-    isFavorite: Boolean,
-    onDismiss: () -> Unit,
-    onRemoveHistory: (Int) -> Unit,
-    onToggleFavorite: (Int) -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.library_action_more_options)) },
-        containerColor = MaterialTheme.colorScheme.surface,
-        text = {
-            Column {
-                TextButton(onClick = { onRemoveHistory(bookId) }) { Text(stringResource(R.string.history_menu_remove_history)) }
-                TextButton(onClick = { onToggleFavorite(bookId) }) {
-                    Text(
-                        if (isFavorite) stringResource(R.string.history_menu_remove_favorite) else stringResource(
-                            R.string.history_menu_add_favorite
-                        )
-                    )
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.reader_tabs_close)) } },
-    )
-}
-
-@Composable
-private fun FavoriteOptionsDialog(
-    bookId: Int,
-    onDismiss: () -> Unit,
-    onRemoveFavorite: (Int) -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.library_action_more_options)) },
-        containerColor = MaterialTheme.colorScheme.surface,
-        text = {
-            TextButton(onClick = { onRemoveFavorite(bookId) }) { Text(stringResource(R.string.history_menu_remove_favorite)) }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.reader_tabs_close)) } },
-    )
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddFavoriteSheet(
@@ -581,78 +582,115 @@ private fun AddFavoriteSheet(
     onDismiss: () -> Unit,
     onToggleFavorite: (Int) -> Unit
 ) {
+    val listState = rememberLazyListState()
+    val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
     var searchFavQuery by remember { mutableStateOf("") }
-    val filteredBooks = remember(searchFavQuery) {
-        val cleanQuery = searchFavQuery.normalizeArabic()
-        if (cleanQuery.isBlank()) books
-        else books.filter { it.name.normalizeArabic().contains(cleanQuery, ignoreCase = true) }
+    var debouncedQuery by remember { mutableStateOf(searchFavQuery) }
+
+    androidx.compose.runtime.LaunchedEffect(searchFavQuery) {
+        if (searchFavQuery.isNotBlank()) {
+            delay(300.milliseconds)
+        }
+        debouncedQuery = searchFavQuery
     }
+
+    var filteredBooks by remember { mutableStateOf(books) }
+
+    androidx.compose.runtime.LaunchedEffect(books, debouncedQuery) {
+        if (debouncedQuery.isBlank()) {
+            filteredBooks = books
+        } else {
+            val result = withContext(Dispatchers.Default) {
+                val cleanQuery = debouncedQuery.normalizeArabic()
+                books.filter { it.name.normalizeArabic().contains(cleanQuery, ignoreCase = true) }
+            }
+            filteredBooks = result
+        }
+    }
+
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
+        skipPartiallyExpanded = true
+    )
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = { WindowInsets(0.dp) },
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.85f)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.history_add_favorite_title),
-                    style = MaterialTheme.typography.titleLarge
-                )
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        Icons.Default.Close,
-                        contentDescription = stringResource(R.string.reader_tabs_close)
+            val topPadding = 54.dp
+
+            if (filteredBooks.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = topPadding),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        stringResource(R.string.history_empty),
+                        modifier = Modifier.padding(16.dp)
                     )
                 }
-            }
-            SearchTextField(
-                value = searchFavQuery,
-                onValueChange = { searchFavQuery = it },
-                placeholder = stringResource(R.string.library_search_books_placeholder),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 16.dp)
-            ) {
-                items(
-                    count = filteredBooks.size,
-                    key = { index -> filteredBooks[index].id }
-                ) { index ->
-                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                        val book = filteredBooks[index]
-                        val isFav = entriesByBookId[book.id]?.isFavorite == true
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onToggleFavorite(book.id) }
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = book.name,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.weight(1f)
-                            )
-                            if (isFav) Icon(
-                                Icons.Default.Star,
-                                contentDescription = "Favorite",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+            } else {
+                CompositionLocalProvider(
+                    LocalLayoutDirection provides LayoutDirection.Rtl,
+                ) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .nestedScroll(nestedScrollConnection)
+                            .fillMaxSize()
+                            .fadingEdge(listState, 48.dp),
+                        state = listState,
+                        contentPadding = PaddingValues(top = topPadding, bottom = 32.dp)
+                    ) {
+                        itemsIndexed(
+                            items = filteredBooks,
+                            key = { _, book -> book.id }
+                        ) { index, book ->
+                            val isFav = entriesByBookId[book.id]?.isFavorite == true
+                            InsetGroupedItem(
+                                index = index,
+                                lastIndex = filteredBooks.lastIndex,
+                                onClick = { onToggleFavorite(book.id) },
+                                contentPadding = PaddingValues(vertical = 12.dp, horizontal = 16.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = book.name,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    if (isFav) {
+                                        Icon(
+                                            Icons.Default.Star,
+                                            contentDescription = "Favorite",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
+            }
+
+            Box(modifier = Modifier.padding(start = 16.dp, end = 16.dp)) {
+                SearchTextField(
+                    value = searchFavQuery,
+                    onValueChange = { searchFavQuery = it },
+                    placeholder = stringResource(R.string.library_search_books_placeholder),
+                    onClearClick = { searchFavQuery = "" }
+                )
             }
         }
     }

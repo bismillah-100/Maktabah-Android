@@ -49,6 +49,47 @@ class AnnotationsViewModel : ViewModel() {
     private val _expandedGroups = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     val expandedGroups: StateFlow<Map<String, Boolean>> = _expandedGroups.asStateFlow()
 
+    private val _isSelectionMode = MutableStateFlow(false)
+    val isSelectionMode: StateFlow<Boolean> = _isSelectionMode.asStateFlow()
+
+    private val _selectedAnnotationIds = MutableStateFlow<Set<Long>>(emptySet())
+    val selectedAnnotationIds: StateFlow<Set<Long>> = _selectedAnnotationIds.asStateFlow()
+
+    fun toggleSelectionMode() {
+        val newMode = !_isSelectionMode.value
+        _isSelectionMode.value = newMode
+        if (!newMode) {
+            _selectedAnnotationIds.value = emptySet()
+        }
+    }
+
+    fun toggleAnnotationSelection(annotationId: Long) {
+        val current = _selectedAnnotationIds.value.toMutableSet()
+        if (current.contains(annotationId)) {
+            current.remove(annotationId)
+        } else {
+            current.add(annotationId)
+        }
+        _selectedAnnotationIds.value = current
+    }
+
+    fun toggleGroupSelection(group: AnnotationGroup) {
+        val current = _selectedAnnotationIds.value.toMutableSet()
+        val groupAnnIds = group.annotations.mapNotNull { it.id }
+        val allSelected = groupAnnIds.isNotEmpty() && groupAnnIds.all { current.contains(it) }
+        if (allSelected) {
+            current.removeAll(groupAnnIds.toSet())
+        } else {
+            current.addAll(groupAnnIds)
+        }
+        _selectedAnnotationIds.value = current
+    }
+
+    fun clearSelection() {
+        _selectedAnnotationIds.value = emptySet()
+        _isSelectionMode.value = false
+    }
+
     fun toggleGroupExpanded(key: String) {
         val current = _expandedGroups.value.toMutableMap()
         val isExpanded = current[key] ?: false
@@ -83,6 +124,7 @@ class AnnotationsViewModel : ViewModel() {
 
     private lateinit var dataManager: LibraryDataManager
     private lateinit var sharedPrefs: android.content.SharedPreferences
+    private var annotationManager: AnnotationManager? = null
     private var isInitialized = false
 
     fun initialize(
@@ -92,6 +134,7 @@ class AnnotationsViewModel : ViewModel() {
     ) {
         if (isInitialized) return
         isInitialized = true
+        this.annotationManager = annotationManager
         this.dataManager = libraryDataManager
         this.sharedPrefs = context.getSharedPreferences("AnnotationsPrefs", android.content.Context.MODE_PRIVATE)
 
@@ -101,6 +144,64 @@ class AnnotationsViewModel : ViewModel() {
 
         loadAnnotations(annotationManager, isInitial = true)
         observeAnnotationUpdates(annotationManager)
+    }
+
+    fun exportJsonToUri(
+        context: android.content.Context,
+        uri: android.net.Uri,
+        selectedOnly: Boolean = false,
+        onResult: (Boolean) -> Unit
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val listToExport = if (selectedOnly && _selectedAnnotationIds.value.isNotEmpty()) {
+                    _annotations.value.filter { it.id != null && _selectedAnnotationIds.value.contains(it.id) }
+                } else {
+                    _annotations.value
+                }
+                val jsonString = com.maktabah.database.AnnotationJsonSerializer.encodeToJson(listToExport)
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    output.write(jsonString.toByteArray(Charsets.UTF_8))
+                }
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    onResult(true)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    onResult(false)
+                }
+            }
+        }
+    }
+
+    fun importJsonFromUri(
+        context: android.content.Context,
+        uri: android.net.Uri,
+        overwrite: Boolean = true,
+        onResult: (Result<Int>) -> Unit
+    ) {
+        val manager = annotationManager ?: run {
+            onResult(Result.failure(IllegalStateException("AnnotationManager not initialized")))
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val jsonString = context.contentResolver.openInputStream(uri)?.use { input ->
+                    input.bufferedReader(Charsets.UTF_8).readText()
+                } ?: ""
+                val decoded = com.maktabah.database.AnnotationJsonSerializer.decodeFromJson(jsonString)
+                val importedCount = manager.importAnnotations(decoded, overwrite = overwrite)
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    onResult(Result.success(importedCount))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    onResult(Result.failure(e))
+                }
+            }
+        }
     }
 
     private fun observeAnnotationUpdates(annotationManager: AnnotationManager) {
@@ -210,12 +311,16 @@ class AnnotationsViewModel : ViewModel() {
                     }
             }
 
+            fun getCreatedAtMillis(ann: Annotation): Long {
+                return if (ann.createdAt in 1L..9999999999L) ann.createdAt * 1000L else ann.createdAt
+            }
+
             val sortedAnnotations =
                 filtered.sortedWith { left, right ->
                     val result =
                         when (field) {
                             AnnotationSortField.CREATED_AT -> {
-                                val cmp = left.createdAt.compareTo(right.createdAt)
+                                val cmp = getCreatedAtMillis(left).compareTo(getCreatedAtMillis(right))
                                 if (cmp != 0) cmp else left.context.compareTo(
                                     right.context,
                                     ignoreCase = true
@@ -224,12 +329,12 @@ class AnnotationsViewModel : ViewModel() {
 
                             AnnotationSortField.CONTEXT -> {
                                 val cmp = left.context.compareTo(right.context, ignoreCase = true)
-                                if (cmp != 0) cmp else left.createdAt.compareTo(right.createdAt)
+                                if (cmp != 0) cmp else getCreatedAtMillis(left).compareTo(getCreatedAtMillis(right))
                             }
 
                             AnnotationSortField.PAGE -> {
                                 val cmp = left.page.compareTo(right.page)
-                                if (cmp != 0) cmp else left.createdAt.compareTo(right.createdAt)
+                                if (cmp != 0) cmp else getCreatedAtMillis(left).compareTo(getCreatedAtMillis(right))
                             }
 
                             AnnotationSortField.PART -> {
@@ -238,7 +343,7 @@ class AnnotationsViewModel : ViewModel() {
                                     cmp
                                 } else {
                                     val pageCmp = left.page.compareTo(right.page)
-                                    if (pageCmp != 0) pageCmp else left.createdAt.compareTo(right.createdAt)
+                                    if (pageCmp != 0) pageCmp else getCreatedAtMillis(left).compareTo(getCreatedAtMillis(right))
                                 }
                             }
                         }
@@ -251,8 +356,8 @@ class AnnotationsViewModel : ViewModel() {
                     val sortedBookIds =
                         if (field == AnnotationSortField.CREATED_AT) {
                             groupedMap.keys.sortedWith { id1, id2 ->
-                                val max1 = groupedMap[id1]?.maxOfOrNull { it.createdAt } ?: 0L
-                                val max2 = groupedMap[id2]?.maxOfOrNull { it.createdAt } ?: 0L
+                                val max1 = groupedMap[id1]?.maxOfOrNull { getCreatedAtMillis(it) } ?: 0L
+                                val max2 = groupedMap[id2]?.maxOfOrNull { getCreatedAtMillis(it) } ?: 0L
                                 val cmp = max1.compareTo(max2)
                                 if (ascending) cmp else -cmp
                             }
