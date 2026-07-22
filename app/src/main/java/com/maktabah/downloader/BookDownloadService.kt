@@ -302,6 +302,7 @@ class BookDownloadService : Service() {
         }
         val intent = Intent(applicationContext, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            setPackage(packageName)
         }
         val pendingIntent = PendingIntent.getActivity(
             applicationContext,
@@ -316,6 +317,7 @@ class BookDownloadService : Service() {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val intent = Intent(applicationContext, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            setPackage(packageName)
         }
         val pendingIntent = PendingIntent.getActivity(
             applicationContext,
