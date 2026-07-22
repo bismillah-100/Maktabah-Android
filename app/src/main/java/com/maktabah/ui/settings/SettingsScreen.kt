@@ -122,22 +122,21 @@ fun SettingsDialog(
         },
         confirmButton = {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Text(
+                    text = "v${com.maktabah.BuildConfig.VERSION_NAME}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 TextButton(
                     onClick = onCheckForUpdates,
                     contentPadding = PaddingValues(4.dp),
                     modifier = Modifier.defaultMinSize(minWidth = 1.dp, minHeight = 1.dp)
                 ) {
                     Text(stringResource(R.string.history_settings_check_update))
-                }
-                TextButton(
-                    onClick = onDismiss,
-                    contentPadding = PaddingValues(4.dp),
-                    modifier = Modifier.defaultMinSize(minWidth = 1.dp, minHeight = 1.dp)
-                ) {
-                    Text(stringResource(R.string.reader_tabs_close))
                 }
             }
         },
