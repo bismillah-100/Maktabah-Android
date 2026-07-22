@@ -130,6 +130,15 @@ fun BookSearchSheet(
         ) {
             val topPadding = 68.dp
 
+            val searchKeywords = remember(lastSearchQuery, searchMode) {
+                val normalized = lastSearchQuery.normalizeArabic()
+                if (normalized.isBlank()) emptyList<String>()
+                else when (searchMode) {
+                    SearchMode.PHRASE -> listOf(normalized)
+                    else -> normalized.split(" ").filter { it.isNotBlank() }
+                }.map { it.convertToArabicDigits() }
+            }
+
             androidx.compose.runtime.CompositionLocalProvider(
                 LocalLayoutDirection provides LayoutDirection.Rtl,
             ) {
@@ -182,16 +191,6 @@ fun BookSearchSheet(
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    val searchKeywords = remember(lastSearchQuery, searchMode) {
-                                        val normalized = lastSearchQuery.normalizeArabic()
-                                        if (normalized.isBlank()) emptyList() else {
-                                            when (searchMode) {
-                                                SearchMode.PHRASE -> listOf(normalized)
-                                                else -> normalized.split(" ")
-                                                    .filter { it.isNotBlank() }
-                                            }.map { it.convertToArabicDigits() }
-                                        }
-                                    }
                                     val displayText = remember(contentItem.nass, searchKeywords) {
                                         val stripped = contentItem.nass.stripSpanTags()
                                         val normalized = stripped.convertToArabicDigits()
@@ -200,8 +199,7 @@ fun BookSearchSheet(
                                     }
                                     val highlightedText = buildHighlightedText(
                                         text = displayText,
-                                        query = lastSearchQuery,
-                                        mode = searchMode,
+                                        searchKeywords = searchKeywords,
                                     )
                                     Text(
                                         text = highlightedText,
