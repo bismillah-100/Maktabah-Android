@@ -33,9 +33,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Deselect
-import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -66,6 +67,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -83,6 +85,8 @@ import com.maktabah.ui.common.InsetGroupedItem
 import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.common.rememberGroupedListColors
 import com.maktabah.ui.library.LibraryViewModel
+import com.maktabah.ui.search.savedresults.ResultWriterSheet
+import com.maktabah.ui.search.savedresults.SavedResultsScreen
 import com.maktabah.utils.GroupedCardDecoration
 import com.maktabah.utils.convertToArabicDigits
 import com.maktabah.utils.normalizeArabic
@@ -111,6 +115,10 @@ fun SearchScreen(
     var isFocused by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
 
+    val resultsViewModel: ResultsViewModel = viewModel()
+    val showSavedResults by viewModel.showSavedResults.collectAsState()
+    var showResultWriter by remember { mutableStateOf(false) }
+
     val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
 
     val isSearching by viewModel.isSearching.collectAsState()
@@ -125,6 +133,7 @@ fun SearchScreen(
 
     LaunchedEffect(Unit) {
         viewModel.initialize(context, libraryViewModel.dataManager, libraryViewModel.downloadedBookIds)
+        resultsViewModel.initialize(context, libraryViewModel.dataManager)
     }
 
     LaunchedEffect(isDataLoaded) {
@@ -167,6 +176,7 @@ fun SearchScreen(
             bottomContentPadding = bottomPadding + 88.dp,
             hasDonated = hasDonated,
             isDataLoaded = isDataLoaded && isTreeLoaded,
+            onOpenSavedResults = { viewModel.setShowSavedResults(true) }
         )
 
         QueryInputBar(
@@ -254,6 +264,8 @@ fun SearchScreen(
                 onSelect = onNavigateToReader,
                 bottomPadding = bottomPadding,
                 libraryViewModel = libraryViewModel,
+                onOpenSavedResults = { viewModel.setShowSavedResults(true) },
+                onSaveResults = { showResultWriter = true }
             )
         }
 
@@ -267,6 +279,33 @@ fun SearchScreen(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = androidx.compose.ui.unit.max(bottomPadding, imeBottom)),
+        )
+    }
+
+    androidx.compose.animation.AnimatedVisibility(
+        visible = showSavedResults,
+        enter = androidx.compose.animation.slideInHorizontally(initialOffsetX = { it }),
+        exit = androidx.compose.animation.slideOutHorizontally(targetOffsetX = { it })
+    ) {
+        SavedResultsScreen(
+            resultsViewModel = resultsViewModel,
+            onSelectResult = { items ->
+                viewModel.setShowSavedResults(false)
+                viewModel.loadSavedResults(items, context, libraryViewModel.dataManager)
+            },
+            onRefresh = { resultsViewModel.reloadFromSync() },
+            onDismiss = { viewModel.setShowSavedResults(false) },
+            bottomPadding = bottomPadding
+        )
+    }
+
+    if (showResultWriter) {
+        ResultWriterSheet(
+            results = results,
+            query = lastSearchQuery,
+            resultsViewModel = resultsViewModel,
+            dataManager = libraryViewModel.dataManager,
+            onDismiss = { showResultWriter = false }
         )
     }
 }
@@ -283,15 +322,16 @@ private fun FilterAndCategoryContent(
     bottomContentPadding: Dp,
     hasDonated: Boolean,
     isDataLoaded: Boolean,
+    onOpenSavedResults: () -> Unit
 ) {
     Scaffold(
         topBar = {
             SearchFilterTopBar(
                 searchQuery = searchQuery,
                 onQueryChange = { viewModel.updateSearchQuery(it, libraryViewModel.dataManager) },
-                onSelectAll = { viewModel.selectAllDownloaded() },
                 onClearSelection = { viewModel.clearSelection() },
-                hasDonated = hasDonated
+                hasDonated = hasDonated,
+                onOpenSavedResults = onOpenSavedResults
             )
         },
         containerColor = Color.Transparent,
@@ -331,9 +371,9 @@ private fun FilterAndCategoryContent(
 private fun SearchFilterTopBar(
     searchQuery: String,
     onQueryChange: (String) -> Unit,
-    onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
     hasDonated: Boolean,
+    onOpenSavedResults: () -> Unit
 ) {
     TopAppBar(
         navigationIcon = {
@@ -352,16 +392,16 @@ private fun SearchFilterTopBar(
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         actions = {
-            IconButton(onClick = onSelectAll) {
-                Icon(
-                    Icons.Default.SelectAll,
-                    contentDescription = stringResource(R.string.search_action_select_all)
-                )
-            }
             IconButton(onClick = onClearSelection) {
                 Icon(
-                    Icons.Default.Deselect,
+                    Icons.Default.Block,
                     contentDescription = stringResource(R.string.search_action_deselect_all)
+                )
+            }
+            IconButton(onClick = onOpenSavedResults) {
+                Icon(
+                    Icons.Default.Bookmarks,
+                    contentDescription = stringResource(R.string.saved_results_title)
                 )
             }
         },
@@ -461,7 +501,9 @@ private fun SearchResultsOverlay(
     onClearResults: () -> Unit,
     onSelect: (Int, Int?, Int?, Int?, String?) -> Unit,
     bottomPadding: Dp,
-    libraryViewModel: LibraryViewModel
+    libraryViewModel: LibraryViewModel,
+    onOpenSavedResults: () -> Unit,
+    onSaveResults: () -> Unit
 ) {
     var debouncedBookFilter by remember { mutableStateOf(bookFilter) }
     LaunchedEffect(bookFilter) {
@@ -536,6 +578,20 @@ private fun SearchResultsOverlay(
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                actions = {
+                    IconButton(onClick = onOpenSavedResults) {
+                        Icon(
+                            Icons.Default.Bookmarks,
+                            contentDescription = stringResource(R.string.saved_results_title)
+                        )
+                    }
+                    IconButton(onClick = onSaveResults) {
+                        Icon(
+                            Icons.Default.Save,
+                            contentDescription = stringResource(R.string.save_results_title)
+                        )
+                    }
+                }
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
