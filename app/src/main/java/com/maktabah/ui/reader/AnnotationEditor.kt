@@ -268,8 +268,9 @@ fun AnnotationEditorDialog(
                         colorHex = if (selectedType == 1) "#000000" else selectedColor,
                         note = noteText.ifBlank { null },
                         type = selectedType,
-                        createdAt = active.annotation?.createdAt
-                            ?: (System.currentTimeMillis() / 1000),
+                        createdAt = active.annotation?.createdAt?.let {
+                            if (it in 1L..9999999999L) it * 1000L else it
+                        } ?: System.currentTimeMillis(),
                         page = active.annotation?.page ?: currentContent.page,
                         context = active.annotation?.context ?: active.selectedText,
                         rangeLocation = plainLoc,
