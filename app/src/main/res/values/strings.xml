@@ -236,4 +236,26 @@
     <string name="annotation_group_unknown_book">Unknown Book</string>
     <string name="format_mb">%.2f MB</string>
     <string name="downloading">Downloading…</string>
+    <string name="saved_results_title">Saved Results</string>
+    <string name="saved_results_empty">No Saved Results</string>
+    <string name="saved_results_empty_hint">Save search results to access them later.</string>
+    <string name="save_results_title">Save Results</string>
+    <string name="save_results_name_label">Name</string>
+    <string name="save_results_query_label">Query: %s</string>
+    <string name="save_results_select_folder">Select Folder</string>
+    <string name="save_results_root">Root</string>
+    <string name="save_results_new_folder">New Folder</string>
+    <string name="save_results_create_folder">Create Folder</string>
+    <string name="save_results_folder_name">Folder Name</string>
+    <string name="save_results_save">Save</string>
+    <string name="save_results_cancel">Cancel</string>
+    <string name="save_results_error">Failed to save some results.</string>
+    <string name="save_results_folder_error">Failed to create folder.</string>
+    <string name="saved_results_delete_folder_title">Delete Folder?</string>
+    <string name="saved_results_delete_folder_message">This will delete the folder and all its contents.</string>
+    <string name="saved_results_rename">Rename</string>
+    <string name="saved_results_move">Move</string>
+    <string name="saved_results_move_title">Move to…</string>
+    <string name="saved_results_search_globally">Search globally</string>
+    <string name="saved_results_delete">Delete</string>
 </resources>

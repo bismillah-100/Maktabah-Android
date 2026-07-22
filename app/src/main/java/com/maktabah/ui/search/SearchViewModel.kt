@@ -9,6 +9,7 @@ import com.maktabah.models.BooksData
 import com.maktabah.models.CategoryData
 import com.maktabah.models.FlatLibraryItem
 import com.maktabah.models.LoadMoreData
+import com.maktabah.models.SavedResultsItem
 import com.maktabah.models.SearchMode
 import com.maktabah.models.SearchResult
 import com.maktabah.search.SearchEngine
@@ -78,6 +79,9 @@ class SearchViewModel : ViewModel() {
 
     private val _lastSearchMode = MutableStateFlow(SearchMode.PHRASE)
     val lastSearchMode: StateFlow<SearchMode> = _lastSearchMode.asStateFlow()
+
+    private val _showSavedResults = MutableStateFlow(false)
+    val showSavedResults: StateFlow<Boolean> = _showSavedResults.asStateFlow()
 
     private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
     val searchHistory: StateFlow<List<String>> = _searchHistory.asStateFlow()
@@ -271,6 +275,10 @@ class SearchViewModel : ViewModel() {
         _selectedBookIds.value = _downloadedBookIds.value
     }
 
+    fun setShowSavedResults(show: Boolean) {
+        _showSavedResults.value = show
+    }
+
     fun clearResults() {
         _searchResults.value = emptyList()
         _completedBooks.value = 0
@@ -386,7 +394,7 @@ class SearchViewModel : ViewModel() {
         mode: SearchMode,
         dataManager: LibraryDataManager
     ) {
-        val selectedIds = _selectedBookIds.value
+        val selectedIds = if (_selectedBookIds.value.isEmpty()) _downloadedBookIds.value else _selectedBookIds.value
         if (query.isBlank() || selectedIds.isEmpty()) {
             _searchResults.value = emptyList()
             return
@@ -475,6 +483,111 @@ class SearchViewModel : ViewModel() {
                     android.widget.Toast.LENGTH_SHORT
                 ).show()
             }
+        }
+    }
+
+    fun loadSavedResults(items: List<SavedResultsItem>, context: Context, dataManager: LibraryDataManager) {
+        val firstItem = items.firstOrNull() ?: return
+        _lastSearchQuery.value = firstItem.query
+        _lastSearchMode.value = SearchMode.PHRASE // Saved results don't store mode, assume phrase for highlight
+
+        viewModelScope.launch {
+            _isSearching.value = true
+            _searchResults.value = emptyList()
+            _completedBooks.value = 0
+            
+            val groupedByArchive = items.groupBy { it.archive }
+            _totalBooks.value = groupedByArchive.size
+            _currentBookProgress.value = null
+
+            val allResults = mutableListOf<SearchResult>()
+            var processed = 0
+
+            withContext(Dispatchers.IO) {
+                for ((archiveId, groupItems) in groupedByArchive) {
+                    val archiveFile = File(context.filesDir, "$archiveId.sqlite")
+                    if (!archiveFile.exists()) continue
+
+                    try {
+                        com.maktabah.database.SQLiteDB(
+                            archiveFile.absolutePath,
+                            com.maktabah.database.SQLiteDB.SQLITE_OPEN_READONLY or com.maktabah.database.SQLiteDB.SQLITE_OPEN_FULLMUTEX
+                        ).use { db ->
+                            for (item in groupItems) {
+                                val bkId = item.tableName.toIntOrNull() ?: continue
+                                val contentId = item.bookId
+                                val book = dataManager.booksById[bkId]
+                                val isMultilingual = book?.isMultiLanguage ?: false
+                                _currentBookName.value = book?.name ?: item.bookTitle
+
+                                try {
+                                    db.prepare("SELECT nass, page, part FROM b$bkId WHERE id = ? LIMIT 1")?.use { stmt ->
+                                        stmt.bindLong(1, contentId.toLong())
+                                        if (stmt.step() == com.maktabah.database.SQLiteDB.SQLITE_ROW) {
+                                            val nassBytes = stmt.columnBlob(0)
+                                            val page = stmt.columnInt(1)
+                                            val part = stmt.columnInt(2)
+
+                                            if (nassBytes != null) {
+                                                val decompressedSize = com.github.luben.zstd.Zstd.getFrameContentSize(nassBytes).toInt()
+                                                val nassString = if (decompressedSize > 0) {
+                                                    val ctx = com.maktabah.database.ZstdContextPool.getDecompressCtx()
+                                                    try {
+                                                        val dstBuf = com.maktabah.database.ZstdContextPool.getDirectBuffer(decompressedSize)
+                                                        val nassBuffer = java.nio.ByteBuffer.allocateDirect(nassBytes.size)
+                                                        nassBuffer.put(nassBytes)
+                                                        nassBuffer.flip()
+                                                        ctx.decompressDirectByteBuffer(dstBuf, 0, decompressedSize, nassBuffer, 0, nassBuffer.limit())
+                                                        val dst = ByteArray(decompressedSize)
+                                                        dstBuf.get(dst)
+                                                        com.maktabah.database.ZstdContextPool.releaseDirectBuffer(dstBuf)
+                                                        String(dst)
+                                                    } catch(e: Exception) {
+                                                        ""
+                                                    } finally {
+                                                        com.maktabah.database.ZstdContextPool.releaseDecompressCtx(ctx)
+                                                    }
+                                                } else {
+                                                    ""
+                                                }
+                                                val stripped = nassString.stripSpanTags()
+                                                
+                                                val normalized = if (isMultilingual) stripped.convertToArabicDigits() else stripped.convertToArabicDigits()
+                                                val cleanNash = normalized.normalizeArabic()
+                                                val queryConverted = item.query.convertToArabicDigits()
+                                                
+                                                val searchKeywords = if (queryConverted.isNotBlank()) listOf(queryConverted) else emptyList()
+                                                val snippet = cleanNash.snippetAround(searchKeywords, contextLength = 60)
+
+                                                allResults.add(
+                                                    SearchResult(
+                                                        bookId = bkId,
+                                                        contentId = contentId,
+                                                        text = snippet,
+                                                        page = page,
+                                                        part = part
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    // Skip missing tables or bad rows
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                    processed++
+                    _completedBooks.value = processed
+                }
+            }
+
+            _searchResults.value = allResults
+            _isSearching.value = false
+            _currentBookProgress.value = null
+            _currentBookName.value = ""
         }
     }
 }

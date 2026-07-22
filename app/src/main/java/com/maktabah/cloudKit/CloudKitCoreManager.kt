@@ -40,18 +40,13 @@ class CloudKitCoreManager private constructor() {
 
         try {
             val url = URL("$cloudKitBaseUrl/modify?ckAPIToken=$apiToken&ckWebAuthToken=${URLEncoder.encode(webAuthToken, "UTF-8")}")
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.doOutput = true
-
-            val operations = JSONArray()
+            val allOperations = mutableListOf<JSONObject>()
             for (i in 0 until recordsToSave.length()) {
                 val operation = JSONObject().apply {
                     put("operationType", "forceUpdate")
                     put("record", recordsToSave.getJSONObject(i))
                 }
-                operations.put(operation)
+                allOperations.add(operation)
             }
             
             for (i in 0 until recordIDsToDelete.length()) {
@@ -65,29 +60,43 @@ class CloudKitCoreManager private constructor() {
                         })
                     })
                 }
-                operations.put(operation)
+                allOperations.add(operation)
             }
 
-            val jsonBody = JSONObject().apply {
-                put("operations", operations)
-                put("zoneID", JSONObject().apply {
-                    put("zoneName", "AnnotationsZone")
-                    put("ownerRecordName", "_defaultOwner_")
-                })
-            }
+            if (allOperations.isEmpty()) return@withContext Result.success(Unit)
 
-            conn.outputStream.use { os ->
-                val input = jsonBody.toString().toByteArray(Charsets.UTF_8)
-                os.write(input, 0, input.size)
-            }
+            val chunkedOperations = allOperations.chunked(200)
+            
+            for (chunk in chunkedOperations) {
+                val operations = JSONArray()
+                chunk.forEach { operations.put(it) }
 
-            if (conn.responseCode == HttpURLConnection.HTTP_OK) {
-                Result.success(Unit)
-            } else {
-                val errorStr = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                val reason = try { JSONObject(errorStr).getString("reason") } catch(_: Exception) { errorStr.take(100) }
-                Result.failure(Exception("Err: $reason"))
+                val jsonBody = JSONObject().apply {
+                    put("operations", operations)
+                    put("zoneID", JSONObject().apply {
+                        put("zoneName", "AnnotationsZone")
+                        put("ownerRecordName", "_defaultOwner_")
+                    })
+                }
+
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+
+                conn.outputStream.use { os ->
+                    val input = jsonBody.toString().toByteArray(Charsets.UTF_8)
+                    os.write(input, 0, input.size)
+                }
+
+                if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+                    val errorStr = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                    val reason = try { JSONObject(errorStr).getString("reason") } catch(_: Exception) { errorStr.take(100) }
+                    return@withContext Result.failure(Exception("Err: $reason"))
+                }
             }
+            
+            Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
