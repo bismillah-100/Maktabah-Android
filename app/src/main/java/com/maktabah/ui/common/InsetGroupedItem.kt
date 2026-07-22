@@ -126,7 +126,7 @@ fun InsetGroupedItem(
         ) { content() }
         if (!isLast) {
             HorizontalDivider(
-                modifier = Modifier.padding(start = dividerStartPadding, end = dividerEndPadding),
+                modifier = Modifier.padding(start = dividerStartPadding, end = 0.5.dp),
                 thickness = Dp.Hairline,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
             )

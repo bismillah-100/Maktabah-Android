@@ -313,14 +313,13 @@ class LibraryAdapter(
             val dividerParams = divider?.layoutParams as? ViewGroup.MarginLayoutParams
             if (dividerParams != null) {
                 val strokeWidth = (1 * density).toInt()
-                val marginEndPx = (16 * density).toInt()
                 if (item is LoadMoreData || item is LoadMoreAuthors) {
                     dividerParams.marginStart = strokeWidth
-                    dividerParams.marginEnd = marginEndPx
+                    dividerParams.marginEnd = strokeWidth
                 } else {
                     val dividerIndent = (80 + (flatItem.level * 16)) * density
                     dividerParams.marginStart = dividerIndent.toInt()
-                    dividerParams.marginEnd = marginEndPx
+                    dividerParams.marginEnd = strokeWidth
                 }
                 divider.layoutParams = dividerParams
             }
