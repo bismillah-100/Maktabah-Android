@@ -306,7 +306,10 @@ private fun SavedResultsList(
             state = listState,
             contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding + 16.dp)
         ) {
-            itemsIndexed(folders) { index, folder ->
+            itemsIndexed(
+                items = folders,
+                key = { _, folder -> "folder_${folder.id}" },
+            ) { index, folder ->
                 FolderItem(
                     folder = folder,
                     index = index,
@@ -318,7 +321,10 @@ private fun SavedResultsList(
                 )
             }
 
-            itemsIndexed(results) { idx, result ->
+            itemsIndexed(
+                items = results,
+                key = { _, result -> "result_${result.id}" },
+            ) { idx, result ->
                 ResultItem(
                     result = result,
                     index = folders.size + idx,
