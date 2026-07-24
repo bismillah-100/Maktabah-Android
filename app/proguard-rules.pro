@@ -30,3 +30,7 @@
 
 # Keep Firebase Cloud Messaging services
 -keep class com.maktabah.cloudKit.SyncMessagingService { *; }
+
+# Keep UI common components & custom shapes
+-keep class com.maktabah.ui.common.** { *; }
+

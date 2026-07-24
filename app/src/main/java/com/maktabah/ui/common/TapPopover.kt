@@ -130,8 +130,11 @@ fun TapCenteredPopover(
                     arrowOffsetX = arrowOffsetX,
                     arrowAtTop = arrowAtTop,
                 ),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(
+					Dp.Hairline, 
+					MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
+				),
                 shadowElevation = 0.5.dp,
                 tonalElevation = 0.dp,
                 modifier = Modifier.widthIn(min = 180.dp, max = 250.dp),
