@@ -14,89 +14,104 @@ import java.io.FileOutputStream
 data class DownloadProgress(val progress: Float, val detail: String)
 
 class CoreDatabaseDownloader(private val context: Context) {
-    private val client = OkHttpClient()
+	private val client = OkHttpClient()
 
-    // Mimic the iOS AppConfig URLs
-    private val versionUrl = com.maktabah.BuildConfig.GITHUB_KITAB_VERSION_URL
-    private val releaseBaseUrl = com.maktabah.BuildConfig.GITHUB_RELEASE_BASE_URL
-    private val indexUrl = com.maktabah.BuildConfig.GITHUB_KITAB_INDEX_URL
+	// Mimic the iOS AppConfig URLs
+	private val versionUrl = com.maktabah.BuildConfig.GITHUB_KITAB_VERSION_URL
+	private val releaseBaseUrl = com.maktabah.BuildConfig.GITHUB_RELEASE_BASE_URL
+	private val indexUrl = com.maktabah.BuildConfig.GITHUB_KITAB_INDEX_URL
 
-    fun areCoreFilesReady(): Boolean {
-        val mainFile = File(context.filesDir, "main.sqlite")
-        val specialFile = File(context.filesDir, "special.sqlite")
-        return mainFile.exists() && specialFile.exists()
-    }
+	// Menggunakan User-Agent Google Chrome di Android
+	private val userAgent = "Maktabah-Android"
 
-    fun startDownloadFlow(): Flow<DownloadProgress> = flow {
-        emit(DownloadProgress(0.0f, "Checking version..."))
+	fun areCoreFilesReady(): Boolean {
+		val mainFile = File(context.filesDir, "main.sqlite")
+		val specialFile = File(context.filesDir, "special.sqlite")
+		return mainFile.exists() && specialFile.exists()
+	}
 
-        // 1. Fetch Version
-        val versionRequest = Request.Builder().url(versionUrl).build()
-        val versionResponse = client.newCall(versionRequest).execute()
-        if (!versionResponse.isSuccessful) throw Exception("HTTP ${versionResponse.code} for version.txt")
-        val tag = versionResponse.body.string().trim()
+	fun startDownloadFlow(): Flow<DownloadProgress> = flow {
+		emit(DownloadProgress(0.0f, "Checking version..."))
 
-        val filesToDownload = listOf("main.sqlite", "special.sqlite")
+		// 1. Fetch Version
+		val versionRequest = Request.Builder()
+			.url(versionUrl)
+			.header("User-Agent", userAgent)
+			.build()
+		
+		val versionResponse = client.newCall(versionRequest).execute()
+		if (!versionResponse.isSuccessful) throw Exception("HTTP ${versionResponse.code} for version.txt")
+		val tag = versionResponse.body.string().trim()
 
-        for ((index, fileName) in filesToDownload.withIndex()) {
-            val zstFileName = "$fileName.zst"
-            val downloadUrl = "$releaseBaseUrl/$tag/$zstFileName"
-            
-            emit(DownloadProgress((index.toFloat() / filesToDownload.size) * 0.8f, "Downloading $fileName..."))
+		val filesToDownload = listOf("main.sqlite", "special.sqlite")
 
-            // 2. Download .zst
-            val request = Request.Builder().url(downloadUrl).build()
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) throw Exception("HTTP ${response.code} for $zstFileName")
-            val body = response.body
+		for ((index, fileName) in filesToDownload.withIndex()) {
+			val zstFileName = "$fileName.zst"
+			val downloadUrl = "$releaseBaseUrl/$tag/$zstFileName"
+			
+			emit(DownloadProgress((index.toFloat() / filesToDownload.size) * 0.8f, "Downloading $fileName..."))
 
-            val tempFile = File(context.cacheDir, zstFileName)
-            var bytesCopied: Long = 0
-            val totalBytes = body.contentLength()
+			// 2. Download .zst
+			val request = Request.Builder()
+				.url(downloadUrl)
+				.header("User-Agent", userAgent)
+				.build()
+			
+			val response = client.newCall(request).execute()
+			if (!response.isSuccessful) throw Exception("HTTP ${response.code} for $zstFileName")
+			val body = response.body
 
-            body.byteStream().use { input ->
-                FileOutputStream(tempFile).use { output ->
-                    val buffer = ByteArray(8 * 1024)
-                    var bytes = input.read(buffer)
-                    while (bytes >= 0) {
-                        output.write(buffer, 0, bytes)
-                        bytesCopied += bytes
-                        
-                        val fileProgress = if (totalBytes > 0) bytesCopied.toFloat() / totalBytes else 0f
-                        val overallProgress = ((index + fileProgress) / filesToDownload.size) * 0.8f
-                        emit(DownloadProgress(overallProgress, "Downloading $fileName (${bytesCopied / 1024 / 1024} MB)"))
-                        
-                        bytes = input.read(buffer)
-                    }
-                }
-            }
+			val tempFile = File(context.cacheDir, zstFileName)
+			var bytesCopied: Long = 0
+			val totalBytes = body.contentLength()
 
-            emit(DownloadProgress(((index + 1).toFloat() / filesToDownload.size) * 0.8f, "Extracting $fileName..."))
+			body.byteStream().use { input ->
+				FileOutputStream(tempFile).use { output ->
+					val buffer = ByteArray(8 * 1024)
+					var bytes = input.read(buffer)
+					while (bytes >= 0) {
+						output.write(buffer, 0, bytes)
+						bytesCopied += bytes
+						
+						val fileProgress = if (totalBytes > 0) bytesCopied.toFloat() / totalBytes else 0f
+						val overallProgress = ((index + fileProgress) / filesToDownload.size) * 0.8f
+						emit(DownloadProgress(overallProgress, "Downloading $fileName (${bytesCopied / 1024 / 1024} MB)"))
+						
+						bytes = input.read(buffer)
+					}
+				}
+			}
 
-            // 3. Decompress .zst to .sqlite
-            val destFile = File(context.filesDir, fileName)
-            decompressZstdFile(tempFile, destFile)
-            tempFile.delete()
-        }
+			emit(DownloadProgress(((index + 1).toFloat() / filesToDownload.size) * 0.8f, "Extracting $fileName..."))
 
-        // 4. Download index.json
-        emit(DownloadProgress(0.9f, "Downloading book index..."))
-        val indexRequest = Request.Builder().url(indexUrl).build()
-        val indexResponse = client.newCall(indexRequest).execute()
-        if (!indexResponse.isSuccessful) throw Exception("HTTP ${indexResponse.code} for index.json")
-        val indexBody = indexResponse.body.string()
-        File(context.filesDir, "index.json").writeText(indexBody)
+			// 3. Decompress .zst to .sqlite
+			val destFile = File(context.filesDir, fileName)
+			decompressZstdFile(tempFile, destFile)
+			tempFile.delete()
+		}
 
-        emit(DownloadProgress(1.0f, "Finished"))
-    }.flowOn(Dispatchers.IO)
+		// 4. Download index.json
+		emit(DownloadProgress(0.9f, "Downloading book index..."))
+		val indexRequest = Request.Builder()
+			.url(indexUrl)
+			.header("User-Agent", userAgent)
+			.build()
+		
+		val indexResponse = client.newCall(indexRequest).execute()
+		if (!indexResponse.isSuccessful) throw Exception("HTTP ${indexResponse.code} for index.json")
+		val indexBody = indexResponse.body.string()
+		File(context.filesDir, "index.json").writeText(indexBody)
 
-    private fun decompressZstdFile(source: File, dest: File) {
-        source.inputStream().use { fileIn ->
-            ZstdInputStream(fileIn).use { zstdIn ->
-                dest.outputStream().use { fileOut ->
-                    zstdIn.copyTo(fileOut)
-                }
-            }
-        }
-    }
+		emit(DownloadProgress(1.0f, "Finished"))
+	}.flowOn(Dispatchers.IO)
+
+	private fun decompressZstdFile(source: File, dest: File) {
+		source.inputStream().use { fileIn ->
+			ZstdInputStream(fileIn).use { zstdIn ->
+				dest.outputStream().use { fileOut ->
+					zstdIn.copyTo(fileOut)
+				}
+			}
+		}
+	}
 }
