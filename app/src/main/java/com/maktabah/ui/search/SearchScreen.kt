@@ -684,6 +684,16 @@ private fun SearchResultsOverlay(
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         val listState = rememberLazyListState()
+        
+        val searchKeywords = remember(query, searchMode) {
+            val normalized = query.normalizeArabic()
+            if (normalized.isBlank()) emptyList<String>()
+            else when (searchMode) {
+                SearchMode.PHRASE -> listOf(normalized)
+                else -> normalized.split(" ").filter { it.isNotBlank() }
+            }.map { it.convertToArabicDigits() }
+        }
+
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -739,8 +749,7 @@ private fun SearchResultsOverlay(
                             Spacer(modifier = Modifier.height(4.dp))
                             val highlightedText = buildHighlightedText(
                                 text = result.text,
-                                query = query,
-                                mode = searchMode
+                                searchKeywords = searchKeywords
                             )
                             Text(
                                 text = highlightedText,

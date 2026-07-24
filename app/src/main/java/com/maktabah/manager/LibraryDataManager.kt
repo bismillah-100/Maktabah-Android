@@ -218,6 +218,6 @@ class LibraryDataManager(
 	// Fungsi pembantu untuk cek apakah nama buku mengandung query
 	fun bookContainsQuery(bookId: Int, query: String): Boolean {
 		val bookName = booksById[bookId]?.name ?: return false
-		return bookName.normalizeArabic().contains(query, ignoreCase = true)
+		return bookName.normalizeArabic().contains(query.normalizeArabic(), ignoreCase = true)
 	}
 }
