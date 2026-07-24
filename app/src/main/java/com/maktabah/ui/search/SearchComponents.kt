@@ -397,19 +397,9 @@ fun SearchHelpDialog(onDismiss: () -> Unit) {
 @Composable
 fun buildHighlightedText(
     text: String,
-    query: String,
-    mode: SearchMode,
+    searchKeywords: List<String>,
     highlightColor: Color = Color(0xFFFFD54F).copy(alpha = 0.4f),
 ): AnnotatedString {
-    val searchKeywords = remember(query, mode) {
-        val normalized = query.normalizeArabic()
-        if (normalized.isBlank()) return@remember emptyList()
-        when (mode) {
-            SearchMode.PHRASE -> listOf(normalized)
-            else -> normalized.split(" ").filter { it.isNotBlank() }
-        }.map { it.convertToArabicDigits() }
-    }
-
     return remember(text, searchKeywords) {
         buildAnnotatedString {
             append(text)

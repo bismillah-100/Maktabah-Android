@@ -301,9 +301,9 @@ class SearchViewModel : ViewModel() {
             val roots = dataManager.allRootCategories
             val downloadedIds = _downloadedBookIds.value
             val query = _searchQuery.value
+            val cleanQuery = query.normalizeArabic()
 
             fun hasMatchingBooks(cats: List<Any>): Boolean {
-                val cleanQuery = query.normalizeArabic()
                 for (c in cats) {
                     if (c is BooksData) {
                         val matchesQuery = cleanQuery.isEmpty() || c.name.normalizeArabic()
@@ -319,7 +319,6 @@ class SearchViewModel : ViewModel() {
 
             fun traverse(categories: List<Any>, level: Int, parentCategoryId: Int?): Boolean {
                 var hasVisibleContent = false
-                val cleanQuery = query.normalizeArabic()
                 var bookCount = 0
                 var hiddenCount = 0
                 val limit = if (parentCategoryId != null) _categoryLimits.value[parentCategoryId]
