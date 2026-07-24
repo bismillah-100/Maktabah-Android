@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -129,8 +130,8 @@ fun SettingsDialog(
                 Text(
                     text = "v${com.maktabah.BuildConfig.VERSION_NAME}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha: 0.8f),
-					modifier = Modifier.padding(4.dp)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+					modifier = Modifier.padding(4.dp),
                 )
                 TextButton(
                     onClick = onCheckForUpdates,
