@@ -12,6 +12,7 @@ import com.maktabah.models.SearchResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -428,15 +429,17 @@ class ResultsViewModel : ViewModel() {
 
     fun searchFoldersInMemory(query: String): List<FolderNode> {
         if (query.isBlank()) return emptyList()
+        val cleanQuery = query.normalizeArabic()
         return folderById.values.filter {
-            it.name.contains(query, ignoreCase = true)
+            it.name.normalizeArabic().contains(cleanQuery, ignoreCase = true)
         }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
     }
 
     fun searchResultsInMemory(query: String): List<ResultNode> {
         if (query.isBlank()) return emptyList()
+        val cleanQuery = query.normalizeArabic()
         return resultById.values.filter {
-            it.name.contains(query, ignoreCase = true)
+            it.name.normalizeArabic().contains(cleanQuery, ignoreCase = true)
         }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
     }
 

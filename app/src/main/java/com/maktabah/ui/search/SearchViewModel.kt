@@ -555,7 +555,7 @@ class SearchViewModel : ViewModel() {
                                                 
                                                 val normalized = if (isMultilingual) stripped.convertToArabicDigits() else stripped.convertToArabicDigits()
                                                 val cleanNash = normalized.normalizeArabic()
-                                                val queryConverted = item.query.convertToArabicDigits()
+                                                val queryConverted = item.query.normalizeArabic().convertToArabicDigits()
                                                 
                                                 val searchKeywords = if (queryConverted.isNotBlank()) listOf(queryConverted) else emptyList()
                                                 val snippet = cleanNash.snippetAround(searchKeywords, contextLength = 60)
