@@ -24,6 +24,7 @@ class LibraryAdapter(
     private val onCategoryToggle: (Int) -> Unit,
     private val onBookClick: (Int) -> Unit,
     private val onBookSelectionToggle: (Int) -> Unit,
+    private val onBookLongClick: ((Int, View) -> Unit)? = null,
     private val onLoadMore: (Int) -> Unit,
     private val onLoadMoreAuthors: () -> Unit,
     private val onCategorySelectionToggle: (CategoryData) -> Unit
@@ -195,21 +196,22 @@ class LibraryAdapter(
             holder.itemView.tag = null
         }
 
-        holder.bind(
-            flatItem = flatItem,
-            isLast = position == itemCount - 1,
-            viewMode = viewMode,
-            isSelectionMode = isSelectionMode,
-            selectedBookIds = selectedBookIds,
-            expandedCategories = expandedCategories,
-            isBookDownloadedById = isBookDownloadedById,
-            onCategoryToggle = onCategoryToggle,
-            onBookClick = onBookClick,
-            onBookSelectionToggle = onBookSelectionToggle,
-            onLoadMore = onLoadMore,
-            onLoadMoreAuthors = onLoadMoreAuthors,
-            onCategorySelectionToggle = onCategorySelectionToggle,
-            onSetExpandClick = { parentView, categoryId, isExpanded ->
+            holder.bind(
+                flatItem = flatItem,
+                isLast = position == itemCount - 1,
+                viewMode = viewMode,
+                isSelectionMode = isSelectionMode,
+                selectedBookIds = selectedBookIds,
+                expandedCategories = expandedCategories,
+                isBookDownloadedById = isBookDownloadedById,
+                onCategoryToggle = onCategoryToggle,
+                onBookClick = onBookClick,
+                onBookSelectionToggle = onBookSelectionToggle,
+                onBookLongClick = onBookLongClick,
+                onLoadMore = onLoadMore,
+                onLoadMoreAuthors = onLoadMoreAuthors,
+                onCategorySelectionToggle = onCategorySelectionToggle,
+                onSetExpandClick = { parentView, categoryId, isExpanded ->
                 val currentPos = holder.bindingAdapterPosition
                 if (currentPos != RecyclerView.NO_POSITION) {
                     val animator = recyclerView.itemAnimator as? TreeItemAnimator
@@ -283,6 +285,7 @@ class LibraryAdapter(
             onCategoryToggle: (Int) -> Unit,
             onBookClick: (Int) -> Unit,
             onBookSelectionToggle: (Int) -> Unit,
+            onBookLongClick: ((Int, View) -> Unit)?,
             onLoadMore: (Int) -> Unit,
             onLoadMoreAuthors: () -> Unit,
             onCategorySelectionToggle: (CategoryData) -> Unit,
@@ -444,6 +447,15 @@ class LibraryAdapter(
                         } else {
                             onBookClick(item.id)
                         }
+                    }
+
+                    if (onBookLongClick != null) {
+                        itemView.setOnLongClickListener {
+                            onBookLongClick(item.id, it)
+                            true
+                        }
+                    } else {
+                        itemView.setOnLongClickListener(null)
                     }
                 }
                 is LoadMoreData -> {

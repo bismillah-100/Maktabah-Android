@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.ImportContacts
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -46,6 +47,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -57,7 +59,10 @@ import com.maktabah.models.LibraryViewMode
 import com.maktabah.ui.common.DonationCard
 import com.maktabah.ui.common.DonationIconButton
 import com.maktabah.ui.common.GroupedRecyclerView
+import com.maktabah.ui.common.PopoverMenuAction
+import com.maktabah.ui.common.TapCenteredPopover
 import com.maktabah.ui.common.rememberGroupedListColors
+import com.maktabah.ui.reader.BookInfoSheet
 import com.maktabah.ui.reader.ReaderTabManager
 import com.maktabah.ui.search.SearchTextField
 import com.maktabah.ui.settings.SettingsDialog
@@ -88,6 +93,10 @@ fun LibraryScreen(
     val focusManager = LocalFocusManager.current
     var showImportSheet by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+
+    var popoverAnchor by remember { mutableStateOf<IntRect?>(null) }
+    var popoverBookId by remember { mutableStateOf<Int?>(null) }
+    var showBookInfoId by remember { mutableStateOf<Int?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -201,6 +210,17 @@ fun LibraryScreen(
                 onCategoryToggle = { viewModel.toggleCategory(it) },
                 onBookClick = { onNavigateToReader(it, null, null, null, null) },
                 onBookSelectionToggle = { viewModel.toggleBookSelection(context, it) },
+                onBookLongClick = { bookId, view ->
+                    val location = IntArray(2)
+                    view.getLocationInWindow(location)
+                    popoverAnchor = IntRect(
+                        left = location[0],
+                        top = location[1],
+                        right = location[0] + view.width,
+                        bottom = location[1] + view.height
+                    )
+                    popoverBookId = bookId
+                },
                 onLoadMore = { viewModel.loadMore(it) },
                 onLoadMoreAuthors = { viewModel.loadMoreAuthors() },
                 onCategorySelectionToggle = { viewModel.toggleCategorySelection(context, it) },
@@ -216,6 +236,56 @@ fun LibraryScreen(
             onDismiss = { showSettings = false },
             onNavigateToCloudKit = onNavigateToCloudKit,
             onCheckForUpdates = onCheckForUpdates
+        )
+    }
+
+    // Tap and Hold Popover
+    if (popoverAnchor != null && popoverBookId != null) {
+        val bookId = popoverBookId!!
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalLayoutDirection provides
+                androidx.compose.ui.unit.LayoutDirection.Rtl,
+        ) {
+            TapCenteredPopover(
+                expanded = true,
+                anchorBounds = popoverAnchor,
+                onDismiss = {
+                    popoverAnchor = null
+                    popoverBookId = null
+                },
+                actions = buildList {
+                    if (!isSelectionMode) {
+                        add(
+                            PopoverMenuAction(
+                                label = stringResource(R.string.library_menu_select),
+                                icon = Icons.Default.CheckCircleOutline,
+                                onClick = {
+                                    viewModel.toggleSelectionMode(context)
+                                    viewModel.toggleBookSelection(context, bookId)
+                                }
+                            )
+                        )
+                    }
+                    add(
+                        PopoverMenuAction(
+                            label = stringResource(R.string.reader_menu_book_info),
+                            icon = Icons.Default.Info,
+                            onClick = {
+                                showBookInfoId = bookId
+                            }
+                        )
+                    )
+                }
+            )
+        }
+    }
+
+    if (showBookInfoId != null) {
+        BookInfoSheet(
+            bookId = showBookInfoId!!,
+            defaultTitle = "",
+            libraryViewModel = viewModel,
+            onDismissRequest = { showBookInfoId = null }
         )
     }
 
@@ -363,6 +433,7 @@ private fun LibraryList(
     onCategoryToggle: (Int) -> Unit,
     onBookClick: (Int) -> Unit,
     onBookSelectionToggle: (Int) -> Unit,
+    onBookLongClick: (Int, android.view.View) -> Unit,
     onLoadMore: (Int) -> Unit,
     onLoadMoreAuthors: () -> Unit,
     onCategorySelectionToggle: (CategoryData) -> Unit,
@@ -382,6 +453,7 @@ private fun LibraryList(
                 onCategoryToggle = onCategoryToggle,
                 onBookClick = onBookClick,
                 onBookSelectionToggle = onBookSelectionToggle,
+                onBookLongClick = onBookLongClick,
                 onLoadMore = onLoadMore,
                 onLoadMoreAuthors = onLoadMoreAuthors,
                 onCategorySelectionToggle = onCategorySelectionToggle
