@@ -246,7 +246,6 @@ fun MainScreen(
     val tabs by tabManager.tabs.collectAsState()
     val activeTabId by tabManager.activeTabId.collectAsState()
     var showGlobalTabsSheet by remember { mutableStateOf(false) }
-    var isReaderExpanded by remember { mutableStateOf(false) }
 
     var isBottomBarVisible by remember { mutableStateOf(true) }
     LaunchedEffect(currentRoute) {
