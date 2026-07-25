@@ -87,7 +87,7 @@ fun BookInfoSheet(
                         if (authInfo.isNotEmpty()) {
                             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                             Text(
-                                text = stringResource(R.string.reader_info_author),
+                                text = "عن المصنف",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.padding(bottom = 4.dp),
@@ -101,7 +101,7 @@ fun BookInfoSheet(
                         if (betakaInfo.isNotEmpty()) {
                             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                             Text(
-                                text = stringResource(R.string.reader_info_betaka),
+                                text = "بطاقة الكتاب",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.padding(bottom = 4.dp),
@@ -115,7 +115,7 @@ fun BookInfoSheet(
                         if (infoText.isNotEmpty()) {
                             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                             Text(
-                                text = stringResource(R.string.reader_info_about_book),
+                                text = "عن الكتاب",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.padding(bottom = 4.dp),
