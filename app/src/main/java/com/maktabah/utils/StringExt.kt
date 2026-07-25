@@ -2,6 +2,9 @@ package com.maktabah.utils
 
 val arabicDigits = listOf("٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩")
 
+private val SPAN_REGEX = Regex("<[^>]*>")
+private val WHITESPACE_REGEX = Regex("\\s+")
+
 fun Char.isArabicHarakat(): Boolean {
     val v = this.code
     return v in 0x0610..0x061A ||
@@ -46,7 +49,7 @@ fun String.convertToArabicDigits(): String {
     return builder.toString()
 }
 
-fun String.stripSpanTags(): String = replace(Regex("<[^>]*>"), "")
+fun String.stripSpanTags(): String = replace(SPAN_REGEX, "")
 
 // ─── Honorific replacement dengan range tracking ───────────────────────────
 
@@ -215,7 +218,7 @@ fun String.snippetAround(keywords: List<String>, contextLength: Int = 60): Strin
             .replace("\\n", " ")
             .replace("\n", " ")
             .replace("\r", " ")
-            .replace(Regex("\\s+"), " ")
+            .replace(WHITESPACE_REGEX, " ")
             .trim()
     }
 
@@ -239,7 +242,7 @@ fun String.snippetAround(keywords: List<String>, contextLength: Int = 60): Strin
             .replace("\\n", " ")
             .replace("\n", " ")
             .replace("\r", " ")
-            .replace(Regex("\\s+"), " ")
+            .replace(WHITESPACE_REGEX, " ")
             .trim()
     }
 
@@ -263,7 +266,7 @@ fun String.snippetAround(keywords: List<String>, contextLength: Int = 60): Strin
         .replace("\\n", " ")
         .replace("\n", " ")
         .replace("\r", " ")
-        .replace(Regex("\\s+"), " ")
+        .replace(WHITESPACE_REGEX, " ")
         .trim()
 
     if (startIdx > 0) {
