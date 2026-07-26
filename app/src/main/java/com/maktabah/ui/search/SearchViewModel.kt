@@ -508,6 +508,7 @@ class SearchViewModel : ViewModel() {
                     val archiveFile = File(context.filesDir, "$archiveId.sqlite")
                     if (!archiveFile.exists()) continue
 
+                    val ctx = com.maktabah.database.ZstdContextPool.getDecompressCtx()
                     try {
                         com.maktabah.database.SQLiteDB(
                             archiveFile.absolutePath,
@@ -531,7 +532,6 @@ class SearchViewModel : ViewModel() {
                                             if (nassBytes != null) {
                                                 val decompressedSize = com.github.luben.zstd.Zstd.getFrameContentSize(nassBytes).toInt()
                                                 val nassString = if (decompressedSize > 0) {
-                                                    val ctx = com.maktabah.database.ZstdContextPool.getDecompressCtx()
                                                     try {
                                                         val dstBuf = com.maktabah.database.ZstdContextPool.getDirectBuffer(decompressedSize)
                                                         val nassBuffer = java.nio.ByteBuffer.allocateDirect(nassBytes.size)
@@ -544,8 +544,6 @@ class SearchViewModel : ViewModel() {
                                                         String(dst)
                                                     } catch(e: Exception) {
                                                         ""
-                                                    } finally {
-                                                        com.maktabah.database.ZstdContextPool.releaseDecompressCtx(ctx)
                                                     }
                                                 } else {
                                                     ""
@@ -578,6 +576,8 @@ class SearchViewModel : ViewModel() {
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
+                    } finally {
+                        com.maktabah.database.ZstdContextPool.releaseDecompressCtx(ctx)
                     }
                     processed++
                     _completedBooks.value = processed

@@ -607,9 +607,13 @@ private fun SearchResultsOverlay(
             results
         } else {
             val cleanQuery = debouncedBookFilter.normalizeArabic()
+            val normalizedNames = mutableMapOf<Int, String>()
             results.filter { result ->
-                val name = libraryViewModel.dataManager.booksById[result.bookId]?.name ?: ""
-                name.normalizeArabic().contains(cleanQuery, ignoreCase = true)
+                val normalizedName = normalizedNames.getOrPut(result.bookId) {
+                    val name = libraryViewModel.dataManager.booksById[result.bookId]?.name ?: ""
+                    name.normalizeArabic()
+                }
+                normalizedName.contains(cleanQuery, ignoreCase = true)
             }
         }
     }
