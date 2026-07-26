@@ -132,6 +132,22 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
         return output
     }
 
+
+
+    private fun parseNassAndApplyShorts(stmt: SQLiteStmt, bookId: Int): String {
+        val rawNass = if (stmt.columnType(1) == SQLiteDB.SQLITE_BLOB) {
+            decompressBlob(stmt.columnBlobDirect(1))
+        } else {
+            stmt.columnText(1) ?: ""
+        }
+        val shortsMap = libraryDataManager.loadShortsForBook(bookId.toString())
+        return if (!shortsMap.isEmpty) {
+            applyShortsMapping(rawNass, shortsMap)
+        } else {
+            rawNass
+        }
+    }
+
     fun getContent(
         bookId: Int,
         contentId: Int,
@@ -149,17 +165,7 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
                 stmt.bindInt(1, contentId)
                 if (stmt.step() == SQLiteDB.SQLITE_ROW) {
                     val id = stmt.columnInt(0)
-                    var nassText = ""
-                    if (stmt.columnType(1) == SQLiteDB.SQLITE_BLOB) {
-                        nassText = decompressBlob(stmt.columnBlobDirect(1))
-                    } else {
-                        nassText = stmt.columnText(1) ?: ""
-                    }
-
-                    val shortsMap = libraryDataManager.loadShortsForBook(bookId.toString())
-                    if (!shortsMap.isEmpty) {
-                        nassText = applyShortsMapping(nassText, shortsMap)
-                    }
+                    val nassText = parseNassAndApplyShorts(stmt, bookId)
 
                     val page = stmt.columnInt(2)
                     val part = parsePartValue(stmt, 3)
@@ -184,19 +190,7 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
             db.prepare("SELECT id, nass, page, part FROM $safeTableName ORDER BY id ASC LIMIT 1")?.use { stmt ->
                 if (stmt.step() == SQLiteDB.SQLITE_ROW) {
                     val id = stmt.columnInt(0)
-                    var nassText = ""
-                    if (stmt.columnType(1) == SQLiteDB.SQLITE_BLOB) {
-                        nassText = decompressBlob(stmt.columnBlobDirect(1))
-                    } else {
-                        nassText = stmt.columnText(1) ?: ""
-                    }
-
-                    // --- PROSES SHORTS MAPPING DISINI ---
-                    val shortsMap = libraryDataManager.loadShortsForBook(bookId.toString())
-                    if (!shortsMap.isEmpty) {
-                        nassText = applyShortsMapping(nassText, shortsMap)
-                    }
-                    // ------------------------------------
+                    val nassText = parseNassAndApplyShorts(stmt, bookId)
 
                     val page = stmt.columnInt(2)
                     val part = parsePartValue(stmt, 3)
@@ -311,16 +305,7 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
                 stmt.bindInt(2, page)
                 if (stmt.step() == SQLiteDB.SQLITE_ROW) {
                     val id = stmt.columnInt(0)
-                    var nassText = ""
-                    if (stmt.columnType(1) == SQLiteDB.SQLITE_BLOB) {
-                        nassText = decompressBlob(stmt.columnBlobDirect(1))
-                    } else {
-                        nassText = stmt.columnText(1) ?: ""
-                    }
-                    val shortsMap = libraryDataManager.loadShortsForBook(bookId.toString())
-                    if (!shortsMap.isEmpty) {
-                        nassText = applyShortsMapping(nassText, shortsMap)
-                    }
+                    val nassText = parseNassAndApplyShorts(stmt, bookId)
                     val partVal = parsePartValue(stmt, 3)
                     content = BookContent(id, nassText, page, partVal)
                 }

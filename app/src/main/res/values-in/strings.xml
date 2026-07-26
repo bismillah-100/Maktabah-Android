@@ -74,7 +74,6 @@
     <string name="library_all_downloaded">Semua sudah diunduh</string>
     <string name="library_unknown_size">Ukuran tidak diketahui</string>
     <string name="library_selected_books_count">%1$d Buku Terpilih</string>
-    <string name="library_download_failed_multiple">Gagal mengunduh beberapa buku.</string>
     <string name="library_delete_success">Berhasil menghapus %1$d buku.</string>
     <string name="library_delete_no_result">Tidak ada buku yang dihapus.</string>
     <string name="library_fallback_book_name">Buku</string>
@@ -87,9 +86,7 @@
     <string name="download_overlay_confirm_bulk">%1$d buku belum diunduh. Unduh sekarang? (Ukuran: %2$s)</string>
     <string name="download_overlay_confirm_single">Buku belum diunduh. Unduh sekarang? (Ukuran: %1$s)</string>
     <string name="download_overlay_bulk_title">Mengunduh Buku</string>
-    <string name="download_overlay_processing">Sedang memproses… (%1$d%%)</string>
     <string name="search_query_placeholder">Cari di buku terpilih</string>
-    <string name="search_action_select_all">Pilih Semua</string>
     <string name="search_action_deselect_all">Hapus Pilihan</string>
     <string name="search_empty_library_hint">Unduh buku di menu Library\nterlebih dahulu untuk mencari.</string>
     <string name="search_result_close">Tutup hasil</string>
@@ -138,7 +135,6 @@
     <string name="reader_options_show_harakat">Tampilkan Harakat</string>
     <string name="reader_options_bg_color">Warna Latar</string>
     <string name="reader_options_font">Font</string>
-    <string name="reader_info_title">Info Buku</string>
     <string name="reader_info_author">Tentang Penulis:</string>
     <string name="reader_info_betaka">Kartu Buku:</string>
     <string name="reader_info_about_book">Tentang Buku:</string>
@@ -181,7 +177,6 @@
     <string name="annotations_menu_export_rtf">Ekspor ke RTF</string>
     <string name="annotations_menu_export_json">Ekspor ke JSON</string>
     <string name="annotations_menu_import_json">Impor dari JSON</string>
-    <string name="annotations_selected_count">%1$d Terpilih</string>
     <string name="annotations_export_failed">Gagal Ekspor RTF</string>
     <string name="annotations_import_success">%1$d anotasi berhasil diimpor</string>
     <string name="annotations_import_failed">Gagal mengimpor anotasi</string>
@@ -196,8 +191,6 @@
     <string name="annotations_search_context">Konteks</string>
     <string name="annotations_search_note">Catatan</string>
     <string name="annotations_search_tag">Tag</string>
-    <string name="annotations_expand">Buka</string>
-    <string name="annotations_collapse">Tutup</string>
     <string name="history_title">Riwayat</string>
     <string name="history_search_placeholder">Cari Riwayat…</string>
     <string name="history_empty">Tidak ada riwayat</string>
@@ -219,14 +212,12 @@
     <string name="history_settings_donation_reset_success">Status donasi direset!</string>
     <string name="history_settings_font_options">Opsi Font</string>
     <string name="history_settings_import_font">Import Font</string>
-    <string name="history_settings_select_font_folder">Pilih Folder Font</string>
     <string name="history_settings_font_import_success">Font berhasil diimport!</string>
     <string name="history_settings_check_update">Periksa Pembaruan</string>
     <string name="history_settings_no_update_found">Tidak ada pembaruan. Anda menggunakan versi terbaru.</string>
     <string name="history_menu_remove_history">Hapus dari Riwayat</string>
     <string name="history_menu_remove_favorite">Hapus dari Favorit</string>
     <string name="history_menu_add_favorite">Tambah ke Favorit</string>
-    <string name="history_add_favorite_title">Tambah ke Favorit</string>
     <string name="cloudkit_auth_title">Masuk dengan Apple</string>
     <string name="cloudkit_error_auth_redirect">Sudah diautentikasi atau tidak ada URL pengalihan.</string>
     <string name="cloudkit_error_empty">Respon kosong</string>
@@ -249,13 +240,10 @@
     <string name="donation_email_dialog_action">Lanjut ke Donasi</string>
     <string name="annotation_item_part_page">ج %1$d ∙ ص %2$d</string>
     <string name="annotation_item_page">ص %1$d</string>
-    <string name="annotation_group_unknown_book">Buku Tidak Diketahui</string>
     <string name="format_mb">%.2f MB</string>
-    <string name="downloading">Mengunduh…</string>
     <string name="download_notification_channel_name">Unduhan Buku</string>
     <string name="download_notification_channel_desc">Menampilkan kemajuan unduhan buku yang sedang berlangsung</string>
     <string name="download_notification_completed_title">Unduhan Selesai</string>
-    <string name="download_notification_completed_desc">Buku berhasil diunduh</string>
     <string name="saved_results_title">Hasil Tersimpan</string>
     <string name="saved_results_empty">Belum Ada Hasil Tersimpan</string>
     <string name="saved_results_empty_hint">Simpan hasil pencarian untuk diakses nanti.</string>
@@ -269,8 +257,6 @@
     <string name="save_results_folder_name">Nama Folder</string>
     <string name="save_results_save">Simpan</string>
     <string name="save_results_cancel">Batal</string>
-    <string name="save_results_error">Gagal menyimpan beberapa hasil.</string>
-    <string name="save_results_folder_error">Gagal membuat folder.</string>
     <string name="saved_results_delete_folder_title">Hapus Folder?</string>
     <string name="saved_results_delete_folder_message">Ini akan menghapus folder beserta seluruh isinya.</string>
     <string name="saved_results_rename">Ubah Nama</string>

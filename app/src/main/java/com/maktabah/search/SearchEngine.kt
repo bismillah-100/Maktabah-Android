@@ -4,6 +4,7 @@ import android.util.Log
 import com.github.luben.zstd.Zstd
 import com.maktabah.database.ZstdContextPool
 import com.maktabah.database.SQLiteDB
+import com.maktabah.database.decompressBlob
 import com.maktabah.models.BookContent
 import com.maktabah.models.SearchMode
 import com.maktabah.utils.normalizeArabic
@@ -106,19 +107,7 @@ class SearchEngine {
 
                         if (nassType == SQLiteDB.SQLITE_BLOB) {
                             val blob = stmt.columnBlobDirect(1)
-                            if (blob != null) {
-                                val decompressedSize =
-                                    Zstd.getFrameContentSize(blob).toInt()
-                                if (decompressedSize > 0) {
-                                    val dstBuf = ZstdContextPool.getDirectBuffer(decompressedSize)
-                                    zstdCtx.decompressDirectByteBuffer(dstBuf, 0, decompressedSize, blob, 0, blob.limit())
-                                    val dst = ByteArray(decompressedSize)
-                                    dstBuf.get(dst)
-                                    ZstdContextPool.releaseDirectBuffer(dstBuf)
-
-                                    nassText = String(dst)
-                                }
-                            }
+                            nassText = decompressBlob(blob, zstdCtx)
                         } else {
                             nassText = stmt.columnText(1) ?: ""
                         }
