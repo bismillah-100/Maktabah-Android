@@ -18,6 +18,7 @@ import com.maktabah.models.Annotation
 import com.maktabah.utils.HonorificReplacementResult
 import com.maktabah.utils.convertToArabicDigits
 import com.maktabah.utils.isArabicHarakat
+import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.removingHarakat
 import com.maktabah.utils.replacingHonorificPhrasesWithEvents
 import android.util.LruCache
@@ -400,17 +401,7 @@ object ArabicTextRenderer {
                     }
                 }
 
-                val normalizedQuery = StringBuilder()
-                for (char in cleanQuery) {
-                    val v = char.code
-                    if (v == 0x0623 || v == 0x0625 || v == 0x0622 || v == 0x0671) {
-                        normalizedQuery.append('\u0627')
-                    } else {
-                        normalizedQuery.append(char)
-                    }
-                }
-
-                val qStr = normalizedQuery.toString()
+                val qStr = cleanQuery.toString().normalizeArabic()
                 val tStr = cleanText.toString()
                 var startSearch = 0
                 while (true) {
