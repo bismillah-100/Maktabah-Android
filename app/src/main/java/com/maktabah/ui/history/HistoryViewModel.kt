@@ -110,7 +110,7 @@ class HistoryViewModel : ViewModel() {
 		}
 	}
 
-    fun addBookToHistory(bookId: Int) {
+    fun addBookToHistory(bookId: Int): List<ReadingEntry> {
         val entries = _entriesByBookId.value.toMutableMap()
         val entry = entries[bookId] ?: ReadingEntry(
             bookId = bookId,
@@ -122,18 +122,39 @@ class HistoryViewModel : ViewModel() {
         )
         entries[bookId] = newEntry
 
+        val affectedEntries = mutableListOf<ReadingEntry>()
+        affectedEntries.add(newEntry)
+
         val order = _historyOrder.value.toMutableList()
         order.remove(bookId)
         order.add(0, bookId)
 
         if (order.size > maxHistoryCount) {
-            val toRemove = order.subList(maxHistoryCount, order.size)
+            val toRemove = order.subList(maxHistoryCount, order.size).toList()
             order.removeAll(toRemove)
+            toRemove.forEach { idToRemove ->
+                val oldEntry = entries[idToRemove]
+                if (oldEntry != null) {
+                    val updatedOldEntry = oldEntry.copy(
+                        lastOpenedAt = null,
+                        lastContentId = null,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    if (!updatedOldEntry.isFavorite) {
+                        entries.remove(idToRemove)
+                    } else {
+                        entries[idToRemove] = updatedOldEntry
+                    }
+                    affectedEntries.add(updatedOldEntry)
+                }
+            }
         }
 
         _entriesByBookId.value = entries
         _historyOrder.value = order
         saveToFile()
+        
+        return affectedEntries
     }
 
     fun updateLastContentId(contentId: Int, bookId: Int) {
@@ -338,7 +359,25 @@ class HistoryViewModel : ViewModel() {
                 .map { it.bookId }
             
             val newOrder = if (sortedIds.size > maxHistoryCount) {
-                sortedIds.subList(0, maxHistoryCount)
+                val toKeep = sortedIds.subList(0, maxHistoryCount)
+                val toRemove = sortedIds.subList(maxHistoryCount, sortedIds.size)
+                toRemove.forEach { idToRemove ->
+                    val oldEntry = entries[idToRemove]
+                    if (oldEntry != null) {
+                        val updatedOldEntry = oldEntry.copy(
+                            lastOpenedAt = null,
+                            lastContentId = null,
+                            updatedAt = System.currentTimeMillis()
+                        )
+                        if (!updatedOldEntry.isFavorite) {
+                            entries.remove(idToRemove)
+                        } else {
+                            entries[idToRemove] = updatedOldEntry
+                        }
+                        didChange = true
+                    }
+                }
+                toKeep
             } else {
                 sortedIds
             }
