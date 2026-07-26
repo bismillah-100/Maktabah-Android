@@ -166,6 +166,7 @@ fun MainScreen(
     val lastTabRoute =
         remember { prefs.getString("last_tab_route", Tab.Library.route) ?: Tab.Library.route }
     var hasDonated by remember { mutableStateOf(prefs.getBoolean("has_donated", false)) }
+    var hideTabsOnScroll by remember { mutableStateOf(prefs.getBoolean("hide_tabs_on_scroll", true)) }
     var showBookNotFoundPopover by remember { mutableStateOf(false) }
 
     DisposableEffect(prefs) {
@@ -173,6 +174,8 @@ fun MainScreen(
             android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
                 if (key == "has_donated") {
                     hasDonated = prefs.getBoolean("has_donated", false)
+                } else if (key == "hide_tabs_on_scroll") {
+                    hideTabsOnScroll = prefs.getBoolean("hide_tabs_on_scroll", true)
                 }
             }
         prefs.registerOnSharedPreferenceChangeListener(listener)
@@ -252,12 +255,16 @@ fun MainScreen(
         isBottomBarVisible = true
     }
 
-    val nestedScrollConnection = remember {
+    val nestedScrollConnection = remember(hideTabsOnScroll) {
         object : NestedScrollConnection {
             override fun onPreScroll(
                 available: Offset,
                 source: NestedScrollSource,
             ): Offset {
+                if (!hideTabsOnScroll) {
+                    if (!isBottomBarVisible) isBottomBarVisible = true
+                    return Offset.Zero
+                }
                 if (available.y < -15f) {
                     isBottomBarVisible = false
                 } else if (available.y > 15f) {

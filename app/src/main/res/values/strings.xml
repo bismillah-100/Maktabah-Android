@@ -207,6 +207,8 @@
     <string name="history_favorites_empty">No favorites available</string>
     <string name="history_action_add_favorite">Add Favorite</string>
     <string name="history_settings_title">Settings</string>
+    <string name="history_settings_appearance">Appearance</string>
+    <string name="history_settings_hide_tabs_on_scroll">Hide tabs when scrolling down</string>
     <string name="history_settings_cloudkit">CloudKit Accound</string>
     <string name="history_settings_signed_in">Signed in as: %1$s</string>
     <string name="history_settings_connected">Connected</string>
