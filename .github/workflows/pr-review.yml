@@ -1,0 +1,34 @@
+name: Jules PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: jules-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+      statuses: write
+    steps:
+      - name: Jules PR Reviewer
+        uses: thalesraymond/jules-pr-reviewer@v1
+        with:
+          jules_api_key: ${{ secrets.JULES_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          enable_suggestions: true
+          rules_file: .github/jules-review-rules.md
+          ignored_paths: "*.lock, .gradle/**, build/**"
+          extra_instructions: |
+            [PROJECT CONTEXT]
+            - Android app using Jetpack Compose, MVVM Architecture, and Coroutines.
+            - SQLite is accessed natively via JNI (C++) using wrapper classes.
+            - UI and ViewModel layers must be completely separate; logic should not reside in Compose functions.
+            
+            [CRITICAL INSTRUCTION]
+            - You MUST output ONLY valid JSON. Do not include any conversational text, greetings, or explanations before or after the JSON block.
