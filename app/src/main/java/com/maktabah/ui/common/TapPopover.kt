@@ -1,18 +1,13 @@
 package com.maktabah.ui.common
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.wrapContentSize
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -23,10 +18,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -46,6 +39,7 @@ private class TapCenterPositionProvider(
     private val gapPx: Int,
     private val onArrowOffsetXCalculated: (Dp, Boolean) -> Unit,
     private val density: androidx.compose.ui.unit.Density,
+    private val overrideAnchorBounds: IntRect? = null,
 ) : PopupPositionProvider {
     override fun calculatePosition(
         anchorBounds: IntRect,
@@ -53,7 +47,8 @@ private class TapCenterPositionProvider(
         layoutDirection: LayoutDirection,
         popupContentSize: IntSize,
     ): IntOffset {
-        val anchorCenterX = anchorBounds.left + anchorBounds.width / 2
+        val actualAnchor = overrideAnchorBounds ?: anchorBounds
+        val anchorCenterX = actualAnchor.left + actualAnchor.width / 2
 
         // Target: popover center-nya pas di tengah anchor
         var x = anchorCenterX - popupContentSize.width / 2
@@ -64,15 +59,15 @@ private class TapCenterPositionProvider(
         val arrowOffsetDp = with(density) { arrowCenterXPx.toDp() }
 
         // Coba taruh di bawah anchor dulu; kalau kepotong bawah layar, taruh di atas
-        val spaceBelow = windowSize.height - anchorBounds.bottom
+        val spaceBelow = windowSize.height - actualAnchor.bottom
         val fitsBelow = spaceBelow >= popupContentSize.height + gapPx + screenMarginPx
         val arrowAtTop: Boolean
         val y: Int
         if (fitsBelow) {
-            y = anchorBounds.bottom + gapPx
+            y = actualAnchor.bottom + gapPx
             arrowAtTop = true
         } else {
-            y = anchorBounds.top - gapPx - popupContentSize.height
+            y = actualAnchor.top - gapPx - popupContentSize.height
             arrowAtTop = false
         }
 
@@ -96,8 +91,9 @@ fun TapCenteredPopover(
     expanded: Boolean,
     onDismiss: () -> Unit,
     actions: List<PopoverMenuAction>,
+    anchorBounds: IntRect? = null,
     screenMargin: Dp = 12.dp,
-    gap: Dp = 2.dp,
+    gap: Dp = 0.dp,
 ) {
     if (!expanded) return
 
@@ -117,6 +113,7 @@ fun TapCenteredPopover(
                 arrowAtTop = atTop
             },
             density = density,
+            overrideAnchorBounds = anchorBounds,
         ),
         onDismissRequest = onDismiss,
         properties = PopupProperties(focusable = true),
@@ -132,8 +129,8 @@ fun TapCenteredPopover(
                 ),
                 color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(
-					Dp.Hairline, 
-					MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
+					Dp.Hairline,
+					MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
 				),
                 shadowElevation = 0.5.dp,
                 tonalElevation = 0.dp,

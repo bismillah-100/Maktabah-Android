@@ -36,6 +36,7 @@ fun SettingsDialog(
 ) {
     val context = LocalContext.current
     val hasToken by viewModel.hasToken.collectAsState()
+    val hideTabsOnScroll by viewModel.hideTabsOnScroll.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.initialize(context)
@@ -47,6 +48,32 @@ fun SettingsDialog(
         containerColor = MaterialTheme.colorScheme.surface,
         text = {
             Column {
+                Text(
+                    text = stringResource(R.string.history_settings_appearance),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.history_settings_hide_tabs_on_scroll),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    androidx.compose.material3.Switch(
+                        checked = hideTabsOnScroll,
+                        onCheckedChange = { enabled ->
+                            viewModel.setHideTabsOnScroll(context, enabled)
+                        }
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+
                 Text(
                     text = stringResource(R.string.history_settings_cloudkit),
                     style = MaterialTheme.typography.titleSmall,

@@ -205,6 +205,8 @@
     <string name="history_favorites_empty">Tidak ada favorit</string>
     <string name="history_action_add_favorite">Tambah Favorit</string>
     <string name="history_settings_title">Pengaturan</string>
+    <string name="history_settings_appearance">Tampilan</string>
+    <string name="history_settings_hide_tabs_on_scroll">Sembunyikan tab saat scroll ke bawah</string>
     <string name="history_settings_cloudkit">Akun CloudKit</string>
     <string name="history_settings_signed_in">Masuk sebagai: %1$s</string>
     <string name="history_settings_connected">Terhubung</string>

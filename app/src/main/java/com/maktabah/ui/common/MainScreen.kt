@@ -2,10 +2,23 @@
 
 package com.maktabah.ui.common
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +34,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -44,8 +58,15 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.PlatformTextStyle
@@ -69,6 +90,7 @@ import com.maktabah.R
 import com.maktabah.cloudKit.CloudKitSyncManager
 import com.maktabah.database.AnnotationManager
 import com.maktabah.models.FlashTarget
+import com.maktabah.models.ReaderTab
 import com.maktabah.ui.annotation.AnnotationsScreen
 import com.maktabah.ui.annotation.AnnotationsViewModel
 import com.maktabah.ui.cloudKit.CloudKitAuthScreen
@@ -78,6 +100,7 @@ import com.maktabah.ui.library.LibraryScreen
 import com.maktabah.ui.library.LibraryViewModel
 import com.maktabah.ui.reader.ReaderScreen
 import com.maktabah.ui.reader.ReaderTabManager
+import com.maktabah.ui.reader.ReaderTabsListSheet
 import com.maktabah.ui.search.SearchScreen
 import com.maktabah.ui.search.SearchViewModel
 import kotlinx.coroutines.Dispatchers
@@ -143,6 +166,7 @@ fun MainScreen(
     val lastTabRoute =
         remember { prefs.getString("last_tab_route", Tab.Library.route) ?: Tab.Library.route }
     var hasDonated by remember { mutableStateOf(prefs.getBoolean("has_donated", false)) }
+    var hideTabsOnScroll by remember { mutableStateOf(prefs.getBoolean("hide_tabs_on_scroll", true)) }
     var showBookNotFoundPopover by remember { mutableStateOf(false) }
 
     DisposableEffect(prefs) {
@@ -150,6 +174,8 @@ fun MainScreen(
             android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
                 if (key == "has_donated") {
                     hasDonated = prefs.getBoolean("has_donated", false)
+                } else if (key == "hide_tabs_on_scroll") {
+                    hideTabsOnScroll = prefs.getBoolean("hide_tabs_on_scroll", true)
                 }
             }
         prefs.registerOnSharedPreferenceChangeListener(listener)
@@ -220,6 +246,35 @@ fun MainScreen(
         androidx.lifecycle.viewmodel.compose
             .viewModel()
 
+    val tabs by tabManager.tabs.collectAsState()
+    val activeTabId by tabManager.activeTabId.collectAsState()
+    var showGlobalTabsSheet by remember { mutableStateOf(false) }
+
+    var isBottomBarVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(currentRoute) {
+        isBottomBarVisible = true
+    }
+
+    val nestedScrollConnection = remember(hideTabsOnScroll) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (!hideTabsOnScroll) {
+                    if (!isBottomBarVisible) isBottomBarVisible = true
+                    return Offset.Zero
+                }
+                if (available.y < -2f) {
+                    isBottomBarVisible = false
+                } else if (available.y > 2f) {
+                    isBottomBarVisible = true
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
     // Save last tab when it changes
     LaunchedEffect(currentRoute) {
         if (currentRoute != null && Tab.entries.any { it.route == currentRoute }) {
@@ -258,7 +313,7 @@ fun MainScreen(
                                 initialContentId = contentId,
                                 flashTarget = flashTarget,
                                 searchQuery = query,
-                                setActive = !isInReader, // Don't switch if already in reader
+                                setActive = !isInReader,
                             )
                         // Initialize ViewModel jika belum
                         tab.viewModel.initialize(
@@ -273,11 +328,9 @@ fun MainScreen(
                             tab.viewModel.loadBook(bookId, archivePath, book.name, finalContentId)
                             tab.viewModel.setSearchQuery(query)
                         }
-                        // Navigate ke reader_tabs hanya jika belum di sana
                         if (navController.currentDestination?.route != "reader_tabs") {
                             navController.navigate("reader_tabs") {
                                 launchSingleTop = true
-                                // Simpan state tab sebelumnya agar bisa di-restore saat kembali
                                 restoreState = true
                             }
                         }
@@ -298,10 +351,35 @@ fun MainScreen(
     Scaffold(
         contentWindowInsets = WindowInsets(0.dp),
         bottomBar = {
-            MainBottomBar(currentRoute, navController)
+            AnimatedVisibility(
+                visible = isBottomBarVisible,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+            ) {
+                MainBottomBar(
+                    currentRoute = currentRoute,
+                    navController = navController,
+                    tabs = tabs,
+                    activeTabId = activeTabId,
+                    onOpenTabSheet = { showGlobalTabsSheet = true },
+                    onOpenSingleTab = { selectedTabId ->
+                        tabManager.switchTab(selectedTabId)
+                        if (navController.currentDestination?.route != "reader_tabs") {
+                            navController.navigate("reader_tabs") {
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    },
+                )
+            }
         },
     ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .nestedScroll(nestedScrollConnection)
+        ) {
             AppNavHost(
                 navController = navController,
                 startDestination = lastTabRoute,
@@ -342,6 +420,32 @@ fun MainScreen(
                     onNavigateToReader = handleNavigateToReader,
                 )
             }
+
+            if (showGlobalTabsSheet && tabs.isNotEmpty()) {
+                ReaderTabsListSheet(
+                    tabs = tabs,
+                    activeTabId = activeTabId,
+                    onSwitch = { selectedTabId ->
+                        tabManager.switchTab(selectedTabId)
+                        showGlobalTabsSheet = false
+                        if (navController.currentDestination?.route != "reader_tabs") {
+                            navController.navigate("reader_tabs") {
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    },
+                    onClose = { closedTabId ->
+                        tabManager.closeTab(closedTabId)
+                        if (tabManager.tabs.value.isEmpty()) {
+                            showGlobalTabsSheet = false
+                        }
+                    },
+                    onDismiss = {
+                        showGlobalTabsSheet = false
+                    },
+                )
+            }
         }
     }
 }
@@ -350,55 +454,168 @@ fun MainScreen(
 private fun MainBottomBar(
     currentRoute: String?,
     navController: NavController,
+    tabs: List<ReaderTab>,
+    activeTabId: String?,
+    onOpenTabSheet: () -> Unit,
+    onOpenSingleTab: (String) -> Unit,
 ) {
-    val isCloudKitLogin = currentRoute == "cloudkit_login"
-    val isReaderScreen = currentRoute == "reader_tabs"
+    if (currentRoute == "cloudkit_login" || currentRoute == "reader_tabs") return
 
-    if (isCloudKitLogin || isReaderScreen) return
+    val hasOpenTabs = tabs.isNotEmpty()
+    val horizontalPadding by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (hasOpenTabs) 16.dp else 32.dp,
+        label = "bottom_bar_padding",
+    )
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                start = 32.dp,
-                end = 32.dp,
+                start = horizontalPadding,
+                end = horizontalPadding,
                 bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
             ),
     ) {
-        Surface(
-            shape = CircleShape,
-            shadowElevation = 8.dp,
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(
-                width = 0.5.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
-            )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(64.dp)
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Tab.entries.forEach { tab ->
-                    val title = stringResource(tab.titleRes)
-                    val selected = currentRoute == tab.route
+            MainTabsContainer(
+                currentRoute = currentRoute,
+                navController = navController,
+                modifier = Modifier.weight(1f)
+            )
 
-                    CustomTabItem(
-                        icon = tab.getIcon(),
-                        label = title,
-                        selected = selected,
-                        // 3. Tab mendapatkan proporsi weight murni, sehingga lebar dan titik tengahnya 100% identik
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            navController.navigate(tab.route) {
-                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
+            AnimatedVisibility(
+                visible = hasOpenTabs,
+                enter = expandHorizontally(expandFrom = Alignment.Start) + fadeIn(),
+                exit = shrinkHorizontally(shrinkTowards = Alignment.Start) + fadeOut(),
+            ) {
+                ReaderTabsFab(
+                    tabsCount = tabs.size,
+                    activeTabId = activeTabId ?: tabs.firstOrNull()?.id,
+                    onOpenTabSheet = onOpenTabSheet,
+                    onOpenSingleTab = onOpenSingleTab
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MainTabsContainer(
+    currentRoute: String?,
+    navController: NavController,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.height(64.dp),
+        shape = CircleShape,
+        shadowElevation = 8.dp,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            width = 0.5.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Tab.entries.forEach { tab ->
+                val title = stringResource(tab.titleRes)
+                val selected = currentRoute == tab.route
+
+                CustomTabItem(
+                    icon = tab.getIcon(),
+                    label = title,
+                    selected = selected,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        navController.navigate(tab.route) {
+                            popUpTo(navController.graph.startDestinationId) {
+                                saveState = true
                             }
-                        },
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ReaderTabsFab(
+    tabsCount: Int,
+    activeTabId: String?,
+    onOpenTabSheet: () -> Unit,
+    onOpenSingleTab: (String) -> Unit,
+) {
+    val haptic = LocalHapticFeedback.current
+    val fabInteractionSource = remember { MutableInteractionSource() }
+    val isPressed by fabInteractionSource.collectIsPressedAsState()
+
+    val fabScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.88f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "fab_press_scale"
+    )
+
+    Surface(
+        shape = CircleShape,
+        shadowElevation = 8.dp,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            width = 0.5.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
+        ),
+        modifier = Modifier
+            .size(64.dp)
+            .graphicsLayer {
+                scaleX = fabScale
+                scaleY = fabScale
+            }
+            .combinedClickable(
+                interactionSource = fabInteractionSource,
+                indication = null,
+                onClick = {
+                    activeTabId?.let { onOpenSingleTab(it) }
+                },
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onOpenTabSheet()
+                }
+            )
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Surface(
+                shape = RoundedCornerShape(11.dp),
+                border = BorderStroke(
+                    width = 1.8.dp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                ),
+                color = Color.Transparent,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = tabsCount.toString(),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -418,9 +635,25 @@ private fun CustomTabItem(
     val activeColor = MaterialTheme.colorScheme.primary
     val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant
 
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.85f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "tab_item_scale"
+    )
+
     Box(
         modifier = modifier
             .fillMaxHeight()
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .drawBehind {
                 if (selected) {
                     val overlapPx = overlap.toPx()
@@ -439,7 +672,7 @@ private fun CustomTabItem(
                 }
             }
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick,
             ),
@@ -506,7 +739,7 @@ private fun AppNavHost(
             val tabRoutes = Tab.entries.map { it.route }
 
             if (initial in tabRoutes && target in tabRoutes) {
-                androidx.compose.animation.fadeIn(
+                fadeIn(
                     animationSpec = androidx.compose.animation.core.tween(350)
                 )
             } else {
@@ -522,14 +755,14 @@ private fun AppNavHost(
             val tabRoutes = Tab.entries.map { it.route }
 
             if (initial in tabRoutes && target in tabRoutes) {
-                androidx.compose.animation.fadeOut(
+                fadeOut(
                     animationSpec = androidx.compose.animation.core.tween(350)
                 )
             } else {
                 androidx.compose.animation.slideOutHorizontally(
                     targetOffsetX = { -it / 3 },
                     animationSpec = androidx.compose.animation.core.tween(300),
-                ) + androidx.compose.animation.fadeOut(
+                ) + fadeOut(
                     animationSpec = androidx.compose.animation.core.tween(300),
                 )
             }
@@ -540,14 +773,14 @@ private fun AppNavHost(
             val tabRoutes = Tab.entries.map { it.route }
 
             if (initial in tabRoutes && target in tabRoutes) {
-                androidx.compose.animation.fadeIn(
+                fadeIn(
                     animationSpec = androidx.compose.animation.core.tween(350)
                 )
             } else {
                 androidx.compose.animation.slideInHorizontally(
                     initialOffsetX = { -it / 3 },
                     animationSpec = androidx.compose.animation.core.tween(300),
-                ) + androidx.compose.animation.fadeIn(
+                ) + fadeIn(
                     animationSpec = androidx.compose.animation.core.tween(300),
                 )
             }
@@ -558,7 +791,7 @@ private fun AppNavHost(
             val tabRoutes = Tab.entries.map { it.route }
 
             if (initial in tabRoutes && target in tabRoutes) {
-                androidx.compose.animation.fadeOut(
+                fadeOut(
                     animationSpec = androidx.compose.animation.core.tween(350)
                 )
             } else {
