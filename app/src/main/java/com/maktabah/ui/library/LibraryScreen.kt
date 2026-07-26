@@ -262,6 +262,8 @@ fun LibraryScreen(
                                 onClick = {
                                     viewModel.toggleSelectionMode(context)
                                     viewModel.toggleBookSelection(context, bookId)
+                                    popoverAnchor = null
+                                    popoverBookId = null
                                 }
                             )
                         )
@@ -272,6 +274,8 @@ fun LibraryScreen(
                             icon = Icons.Default.Info,
                             onClick = {
                                 showBookInfoId = bookId
+                                popoverAnchor = null
+                                popoverBookId = null
                             }
                         )
                     )

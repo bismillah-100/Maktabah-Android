@@ -265,9 +265,9 @@ fun MainScreen(
                     if (!isBottomBarVisible) isBottomBarVisible = true
                     return Offset.Zero
                 }
-                if (available.y < -15f) {
+                if (available.y < -2f) {
                     isBottomBarVisible = false
-                } else if (available.y > 15f) {
+                } else if (available.y > 2f) {
                     isBottomBarVisible = true
                 }
                 return Offset.Zero
