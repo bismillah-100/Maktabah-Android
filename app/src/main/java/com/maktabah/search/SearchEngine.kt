@@ -107,9 +107,7 @@ class SearchEngine {
 
                         if (nassType == SQLiteDB.SQLITE_BLOB) {
                             val blob = stmt.columnBlobDirect(1)
-                            if (blob != null) {
-                                nassText = decompressBlob(blob, zstdCtx)
-                            }
+                            nassText = decompressBlob(blob, zstdCtx)
                         } else {
                             nassText = stmt.columnText(1) ?: ""
                         }

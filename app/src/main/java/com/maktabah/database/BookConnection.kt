@@ -135,17 +135,17 @@ class BookConnection(private val libraryDataManager: LibraryDataManager) {
 
 
     private fun parseNassAndApplyShorts(stmt: SQLiteStmt, bookId: Int): String {
-        var nassText = ""
-        if (stmt.columnType(1) == SQLiteDB.SQLITE_BLOB) {
-            nassText = decompressBlob(stmt.columnBlobDirect(1))
+        val rawNass = if (stmt.columnType(1) == SQLiteDB.SQLITE_BLOB) {
+            decompressBlob(stmt.columnBlobDirect(1))
         } else {
-            nassText = stmt.columnText(1) ?: ""
+            stmt.columnText(1) ?: ""
         }
         val shortsMap = libraryDataManager.loadShortsForBook(bookId.toString())
-        if (!shortsMap.isEmpty) {
-            nassText = applyShortsMapping(nassText, shortsMap)
+        return if (!shortsMap.isEmpty) {
+            applyShortsMapping(rawNass, shortsMap)
+        } else {
+            rawNass
         }
-        return nassText
     }
 
     fun getContent(
