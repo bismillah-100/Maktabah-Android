@@ -544,20 +544,32 @@ class ResultsHandler(private val dbFile: File) {
                 db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
                 try {
                     // 1. Deletions
-                    for (ckId in recordIdsToDelete) {
-                        var localId: Long? = null
-                        db.prepare("SELECT id FROM folders WHERE ckRecordId = ? LIMIT 1")?.use { stmt ->
-                            stmt.bindText(1, ckId)
-                            if (stmt.step() == SQLiteDB.SQLITE_ROW) localId = stmt.columnLong(0)
-                        }
-                        if (localId != null) {
-                            val allIds = getAllDescendantIds(localId)
-                            for (fId in allIds) {
-                                db.prepare("DELETE FROM results WHERE folder_id = ?;")?.use { stmt ->
-                                    stmt.bindLong(1, fId); stmt.step()
-                                }
-                                db.prepare("DELETE FROM folders WHERE id = ?;")?.use { stmt ->
-                                    stmt.bindLong(1, fId); stmt.step()
+                    if (recordIdsToDelete.isNotEmpty()) {
+                        db.prepare("SELECT id FROM folders WHERE ckRecordId = ? LIMIT 1")?.use { selectStmt ->
+                            db.prepare("DELETE FROM results WHERE folder_id = ?;")?.use { delResStmt ->
+                                db.prepare("DELETE FROM folders WHERE id = ?;")?.use { delFolStmt ->
+                                    for (ckId in recordIdsToDelete) {
+                                        var localId: Long? = null
+                                        selectStmt.bindText(1, ckId)
+                                        if (selectStmt.step() == SQLiteDB.SQLITE_ROW) localId = selectStmt.columnLong(0)
+                                        selectStmt.reset()
+                                        selectStmt.clearBindings()
+
+                                        if (localId != null) {
+                                            val allIds = getAllDescendantIds(localId)
+                                            for (fId in allIds) {
+                                                delResStmt.bindLong(1, fId)
+                                                delResStmt.step()
+                                                delResStmt.reset()
+                                                delResStmt.clearBindings()
+
+                                                delFolStmt.bindLong(1, fId)
+                                                delFolStmt.step()
+                                                delFolStmt.reset()
+                                                delFolStmt.clearBindings()
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -619,9 +631,14 @@ class ResultsHandler(private val dbFile: File) {
                 db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
                 try {
                     // 1. Deletions
-                    for (ckId in recordIdsToDelete) {
-                        db.prepare("DELETE FROM results WHERE ckRecordId = ?;")?.use { stmt ->
-                            stmt.bindText(1, ckId); stmt.step()
+                    if (recordIdsToDelete.isNotEmpty()) {
+                        db.prepare("DELETE FROM results WHERE ckRecordId = ?;")?.use { delStmt ->
+                            for (ckId in recordIdsToDelete) {
+                                delStmt.bindText(1, ckId)
+                                delStmt.step()
+                                delStmt.reset()
+                                delStmt.clearBindings()
+                            }
                         }
                     }
 
