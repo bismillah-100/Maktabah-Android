@@ -241,17 +241,14 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
         val entries = _entriesByBookId.value.toMutableMap()
         var didChange = false
 
-        // Deletions
+        // Process Deletions
         if (recordIdsToDelete.isNotEmpty()) {
-            val bookIdsToDelete = entries.values.filter { entry ->
+            val recordIdsSet = recordIdsToDelete.toSet()
+            val removed = entries.values.removeAll { entry ->
                 val ckId = entry.ckRecordId ?: entry.bookId.toString()
-                recordIdsToDelete.contains(ckId)
-            }.map { it.bookId }
-
-            for (bookId in bookIdsToDelete) {
-                entries.remove(bookId)
-                didChange = true
+                recordIdsSet.contains(ckId)
             }
+            if (removed) didChange = true
         }
 
         // Updates/Insertions
