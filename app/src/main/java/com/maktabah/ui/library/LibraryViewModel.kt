@@ -436,8 +436,9 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
                 }
                 if (showOnlyDownloaded) {
                     roots = roots.mapNotNull { cat ->
-                        val downloadedBooks = cat.children.filterIsInstance<BooksData>()
-                            .filter { downloadedIds.contains(it.id) }
+                        val downloadedBooks = cat.children.mapNotNull { child ->
+                            if (child is BooksData && downloadedIds.contains(child.id)) child else null
+                        }
                         if (downloadedBooks.isNotEmpty()) {
                             cat.copy(children = downloadedBooks.toMutableList())
                         } else null

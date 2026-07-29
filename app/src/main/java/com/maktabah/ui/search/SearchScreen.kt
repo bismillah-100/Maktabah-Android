@@ -61,6 +61,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -111,12 +114,13 @@ fun SearchScreen(
     val focusManager = LocalFocusManager.current
 
     val results by viewModel.searchResults.collectAsState()
+    val filteredResults by viewModel.filteredSearchResults.collectAsState()
+    val bookFilter by viewModel.bookFilter.collectAsState()
     val lastSearchQuery by viewModel.lastSearchQuery.collectAsState()
     val lastSearchMode by viewModel.lastSearchMode.collectAsState()
     val searchHistory by viewModel.searchHistory.collectAsState()
 
     var query by remember(lastSearchQuery) { mutableStateOf(lastSearchQuery) }
-    var bookFilter by remember { mutableStateOf("") }
     var activeSearchMode by remember(lastSearchMode) { mutableStateOf(lastSearchMode) }
     var isFocused by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
@@ -146,10 +150,6 @@ fun SearchScreen(
         if (isDataLoaded) {
             viewModel.refreshData(libraryViewModel.dataManager)
         }
-    }
-
-    LaunchedEffect(results) {
-        if (results.isEmpty()) bookFilter = ""
     }
 
     val pagerState = rememberPagerState(pageCount = { 2 })
@@ -338,11 +338,11 @@ fun SearchScreen(
                             modifier = Modifier.fillMaxSize(),
                         ) {
                             SearchResultsOverlay(
-                                results = results,
+                                filteredResults = filteredResults,
                                 query = lastSearchQuery,
                                 searchMode = activeSearchMode,
                                 bookFilter = bookFilter,
-                                onBookFilterChange = { bookFilter = it },
+                                onBookFilterChange = { viewModel.updateBookFilter(it, libraryViewModel.dataManager) },
                                 onClearResults = {
                                     viewModel.clearResults()
                                     query = ""
@@ -580,7 +580,7 @@ private fun SearchFilterList(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SearchResultsOverlay(
-    results: List<SearchResult>,
+    filteredResults: List<SearchResult>,
     query: String,
     searchMode: SearchMode,
     bookFilter: String,
@@ -592,28 +592,6 @@ private fun SearchResultsOverlay(
     onOpenSavedResults: () -> Unit,
     onSaveResults: () -> Unit
 ) {
-    var debouncedBookFilter by remember { mutableStateOf(bookFilter) }
-    LaunchedEffect(bookFilter) {
-        if (bookFilter.isEmpty()) {
-            debouncedBookFilter = bookFilter
-        } else {
-            kotlinx.coroutines.delay(500)
-            debouncedBookFilter = bookFilter
-        }
-    }
-
-    val filteredResults = remember(results, debouncedBookFilter) {
-        if (debouncedBookFilter.isEmpty()) {
-            results
-        } else {
-            val cleanQuery = debouncedBookFilter.normalizeArabic()
-            results.filter { result ->
-                val name = libraryViewModel.dataManager.booksById[result.bookId]?.name ?: ""
-                name.normalizeArabic().contains(cleanQuery, ignoreCase = true)
-            }
-        }
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
