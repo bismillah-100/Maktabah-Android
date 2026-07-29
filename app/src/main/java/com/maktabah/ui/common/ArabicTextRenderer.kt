@@ -19,6 +19,7 @@ import com.maktabah.utils.HonorificReplacementResult
 import com.maktabah.utils.convertToArabicDigits
 import com.maktabah.utils.findArabicMatchingRanges
 import com.maktabah.utils.isArabicHarakat
+import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.removingHarakat
 import com.maktabah.utils.replacingHonorificPhrasesWithEvents
 import android.util.LruCache

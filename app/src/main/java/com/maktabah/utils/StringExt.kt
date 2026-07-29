@@ -179,10 +179,10 @@ fun String.findRangeInOriginal(
     selectedText: String,
     approxStart: Int,
 ): Pair<Int, Int> {
-    val cleanSelected = selectedText.removingHarakat()
+    val cleanSelected = selectedText.normalizeArabic()
     if (cleanSelected.isEmpty()) return approxStart to selectedText.length
 
-    val cleanSelf = this.removingHarakat()
+    val cleanSelf = this.normalizeArabic()
     val idx = cleanSelf.indexOf(cleanSelected)
     if (idx < 0) return approxStart to selectedText.length
 
@@ -194,13 +194,13 @@ fun String.findRangeInOriginal(
             origStart = i
             break
         }
-        if (!this[i].isArabicHarakat()) cleanCount++
+        if (!this[i].isArabicHarakat() && this[i].code != 0x0640) cleanCount++
     }
     var origEnd = origStart
     cleanCount = 0
     for (i in origStart until this.length) {
         if (cleanCount == cleanSelected.length) break
-        if (!this[i].isArabicHarakat()) cleanCount++
+        if (!this[i].isArabicHarakat() && this[i].code != 0x0640) cleanCount++
         origEnd = i + 1
     }
     return origStart to (origEnd - origStart)
