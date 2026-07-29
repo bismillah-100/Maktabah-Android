@@ -598,17 +598,21 @@ class SearchViewModel : ViewModel() {
     private fun applyBookFilter(dataManager: LibraryDataManager) {
         val currentFilter = _bookFilter.value
         val allResults = _searchResults.value
+        val booksMap = dataManager.booksById // Capture thread-safe reference
+        
         filterJob?.cancel()
         
         if (currentFilter.isEmpty()) {
             _filteredSearchResults.value = allResults
         } else {
             filterJob = viewModelScope.launch(Dispatchers.Default) {
+                delay(500) // UI Debounce
                 val cleanQuery = currentFilter.normalizeArabic()
                 val normalizedNames = mutableMapOf<Int, String>()
                 val filtered = allResults.filter { result ->
+                    ensureActive() // Cooperative cancellation
                     val normalizedName = normalizedNames.getOrPut(result.bookId) {
-                        dataManager.booksById[result.bookId]?.name?.normalizeArabic() ?: ""
+                        booksMap[result.bookId]?.name?.normalizeArabic() ?: ""
                     }
                     normalizedName.contains(cleanQuery, ignoreCase = true)
                 }
