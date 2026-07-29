@@ -61,6 +61,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -602,18 +605,20 @@ private fun SearchResultsOverlay(
         }
     }
 
-    val filteredResults = remember(results, debouncedBookFilter) {
+    val filteredResults by produceState(initialValue = results, key1 = results, key2 = debouncedBookFilter) {
         if (debouncedBookFilter.isEmpty()) {
-            results
+            value = results
         } else {
-            val cleanQuery = debouncedBookFilter.normalizeArabic()
-            val normalizedNames = mutableMapOf<Int, String>()
-            results.filter { result ->
-                val normalizedName = normalizedNames.getOrPut(result.bookId) {
-                    val name = libraryViewModel.dataManager.booksById[result.bookId]?.name ?: ""
-                    name.normalizeArabic()
+            withContext(Dispatchers.Default) {
+                val cleanQuery = debouncedBookFilter.normalizeArabic()
+                val normalizedNames = mutableMapOf<Int, String>()
+                value = results.filter { result ->
+                    val normalizedName = normalizedNames.getOrPut(result.bookId) {
+                        val name = libraryViewModel.dataManager.booksById[result.bookId]?.name ?: ""
+                        name.normalizeArabic()
+                    }
+                    normalizedName.contains(cleanQuery, ignoreCase = true)
                 }
-                normalizedName.contains(cleanQuery, ignoreCase = true)
             }
         }
     }
