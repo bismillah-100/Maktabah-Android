@@ -194,8 +194,7 @@ fun BookSearchSheet(
                                     val displayText = remember(contentItem.nass, searchKeywords) {
                                         val stripped = contentItem.nass.stripSpanTags()
                                         val normalized = stripped.convertToArabicDigits()
-                                        val cleanNash = normalized.normalizeArabic()
-                                        cleanNash.snippetAround(searchKeywords, contextLength = 60)
+                                        normalized.snippetAround(searchKeywords, contextLength = 60)
                                     }
                                     val highlightedText = buildHighlightedText(
                                         text = displayText,

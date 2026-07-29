@@ -459,9 +459,9 @@ class SearchViewModel : ViewModel() {
                         val mapped = bookResults.map {
                             val stripped = it.nass.stripSpanTags()
                             val normalized = stripped.convertToArabicDigits()
-                            val cleanNash = normalized.normalizeArabic()
                             val snippet =
-                                cleanNash.snippetAround(searchKeywords, contextLength = 60)
+                                normalized.snippetAround(searchKeywords, contextLength = 60)
+
 
                             SearchResult(
                                 bookId = bookId,
@@ -545,12 +545,12 @@ class SearchViewModel : ViewModel() {
                                                 val nassString = com.maktabah.database.decompressBlob(nassBlob, zstdCtx)
                                                 val stripped = nassString.stripSpanTags()
                                                 
-                                                val normalized = if (isMultilingual) stripped.convertToArabicDigits() else stripped.convertToArabicDigits()
-                                                val cleanNash = normalized.normalizeArabic()
+                                                val normalized = stripped.convertToArabicDigits()
                                                 val queryConverted = item.query.convertToArabicDigits()
                                                 
                                                 val searchKeywords = if (queryConverted.isNotBlank()) listOf(queryConverted) else emptyList()
-                                                val snippet = cleanNash.snippetAround(searchKeywords, contextLength = 60)
+                                                val snippet = normalized.snippetAround(searchKeywords, contextLength = 60)
+
 
                                                 allResults.add(
                                                     SearchResult(

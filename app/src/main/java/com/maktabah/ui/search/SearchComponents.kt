@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import com.maktabah.R
 import com.maktabah.models.SearchMode
 import com.maktabah.utils.convertToArabicDigits
+import com.maktabah.utils.findArabicMatchingRanges
 import com.maktabah.utils.normalizeArabic
 
 @Composable
@@ -405,19 +406,18 @@ fun buildHighlightedText(
             append(text)
             if (searchKeywords.isEmpty()) return@buildAnnotatedString
 
-            for (keyword in searchKeywords) {
-                if (keyword.isEmpty()) continue
-                var index = text.indexOf(keyword, ignoreCase = true)
-                while (index != -1) {
+            val ranges = text.findArabicMatchingRanges(searchKeywords)
+            for (range in ranges) {
+                if (range.first in 0 until text.length && range.last < text.length && range.first <= range.last) {
                     addStyle(
                         style = SpanStyle(background = highlightColor),
-                        start = index,
-                        end = index + keyword.length
+                        start = range.first,
+                        end = range.last + 1
                     )
-                    index = text.indexOf(keyword, index + keyword.length, ignoreCase = true)
                 }
             }
         }
     }
 }
+
 
