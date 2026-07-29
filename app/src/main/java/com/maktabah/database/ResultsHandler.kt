@@ -632,12 +632,13 @@ class ResultsHandler(private val dbFile: File) {
                 try {
                     // 1. Deletions
                     if (recordIdsToDelete.isNotEmpty()) {
-                        db.prepare("DELETE FROM results WHERE ckRecordId = ?;")?.use { delStmt ->
-                            for (ckId in recordIdsToDelete) {
-                                delStmt.bindText(1, ckId)
-                                delStmt.step()
-                                delStmt.reset()
-                                delStmt.clearBindings()
+                        recordIdsToDelete.chunked(900).forEach { chunk ->
+                            val placeholders = chunk.joinToString(",") { "?" }
+                            db.prepare("DELETE FROM results WHERE ckRecordId IN ($placeholders);")?.use { stmt ->
+                                chunk.forEachIndexed { index, ckId ->
+                                    stmt.bindText(index + 1, ckId)
+                                }
+                                stmt.step()
                             }
                         }
                     }
