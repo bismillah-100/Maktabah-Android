@@ -462,8 +462,13 @@ private fun MainBottomBar(
     if (currentRoute == "cloudkit_login" || currentRoute == "reader_tabs") return
 
     val hasOpenTabs = tabs.isNotEmpty()
+    val animSpec = spring<Dp>(
+        dampingRatio = Spring.DampingRatioNoBouncy,
+        stiffness = Spring.StiffnessMediumLow,
+    )
     val horizontalPadding by androidx.compose.animation.core.animateDpAsState(
         targetValue = if (hasOpenTabs) 16.dp else 32.dp,
+        animationSpec = animSpec,
         label = "bottom_bar_padding",
     )
 
@@ -479,7 +484,6 @@ private fun MainBottomBar(
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             MainTabsContainer(
                 currentRoute = currentRoute,
@@ -489,15 +493,39 @@ private fun MainBottomBar(
 
             AnimatedVisibility(
                 visible = hasOpenTabs,
-                enter = expandHorizontally(expandFrom = Alignment.Start) + fadeIn(),
-                exit = shrinkHorizontally(shrinkTowards = Alignment.Start) + fadeOut(),
+                enter = expandHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    expandFrom = Alignment.End,
+                ) + fadeIn(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                ),
+                exit = shrinkHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    shrinkTowards = Alignment.End,
+                ) + fadeOut(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                ),
             ) {
-                ReaderTabsFab(
-                    tabsCount = tabs.size,
-                    activeTabId = activeTabId ?: tabs.firstOrNull()?.id,
-                    onOpenTabSheet = onOpenTabSheet,
-                    onOpenSingleTab = onOpenSingleTab
-                )
+                Box(modifier = Modifier.padding(start = 8.dp)) {
+                    ReaderTabsFab(
+                        tabsCount = tabs.size,
+                        activeTabId = activeTabId ?: tabs.firstOrNull()?.id,
+                        onOpenTabSheet = onOpenTabSheet,
+                        onOpenSingleTab = onOpenSingleTab
+                    )
+                }
             }
         }
     }
