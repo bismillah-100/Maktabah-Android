@@ -121,13 +121,15 @@ fun registerFcmToken(context: Context, token: String? = null, email: String? = n
     }
 }
 
+private val EMAIL_CLEAN_REGEX = Regex("[\u200E\u200F\u202A-\u202E\u2066-\u2069]")
+
 fun sha256(input: String): String {
     val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
     return bytes.joinToString("") { "%02x".format(it) }
 }
 
 fun restoreDonationStatus(context: Context, email: String, onResult: (Boolean) -> Unit) {
-    val cleanEmail = email.replace("[\u200E\u200F\u202A-\u202E\u2066-\u2069]".toRegex(), "").lowercase().trim()
+    val cleanEmail = email.replace(EMAIL_CLEAN_REGEX, "").lowercase().trim()
     val hashedEmail = sha256(cleanEmail)
     val url = "${com.maktabah.BuildConfig.FIREBASE_RTDB_URL}/donations/$hashedEmail.json"
 
@@ -248,7 +250,7 @@ fun RestoreDonationDialog(onDismiss: () -> Unit, onRestoreSuccess: () -> Unit) {
 fun openDonationLink(context: Context, email: String) {
     val prefs = context.getSharedPreferences("main_prefs", Context.MODE_PRIVATE)
 
-    val cleanEmail = email.replace("[\u200E\u200F\u202A-\u202E\u2066-\u2069]".toRegex(), "").lowercase().trim()
+    val cleanEmail = email.replace(EMAIL_CLEAN_REGEX, "").lowercase().trim()
     if (cleanEmail.isNotEmpty()) {
         prefs.edit { putString("last_donation_email", cleanEmail) }
         // Daftarkan email ini langsung ke Cloudflare KV bersama token FCM sebelum membuka browser
