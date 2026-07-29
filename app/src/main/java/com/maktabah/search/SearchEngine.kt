@@ -8,6 +8,7 @@ import com.maktabah.database.decompressBlob
 import com.maktabah.models.BookContent
 import com.maktabah.models.SearchMode
 import com.maktabah.utils.normalizeArabic
+import com.maktabah.utils.stemArabicLight10
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -46,18 +47,19 @@ class SearchEngine {
             val tableName = "b$bookId"
             val ftsTableName = "${tableName}_fts"
 
-            // Normalize keywords
-            val normalizedQuery = query.normalizeArabic()
+            // Normalize & stem keywords using Lucene Light10 Stemmer
+            val stemmedKeywords = query.normalizeArabic()
+                .split(" ")
+                .filter { it.isNotBlank() }
+                .map { it.stemArabicLight10() }
 
             // Build FTS query
             val ftsQuery = when (mode) {
-                SearchMode.PHRASE -> "\"$normalizedQuery\""
-                SearchMode.CONTAINS -> normalizedQuery.split(" ").filter { it.isNotBlank() }
-                    .joinToString(" AND ")
-
-                SearchMode.OR -> normalizedQuery.split(" ").filter { it.isNotBlank() }
-                    .joinToString(" OR ")
+                SearchMode.PHRASE -> "\"${stemmedKeywords.joinToString(" ")}\""
+                SearchMode.CONTAINS -> stemmedKeywords.joinToString(" AND ")
+                SearchMode.OR -> stemmedKeywords.joinToString(" OR ")
             }
+
 
             // Get total matching rows count first
             var totalCount = 0

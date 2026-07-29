@@ -8,6 +8,7 @@ import com.github.luben.zstd.Zstd
 import com.maktabah.models.IntegratePhase
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.removingHarakat
+import com.maktabah.utils.stemArabicLight10
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
@@ -286,6 +287,7 @@ object BookArchiveIntegrator {
                                         .replace("\r", " ")
                                         .removingHarakat()
                                         .normalizeArabic()
+                                        .stemArabicLight10()
 
                                 if (cleanText.isNotBlank()) {
                                     ftsInsertStmt.reset()
