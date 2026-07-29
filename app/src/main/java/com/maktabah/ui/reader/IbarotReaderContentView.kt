@@ -45,6 +45,7 @@ import com.maktabah.models.FlashTarget
 import com.maktabah.ui.common.AnnotationSpan
 import com.maktabah.ui.common.ArabicTextRenderer
 import com.maktabah.utils.HONORIFIC_PHRASES
+import com.maktabah.utils.findArabicMatchingRanges
 import com.maktabah.utils.isArabicHarakat
 import com.maktabah.utils.normalizeArabic
 
@@ -587,13 +588,15 @@ private fun findQueryRange(
     val fuzzyStr = fuzzyText.toString().trimEnd()
 
     fun searchMatch(targetQuery: String): Pair<Int, Int>? {
-        if (targetQuery.isEmpty()) return null
-        if (onlyParagraphStart) {
-            var searchStart = 0
-            while (searchStart < fuzzyStr.length) {
-                val idx = fuzzyStr.indexOf(targetQuery, searchStart, ignoreCase = true)
-                if (idx == -1) break
+        if (targetQuery.isBlank()) return null
+        val ranges = fuzzyStr.findArabicMatchingRanges(listOf(targetQuery))
+        if (ranges.isEmpty()) return null
 
+        if (onlyParagraphStart) {
+            for (range in ranges) {
+                val idx = range.first
+                if (idx >= cleanIdx) continue
+                
                 val origStart = cleanToOrig[idx]
                 var isAtStart = false
                 var p = origStart - 1
@@ -613,7 +616,7 @@ private fun findQueryRange(
 
                 if (isAtStart) {
                     val start = origStart
-                    val endIdx = idx + targetQuery.length - 1
+                    val endIdx = range.last
                     val end = if (endIdx < cleanIdx) {
                         cleanToOrig[endIdx] + 1
                     } else {
@@ -621,22 +624,19 @@ private fun findQueryRange(
                     }
                     return start to end
                 }
-                searchStart = idx + 1
             }
             return null
         } else {
-            val idx = fuzzyStr.indexOf(targetQuery, ignoreCase = true)
-            if (idx != -1) {
-                val start = cleanToOrig[idx]
-                val endIdx = idx + targetQuery.length - 1
-                val end = if (endIdx < cleanIdx) {
-                    cleanToOrig[endIdx] + 1
-                } else {
-                    renderedStr.length
-                }
-                return start to end
+            val range = ranges.first()
+            if (range.first >= cleanIdx) return null
+            val start = cleanToOrig[range.first]
+            val endIdx = range.last
+            val end = if (endIdx < cleanIdx) {
+                cleanToOrig[endIdx] + 1
+            } else {
+                renderedStr.length
             }
-            return null
+            return start to end
         }
     }
 

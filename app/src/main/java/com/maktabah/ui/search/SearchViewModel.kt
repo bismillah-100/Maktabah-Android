@@ -34,6 +34,12 @@ class SearchViewModel : ViewModel() {
     private val _searchResults = MutableStateFlow<List<SearchResult>>(emptyList())
     val searchResults: StateFlow<List<SearchResult>> = _searchResults.asStateFlow()
 
+    private val _filteredSearchResults = MutableStateFlow<List<SearchResult>>(emptyList())
+    val filteredSearchResults: StateFlow<List<SearchResult>> = _filteredSearchResults.asStateFlow()
+
+    private val _bookFilter = MutableStateFlow("")
+    val bookFilter: StateFlow<String> = _bookFilter.asStateFlow()
+
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
@@ -281,6 +287,8 @@ class SearchViewModel : ViewModel() {
 
     fun clearResults() {
         _searchResults.value = emptyList()
+        _bookFilter.value = ""
+        _filteredSearchResults.value = emptyList()
         _completedBooks.value = 0
         _totalBooks.value = 0
         _currentBookProgress.value = null
@@ -411,6 +419,17 @@ class SearchViewModel : ViewModel() {
             _lastSearchQuery.value = query
             _lastSearchMode.value = mode
 
+            val searchKeywords = when (mode) {
+                SearchMode.PHRASE -> {
+                    val normalized = query.normalizeArabic()
+                    if (normalized.isBlank()) emptyList() else listOf(normalized)
+                }
+
+                else -> {
+                    query.normalizeArabic().split(" ").filter { it.isNotBlank() }
+                }
+            }.map { it.convertToArabicDigits() }
+
             val allResults = mutableListOf<SearchResult>()
             var processed = 0
 
@@ -436,23 +455,13 @@ class SearchViewModel : ViewModel() {
                                 _currentBookProgress.value = Pair(current, total)
                             }
                         )
-                        val searchKeywords = when (mode) {
-                            SearchMode.PHRASE -> {
-                                val normalized = query.normalizeArabic()
-                                if (normalized.isBlank()) emptyList() else listOf(normalized)
-                            }
-
-                            else -> {
-                                query.normalizeArabic().split(" ").filter { it.isNotBlank() }
-                            }
-                        }.map { it.convertToArabicDigits() }
 
                         val mapped = bookResults.map {
                             val stripped = it.nass.stripSpanTags()
                             val normalized = stripped.convertToArabicDigits()
-                            val cleanNash = normalized.normalizeArabic()
                             val snippet =
-                                cleanNash.snippetAround(searchKeywords, contextLength = 60)
+                                normalized.snippetAround(searchKeywords, contextLength = 60)
+
 
                             SearchResult(
                                 bookId = bookId,
@@ -472,6 +481,8 @@ class SearchViewModel : ViewModel() {
             }
 
             _searchResults.value = allResults
+            _bookFilter.value = ""
+            _filteredSearchResults.value = allResults
             _isSearching.value = false
             _currentBookProgress.value = null
             _currentBookName.value = ""
@@ -504,8 +515,10 @@ class SearchViewModel : ViewModel() {
             var processed = 0
 
             withContext(Dispatchers.IO) {
-                for ((archiveId, groupItems) in groupedByArchive) {
-                    val archiveFile = File(context.filesDir, "$archiveId.sqlite")
+                val zstdCtx = com.maktabah.database.ZstdContextPool.getDecompressCtx()
+                try {
+                    for ((archiveId, groupItems) in groupedByArchive) {
+                        val archiveFile = File(context.filesDir, "$archiveId.sqlite")
                     if (!archiveFile.exists()) continue
 
                     try {
@@ -524,40 +537,20 @@ class SearchViewModel : ViewModel() {
                                     db.prepare("SELECT nass, page, part FROM b$bkId WHERE id = ? LIMIT 1")?.use { stmt ->
                                         stmt.bindLong(1, contentId.toLong())
                                         if (stmt.step() == com.maktabah.database.SQLiteDB.SQLITE_ROW) {
-                                            val nassBytes = stmt.columnBlob(0)
+                                            val nassBlob = stmt.columnBlobDirect(0)
                                             val page = stmt.columnInt(1)
                                             val part = stmt.columnInt(2)
 
-                                            if (nassBytes != null) {
-                                                val decompressedSize = com.github.luben.zstd.Zstd.getFrameContentSize(nassBytes).toInt()
-                                                val nassString = if (decompressedSize > 0) {
-                                                    val ctx = com.maktabah.database.ZstdContextPool.getDecompressCtx()
-                                                    try {
-                                                        val dstBuf = com.maktabah.database.ZstdContextPool.getDirectBuffer(decompressedSize)
-                                                        val nassBuffer = java.nio.ByteBuffer.allocateDirect(nassBytes.size)
-                                                        nassBuffer.put(nassBytes)
-                                                        nassBuffer.flip()
-                                                        ctx.decompressDirectByteBuffer(dstBuf, 0, decompressedSize, nassBuffer, 0, nassBuffer.limit())
-                                                        val dst = ByteArray(decompressedSize)
-                                                        dstBuf.get(dst)
-                                                        com.maktabah.database.ZstdContextPool.releaseDirectBuffer(dstBuf)
-                                                        String(dst)
-                                                    } catch(e: Exception) {
-                                                        ""
-                                                    } finally {
-                                                        com.maktabah.database.ZstdContextPool.releaseDecompressCtx(ctx)
-                                                    }
-                                                } else {
-                                                    ""
-                                                }
+                                            if (nassBlob != null) {
+                                                val nassString = com.maktabah.database.decompressBlob(nassBlob, zstdCtx)
                                                 val stripped = nassString.stripSpanTags()
                                                 
-                                                val normalized = if (isMultilingual) stripped.convertToArabicDigits() else stripped.convertToArabicDigits()
-                                                val cleanNash = normalized.normalizeArabic()
+                                                val normalized = stripped.convertToArabicDigits()
                                                 val queryConverted = item.query.convertToArabicDigits()
                                                 
                                                 val searchKeywords = if (queryConverted.isNotBlank()) listOf(queryConverted) else emptyList()
-                                                val snippet = cleanNash.snippetAround(searchKeywords, contextLength = 60)
+                                                val snippet = normalized.snippetAround(searchKeywords, contextLength = 60)
+
 
                                                 allResults.add(
                                                     SearchResult(
@@ -582,12 +575,49 @@ class SearchViewModel : ViewModel() {
                     processed++
                     _completedBooks.value = processed
                 }
+                } finally {
+                    com.maktabah.database.ZstdContextPool.releaseDecompressCtx(zstdCtx)
+                }
             }
 
             _searchResults.value = allResults
+            _bookFilter.value = ""
+            _filteredSearchResults.value = allResults
             _isSearching.value = false
             _currentBookProgress.value = null
             _currentBookName.value = ""
+        }
+    }
+
+    fun updateBookFilter(query: String, dataManager: LibraryDataManager) {
+        _bookFilter.value = query
+        applyBookFilter(dataManager)
+    }
+
+    private var filterJob: kotlinx.coroutines.Job? = null
+    private fun applyBookFilter(dataManager: LibraryDataManager) {
+        val currentFilter = _bookFilter.value
+        val allResults = _searchResults.value
+        val booksMap = dataManager.booksById // Capture thread-safe reference
+        
+        filterJob?.cancel()
+        
+        if (currentFilter.isEmpty()) {
+            _filteredSearchResults.value = allResults
+        } else {
+            filterJob = viewModelScope.launch(Dispatchers.Default) {
+                delay(500) // UI Debounce
+                val cleanQuery = currentFilter.normalizeArabic()
+                val normalizedNames = mutableMapOf<Int, String>()
+                val filtered = allResults.filter { result ->
+                    ensureActive() // Cooperative cancellation
+                    val normalizedName = normalizedNames.getOrPut(result.bookId) {
+                        booksMap[result.bookId]?.name?.normalizeArabic() ?: ""
+                    }
+                    normalizedName.contains(cleanQuery, ignoreCase = true)
+                }
+                _filteredSearchResults.value = filtered
+            }
         }
     }
 }

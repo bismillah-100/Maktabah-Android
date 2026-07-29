@@ -206,13 +206,311 @@ fun String.findRangeInOriginal(
     return origStart to (origEnd - origStart)
 }
 
+// ─── Lucene Arabic Light10 Stemmer ──────────────────────────────────────────
+
+object ArabicLightStemmer {
+    private val prefixStrings = listOf(
+        "والله", "وبالله", "فالله", "فبالله",
+        "والل", "فالل", "بالل", "كالل", "وللم", "فللم",
+        "وال", "فال", "بال", "كال", "لل", "ال"
+    ).map { it.removingHarakat() }
+
+    private val suffixStrings = listOf(
+        "هما", "تاني", "تَيْن", "كُمَا", "هُمَا",
+        "ان", "ات", "ون", "ين", "يه", "ية", "هم", "هن", "كم", "نا", "ها", "وا", "يا", "ك"
+    ).map { it.removingHarakat() }
+
+    /**
+     * Stems a single Arabic word using Lucene Light10 algorithm.
+     */
+    fun stemWord(input: String): String {
+        if (input.isEmpty()) return input
+        val sb = StringBuilder(input.length)
+        stemWordToBuffer(input, sb)
+        return sb.toString()
+    }
+
+    private fun stemWordToBuffer(input: CharSequence, output: StringBuilder) {
+        val clean = StringBuilder(input.length)
+        for (i in 0 until input.length) {
+            val ch = input[i]
+            if (ch.isArabicHarakat() || ch.code == 0x0640) continue
+
+            val valCode = ch.code
+            if (valCode == 0x0623 || valCode == 0x0625 || valCode == 0x0622 || valCode == 0x0671) {
+                clean.append('\u0627')
+            } else if (valCode == 0x0629) {
+                clean.append('\u0647')
+            } else if (valCode == 0x0649) {
+                clean.append('\u064A')
+            } else {
+                clean.append(ch)
+            }
+        }
+
+        var start = 0
+        var count = clean.length
+
+        // Prefix trimming
+        for (prefix in prefixStrings) {
+            val pLen = prefix.length
+            if (count - pLen >= 3) {
+                var isMatch = true
+                for (i in 0 until pLen) {
+                    if (clean[start + i] != prefix[i]) {
+                        isMatch = false
+                        break
+                    }
+                }
+                if (isMatch) {
+                    start += pLen
+                    count -= pLen
+                    break
+                }
+            }
+        }
+
+        // Suffix trimming
+        for (suffix in suffixStrings) {
+            val sLen = suffix.length
+            if (count - sLen >= 3) {
+                var isMatch = true
+                for (i in 0 until sLen) {
+                    if (clean[start + count - sLen + i] != suffix[i]) {
+                        isMatch = false
+                        break
+                    }
+                }
+                if (isMatch) {
+                    count -= sLen
+                    break
+                }
+            }
+        }
+
+        if (count > 0) {
+            output.append(clean, start, start + count)
+        }
+    }
+
+    /**
+     * Stems all Arabic words in a given text block in a single pass.
+     */
+    fun stemText(text: String): String {
+        if (text.isEmpty()) return text
+
+        val output = StringBuilder(text.length)
+        val currentToken = StringBuilder(32)
+
+        for (i in 0 until text.length) {
+            val ch = text[i]
+            val valCode = ch.code
+            val isArabic = valCode in 0x0600..0x06FF ||
+                    valCode in 0x0750..0x077F ||
+                    valCode in 0x08A0..0x08FF
+
+            if (isArabic) {
+                currentToken.append(ch)
+            } else {
+                if (currentToken.isNotEmpty()) {
+                    stemWordToBuffer(currentToken, output)
+                    currentToken.setLength(0)
+                }
+                output.append(ch)
+            }
+        }
+
+        if (currentToken.isNotEmpty()) {
+            stemWordToBuffer(currentToken, output)
+        }
+
+        return output.toString()
+    }
+}
+
+/**
+ * Stems Arabic text using Lucene Light10 algorithm.
+ */
+fun String.stemArabicLight10(): String = ArabicLightStemmer.stemText(this)
+
+// ─── Arabic Matching Ranges & Snippet Around ──────────────────────────────────
+
+/**
+ * Returns all IntRanges in `this` string that match any of the given Arabic keywords or multi-word phrases,
+ * handling Alif, Ta Marbuta/Ha, Alif Maqsura/Ya, diacritics/tatweel stripping, and prefix variations.
+ */
+fun String.findArabicMatchingRanges(keywords: List<String>): List<IntRange> {
+    if (keywords.isEmpty() || this.isEmpty()) return emptyList()
+
+    val normalizedChars = StringBuilder(this.length)
+    val indexMap = IntArray(this.length)
+    var normCount = 0
+
+    var utf16Offset = 0
+    var idx = 0
+    while (idx < this.length) {
+        val char = this[idx]
+        val isDiacritic = char.isArabicHarakat()
+        val isTatweel = char.code == 0x0640
+
+        if (isDiacritic || isTatweel) {
+            utf16Offset++
+            idx++
+            continue
+        }
+
+        val normalizedChar: Char = when (char.code) {
+            0x0623, 0x0625, 0x0622, 0x0671 -> 'ا'
+            0x0629 -> 'ه'
+            0x0649 -> 'ي'
+            else -> char
+        }
+
+        if (normCount < indexMap.size) {
+            indexMap[normCount] = utf16Offset
+        }
+        normalizedChars.append(normalizedChar)
+        normCount++
+        utf16Offset++
+        idx++
+    }
+
+    val normalizedText = normalizedChars.toString()
+    val ranges = mutableListOf<IntRange>()
+
+    val prefixes = listOf(
+        "والله", "وبالله", "فالله", "فبالله",
+        "والل", "فالل", "بالل", "كالل", "وللم", "فللم",
+        "وال", "فال", "بال", "كال", "لل", "ال",
+        "و", "ف", "ب", "ك", "ل"
+    )
+
+    fun coreWord(s: String): String {
+        for (p in prefixes) {
+            if (s.startsWith(p) && (s.length - p.length) >= 3) {
+                return s.substring(p.length)
+            }
+        }
+        return s
+    }
+
+    fun normalizeToken(token: CharSequence): String {
+        val norm = StringBuilder()
+        for (i in 0 until token.length) {
+            val ch = token[i]
+            if (ch.isArabicHarakat() || ch.code == 0x0640) continue
+            when (ch.code) {
+                0x0623, 0x0625, 0x0622, 0x0671 -> norm.append('ا')
+                0x0629 -> norm.append('ه')
+                0x0649 -> norm.append('ي')
+                else -> norm.append(ch)
+            }
+        }
+        return norm.toString()
+    }
+
+    class TextWord(
+        val text: String,
+        val core: String,
+        val normStartIdx: Int,
+        val normEndIdx: Int
+    )
+
+    val textWords = mutableListOf<TextWord>()
+    var wordStart: Int? = null
+
+    for (idx in normalizedText.indices) {
+        val ch = normalizedText[idx]
+        if (ch.isWhitespace() || !ch.isLetterOrDigit()) {
+            if (wordStart != null) {
+                val start = wordStart
+                val wordStr = normalizedText.substring(start, idx)
+                val core = coreWord(wordStr)
+                textWords.add(TextWord(wordStr, core, start, idx))
+                wordStart = null
+            }
+        } else {
+            if (wordStart == null) {
+                wordStart = idx
+            }
+        }
+    }
+    if (wordStart != null) {
+        val start = wordStart
+        val wordStr = normalizedText.substring(start)
+        val core = coreWord(wordStr)
+        textWords.add(TextWord(wordStr, core, start, normalizedText.length))
+    }
+
+    if (textWords.isEmpty()) return emptyList()
+
+    for (keyword in keywords) {
+        val trimmed = keyword.trim()
+        if (trimmed.isEmpty()) continue
+
+        val rawTokens = trimmed.split(Regex("[\\s\\p{Punct}]+")).filter { it.isNotEmpty() }
+        class QueryWord(val norm: String, val core: String)
+        
+        val queryWords = rawTokens.mapNotNull { token ->
+            val norm = normalizeToken(token)
+            if (norm.isEmpty()) null else QueryWord(norm, coreWord(norm))
+        }
+
+        if (queryWords.isEmpty()) continue
+        val m = queryWords.size
+
+        if (m <= textWords.size) {
+            for (i in 0..textWords.size - m) {
+                var sequenceMatches = true
+                for (j in 0 until m) {
+                    val tw = textWords[i + j]
+                    val qw = queryWords[j]
+                    if (tw.text != qw.norm && tw.core != qw.core && tw.text != qw.core && tw.core != qw.norm) {
+                        sequenceMatches = false
+                        break
+                    }
+                }
+
+                if (sequenceMatches) {
+                    val firstWord = textWords[i]
+                    val lastWord = textWords[i + m - 1]
+
+                    val normStartIdx = firstWord.normStartIdx
+                    val normEndIdx = lastWord.normEndIdx
+
+                    if (normStartIdx < normCount) {
+                        val rawUtf16Start = indexMap[normStartIdx]
+                        val rawUtf16End = if (normEndIdx < normCount) {
+                            indexMap[normEndIdx]
+                        } else {
+                            utf16Offset
+                        }
+
+                        if (rawUtf16End > rawUtf16Start) {
+                            val range = IntRange(rawUtf16Start, rawUtf16End - 1)
+                            if (!ranges.contains(range)) {
+                                ranges.add(range)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    ranges.sortBy { it.first }
+    return ranges
+}
+
 /**
  * Mengambil potongan teks di sekitar keyword yang ditemukan.
  * - keywords: List kata kunci yang dicari.
  * - contextLength: Jumlah karakter sebelum dan sesudah keyword.
  */
 fun String.snippetAround(keywords: List<String>, contextLength: Int = 60): String {
-    if (keywords.isEmpty()) {
+    val ranges = findArabicMatchingRanges(keywords)
+    val firstRange = ranges.firstOrNull()
+    if (firstRange == null) {
         val limit = minOf(this.length, contextLength * 2)
         return this.substring(0, limit)
             .replace("\\n", " ")
@@ -222,32 +520,8 @@ fun String.snippetAround(keywords: List<String>, contextLength: Int = 60): Strin
             .trim()
     }
 
-    var bestStart = -1
-    var bestEnd = -1
-
-    for (keyword in keywords) {
-        if (keyword.isEmpty()) continue
-        val found = this.indexOf(keyword, ignoreCase = true)
-        if (found != -1) {
-            if (bestStart == -1 || found < bestStart) {
-                bestStart = found
-                bestEnd = found + keyword.length
-            }
-        }
-    }
-
-    if (bestStart == -1) {
-        val limit = minOf(this.length, contextLength * 2)
-        return this.substring(0, limit)
-            .replace("\\n", " ")
-            .replace("\n", " ")
-            .replace("\r", " ")
-            .replace(WHITESPACE_REGEX, " ")
-            .trim()
-    }
-
-    var startIdx = maxOf(0, bestStart - contextLength)
-    var endIdx = minOf(this.length, bestEnd + contextLength)
+    var startIdx = maxOf(0, firstRange.first - contextLength)
+    var endIdx = minOf(this.length, firstRange.last + 1 + contextLength)
 
     if (startIdx > 0) {
         val spaceIdx = this.lastIndexOf(' ', startIdx)
@@ -278,4 +552,5 @@ fun String.snippetAround(keywords: List<String>, contextLength: Int = 60): Strin
 
     return cleanSnippet
 }
+
 

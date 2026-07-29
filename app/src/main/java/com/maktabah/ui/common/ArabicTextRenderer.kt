@@ -17,6 +17,7 @@ import androidx.core.graphics.toColorInt
 import com.maktabah.models.Annotation
 import com.maktabah.utils.HonorificReplacementResult
 import com.maktabah.utils.convertToArabicDigits
+import com.maktabah.utils.findArabicMatchingRanges
 import com.maktabah.utils.isArabicHarakat
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.removingHarakat
@@ -363,71 +364,23 @@ object ArabicTextRenderer {
 
         // 7. Apply Search Query Highlights (All occurrences)
         if (!searchQuery.isNullOrBlank()) {
-            val queryHarakat = searchQuery.filter { it.code != 0x0640 }
-            val cleanQuery = queryHarakat.filter { !it.isArabicHarakat() }
+            val searchResult = honorific // honorific contains the final rendered text
+            val renderedStr = searchResult.text
+            val ranges = renderedStr.findArabicMatchingRanges(listOf(searchQuery))
+            val searchQueryColor = android.graphics.Color.argb(64, 255, 213, 79)
 
-            if (cleanQuery.isNotEmpty()) {
-                val searchResult = honorific // honorific contains the final rendered text
-                val renderedStr = searchResult.text
-
-                // We use a simplified version of findQueryRange logic here to find ALL occurrences
-                val cleanToOrig = mutableListOf<Int>()
-                val cleanText = StringBuilder()
-
-                for (i in renderedStr.indices) {
-                    val char = renderedStr[i]
-                    val expansion =
-                        com.maktabah.utils.HONORIFIC_PHRASES.find { it.second == char.toString() }?.first
-                    if (expansion != null) {
-                        for (c in expansion) {
-                            if (!c.isArabicHarakat() && c.code != 0x0640) {
-                                cleanToOrig.add(i)
-                                val v = c.code
-                                if (v == 0x0623 || v == 0x0625 || v == 0x0622 || v == 0x0671) {
-                                    cleanText.append('\u0627')
-                                } else {
-                                    cleanText.append(c)
-                                }
-                            }
-                        }
-                    } else if (!char.isArabicHarakat() && char.code != 0x0640) {
-                        cleanToOrig.add(i)
-                        val v = char.code
-                        if (v == 0x0623 || v == 0x0625 || v == 0x0622 || v == 0x0671) {
-                            cleanText.append('\u0627')
-                        } else {
-                            cleanText.append(char)
-                        }
-                    }
-                }
-
-                val qStr = cleanQuery.toString().normalizeArabic()
-                val tStr = cleanText.toString()
-                var startSearch = 0
-                while (true) {
-                    val idx = tStr.indexOf(qStr, startSearch, ignoreCase = true)
-                    if (idx == -1) break
-
-                    val start = cleanToOrig[idx]
-                    val end = if (idx + qStr.length < cleanToOrig.size) {
-                        cleanToOrig[idx + qStr.length]
-                    } else {
-                        renderedStr.length
-                    }
-
-                    if (start < end) {
-                        val searchQueryColor = android.graphics.Color.argb(64, 255, 213, 79)
-                        spannable.setSpan(
-                            BackgroundColorSpan(searchQueryColor),
-                            start,
-                            end,
-                            android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                        )
-                    }
-                    startSearch = idx + 1
+            for (r in ranges) {
+                if (r.first >= 0 && r.last < spannable.length && r.first <= r.last) {
+                    spannable.setSpan(
+                        BackgroundColorSpan(searchQueryColor),
+                        r.first,
+                        r.last + 1,
+                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
                 }
             }
         }
+
 
         // Apply footnote spans first so they act as a base style for the footnote area
         for (r in finalFootnoteRanges) {
