@@ -411,6 +411,17 @@ class SearchViewModel : ViewModel() {
             _lastSearchQuery.value = query
             _lastSearchMode.value = mode
 
+            val searchKeywords = when (mode) {
+                SearchMode.PHRASE -> {
+                    val normalized = query.normalizeArabic()
+                    if (normalized.isBlank()) emptyList() else listOf(normalized)
+                }
+
+                else -> {
+                    query.normalizeArabic().split(" ").filter { it.isNotBlank() }
+                }
+            }.map { it.convertToArabicDigits() }
+
             val allResults = mutableListOf<SearchResult>()
             var processed = 0
 
@@ -436,16 +447,6 @@ class SearchViewModel : ViewModel() {
                                 _currentBookProgress.value = Pair(current, total)
                             }
                         )
-                        val searchKeywords = when (mode) {
-                            SearchMode.PHRASE -> {
-                                val normalized = query.normalizeArabic()
-                                if (normalized.isBlank()) emptyList() else listOf(normalized)
-                            }
-
-                            else -> {
-                                query.normalizeArabic().split(" ").filter { it.isNotBlank() }
-                            }
-                        }.map { it.convertToArabicDigits() }
 
                         val mapped = bookResults.map {
                             val stripped = it.nass.stripSpanTags()
@@ -504,11 +505,12 @@ class SearchViewModel : ViewModel() {
             var processed = 0
 
             withContext(Dispatchers.IO) {
-                for ((archiveId, groupItems) in groupedByArchive) {
-                    val archiveFile = File(context.filesDir, "$archiveId.sqlite")
+                val zstdCtx = com.maktabah.database.ZstdContextPool.getDecompressCtx()
+                try {
+                    for ((archiveId, groupItems) in groupedByArchive) {
+                        val archiveFile = File(context.filesDir, "$archiveId.sqlite")
                     if (!archiveFile.exists()) continue
 
-                    val ctx = com.maktabah.database.ZstdContextPool.getDecompressCtx()
                     try {
                         com.maktabah.database.SQLiteDB(
                             archiveFile.absolutePath,
@@ -525,29 +527,12 @@ class SearchViewModel : ViewModel() {
                                     db.prepare("SELECT nass, page, part FROM b$bkId WHERE id = ? LIMIT 1")?.use { stmt ->
                                         stmt.bindLong(1, contentId.toLong())
                                         if (stmt.step() == com.maktabah.database.SQLiteDB.SQLITE_ROW) {
-                                            val nassBytes = stmt.columnBlob(0)
+                                            val nassBlob = stmt.columnBlobDirect(0)
                                             val page = stmt.columnInt(1)
                                             val part = stmt.columnInt(2)
 
-                                            if (nassBytes != null) {
-                                                val decompressedSize = com.github.luben.zstd.Zstd.getFrameContentSize(nassBytes).toInt()
-                                                val nassString = if (decompressedSize > 0) {
-                                                    try {
-                                                        val dstBuf = com.maktabah.database.ZstdContextPool.getDirectBuffer(decompressedSize)
-                                                        val nassBuffer = java.nio.ByteBuffer.allocateDirect(nassBytes.size)
-                                                        nassBuffer.put(nassBytes)
-                                                        nassBuffer.flip()
-                                                        ctx.decompressDirectByteBuffer(dstBuf, 0, decompressedSize, nassBuffer, 0, nassBuffer.limit())
-                                                        val dst = ByteArray(decompressedSize)
-                                                        dstBuf.get(dst)
-                                                        com.maktabah.database.ZstdContextPool.releaseDirectBuffer(dstBuf)
-                                                        String(dst)
-                                                    } catch(e: Exception) {
-                                                        ""
-                                                    }
-                                                } else {
-                                                    ""
-                                                }
+                                            if (nassBlob != null) {
+                                                val nassString = com.maktabah.database.decompressBlob(nassBlob, zstdCtx)
                                                 val stripped = nassString.stripSpanTags()
                                                 
                                                 val normalized = if (isMultilingual) stripped.convertToArabicDigits() else stripped.convertToArabicDigits()
@@ -576,11 +561,12 @@ class SearchViewModel : ViewModel() {
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
-                    } finally {
-                        com.maktabah.database.ZstdContextPool.releaseDecompressCtx(ctx)
                     }
                     processed++
                     _completedBooks.value = processed
+                }
+                } finally {
+                    com.maktabah.database.ZstdContextPool.releaseDecompressCtx(zstdCtx)
                 }
             }
 
