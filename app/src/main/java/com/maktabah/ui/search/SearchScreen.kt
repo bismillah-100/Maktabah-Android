@@ -114,12 +114,13 @@ fun SearchScreen(
     val focusManager = LocalFocusManager.current
 
     val results by viewModel.searchResults.collectAsState()
+    val filteredResults by viewModel.filteredSearchResults.collectAsState()
+    val bookFilter by viewModel.bookFilter.collectAsState()
     val lastSearchQuery by viewModel.lastSearchQuery.collectAsState()
     val lastSearchMode by viewModel.lastSearchMode.collectAsState()
     val searchHistory by viewModel.searchHistory.collectAsState()
 
     var query by remember(lastSearchQuery) { mutableStateOf(lastSearchQuery) }
-    var bookFilter by remember { mutableStateOf("") }
     var activeSearchMode by remember(lastSearchMode) { mutableStateOf(lastSearchMode) }
     var isFocused by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
@@ -149,10 +150,6 @@ fun SearchScreen(
         if (isDataLoaded) {
             viewModel.refreshData(libraryViewModel.dataManager)
         }
-    }
-
-    LaunchedEffect(results) {
-        if (results.isEmpty()) bookFilter = ""
     }
 
     val pagerState = rememberPagerState(pageCount = { 2 })
@@ -341,11 +338,11 @@ fun SearchScreen(
                             modifier = Modifier.fillMaxSize(),
                         ) {
                             SearchResultsOverlay(
-                                results = results,
+                                filteredResults = filteredResults,
                                 query = lastSearchQuery,
                                 searchMode = activeSearchMode,
                                 bookFilter = bookFilter,
-                                onBookFilterChange = { bookFilter = it },
+                                onBookFilterChange = { viewModel.updateBookFilter(it, libraryViewModel.dataManager) },
                                 onClearResults = {
                                     viewModel.clearResults()
                                     query = ""
@@ -583,7 +580,7 @@ private fun SearchFilterList(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SearchResultsOverlay(
-    results: List<SearchResult>,
+    filteredResults: List<SearchResult>,
     query: String,
     searchMode: SearchMode,
     bookFilter: String,
@@ -595,34 +592,6 @@ private fun SearchResultsOverlay(
     onOpenSavedResults: () -> Unit,
     onSaveResults: () -> Unit
 ) {
-    var debouncedBookFilter by remember { mutableStateOf(bookFilter) }
-    LaunchedEffect(bookFilter) {
-        if (bookFilter.isEmpty()) {
-            debouncedBookFilter = bookFilter
-        } else {
-            kotlinx.coroutines.delay(500)
-            debouncedBookFilter = bookFilter
-        }
-    }
-
-    val filteredResults by produceState(initialValue = results, key1 = results, key2 = debouncedBookFilter) {
-        if (debouncedBookFilter.isEmpty()) {
-            value = results
-        } else {
-            withContext(Dispatchers.Default) {
-                val cleanQuery = debouncedBookFilter.normalizeArabic()
-                val normalizedNames = mutableMapOf<Int, String>()
-                value = results.filter { result ->
-                    val normalizedName = normalizedNames.getOrPut(result.bookId) {
-                        val name = libraryViewModel.dataManager.booksById[result.bookId]?.name ?: ""
-                        name.normalizeArabic()
-                    }
-                    normalizedName.contains(cleanQuery, ignoreCase = true)
-                }
-            }
-        }
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(

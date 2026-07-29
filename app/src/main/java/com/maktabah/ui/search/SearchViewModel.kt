@@ -34,6 +34,12 @@ class SearchViewModel : ViewModel() {
     private val _searchResults = MutableStateFlow<List<SearchResult>>(emptyList())
     val searchResults: StateFlow<List<SearchResult>> = _searchResults.asStateFlow()
 
+    private val _filteredSearchResults = MutableStateFlow<List<SearchResult>>(emptyList())
+    val filteredSearchResults: StateFlow<List<SearchResult>> = _filteredSearchResults.asStateFlow()
+
+    private val _bookFilter = MutableStateFlow("")
+    val bookFilter: StateFlow<String> = _bookFilter.asStateFlow()
+
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
@@ -281,6 +287,8 @@ class SearchViewModel : ViewModel() {
 
     fun clearResults() {
         _searchResults.value = emptyList()
+        _bookFilter.value = ""
+        _filteredSearchResults.value = emptyList()
         _completedBooks.value = 0
         _totalBooks.value = 0
         _currentBookProgress.value = null
@@ -473,6 +481,8 @@ class SearchViewModel : ViewModel() {
             }
 
             _searchResults.value = allResults
+            _bookFilter.value = ""
+            _filteredSearchResults.value = allResults
             _isSearching.value = false
             _currentBookProgress.value = null
             _currentBookName.value = ""
@@ -571,9 +581,39 @@ class SearchViewModel : ViewModel() {
             }
 
             _searchResults.value = allResults
+            _bookFilter.value = ""
+            _filteredSearchResults.value = allResults
             _isSearching.value = false
             _currentBookProgress.value = null
             _currentBookName.value = ""
+        }
+    }
+
+    fun updateBookFilter(query: String, dataManager: LibraryDataManager) {
+        _bookFilter.value = query
+        applyBookFilter(dataManager)
+    }
+
+    private var filterJob: kotlinx.coroutines.Job? = null
+    private fun applyBookFilter(dataManager: LibraryDataManager) {
+        val currentFilter = _bookFilter.value
+        val allResults = _searchResults.value
+        filterJob?.cancel()
+        
+        if (currentFilter.isEmpty()) {
+            _filteredSearchResults.value = allResults
+        } else {
+            filterJob = viewModelScope.launch(Dispatchers.Default) {
+                val cleanQuery = currentFilter.normalizeArabic()
+                val normalizedNames = mutableMapOf<Int, String>()
+                val filtered = allResults.filter { result ->
+                    val normalizedName = normalizedNames.getOrPut(result.bookId) {
+                        dataManager.booksById[result.bookId]?.name?.normalizeArabic() ?: ""
+                    }
+                    normalizedName.contains(cleanQuery, ignoreCase = true)
+                }
+                _filteredSearchResults.value = filtered
+            }
         }
     }
 }
