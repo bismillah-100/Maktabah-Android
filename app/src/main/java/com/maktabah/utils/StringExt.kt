@@ -28,6 +28,10 @@ fun String.normalizeArabic(removeDiacritics: Boolean = true): String {
 
         if (v == 0x0623 || v == 0x0625 || v == 0x0622 || v == 0x0671) {
             sb.append('\u0627') // Alif
+        } else if (v == 0x0629) {
+            sb.append('\u0647')
+        } else if (v == 0x0649) {
+            sb.append('\u064A')
         } else {
             sb.append(char)
         }

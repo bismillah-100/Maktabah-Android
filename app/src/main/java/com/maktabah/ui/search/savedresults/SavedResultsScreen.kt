@@ -60,6 +60,7 @@ import com.maktabah.ui.common.InsetGroupedItem
 import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.search.ResultsViewModel
 import com.maktabah.ui.search.SearchTextField
+import com.maktabah.utils.normalizeArabic
 
 sealed class MoveTarget {
     data class Folder(val node: FolderNode) : MoveTarget()
@@ -176,7 +177,7 @@ fun SavedResultsScreen(
 
                 SearchTextField(
                     value = searchQuery,
-                    onValueChange = { searchQuery = it },
+                    onValueChange = { searchQuery = it.normalizeArabic() },
                     onClearClick = { searchQuery = "" },
                     placeholder = stringResource(R.string.saved_results_search_globally),
                     modifier = Modifier

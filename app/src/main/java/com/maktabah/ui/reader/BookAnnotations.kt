@@ -184,7 +184,7 @@ fun BookAnnotationsSheet(
             Box(modifier = Modifier.padding(start = 16.dp, end = 16.dp)) {
                 SearchWithScope(
                     searchQuery = annotationSearchQuery,
-                    onSearchQueryChange = { annotationSearchQuery = it },
+                    onSearchQueryChange = { annotationSearchQuery = it.normalizeArabic() },
                     searchScope = annotationSearchScope,
                     onSearchScopeChange = { annotationSearchScope = it },
                     placeholder = stringResource(R.string.reader_annotations_search_placeholder)
