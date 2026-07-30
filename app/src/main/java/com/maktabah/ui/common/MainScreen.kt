@@ -913,14 +913,7 @@ private fun AppNavHost(
                 LaunchedEffect(activeTab.bookId) {
                     historyViewModel.initialize(context)
                     val affectedEntries = historyViewModel.addBookToHistory(activeTab.bookId)
-                    scope.launch {
-                        if (affectedEntries.isNotEmpty()) {
-                            cloudKitSyncManager.syncHistoryAndFavorites(
-                                context,
-                                affectedEntries,
-                            )
-                        }
-                    }
+                    cloudKitSyncManager.uploadHistory(context, affectedEntries)
                 }
 
                 androidx.compose.runtime.key(activeTab.id) {

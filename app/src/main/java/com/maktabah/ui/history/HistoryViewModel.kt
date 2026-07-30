@@ -38,7 +38,7 @@ class HistoryViewModel : ViewModel() {
 
     private val maxHistoryCount = 50
     private var dataFile: File? = null
-    private var isSyncing = false
+    @Volatile private var isSyncing = false
     private var isRefreshing = false
 
     fun initialize(context: Context) {
@@ -224,39 +224,6 @@ class HistoryViewModel : ViewModel() {
     }
 
     private fun saveToFile() {
-        if (isSyncing) {
-            val file = dataFile ?: return
-            if (file.exists()) {
-                try {
-                    val root = JSONObject(file.readText())
-                    val entriesArray = root.optJSONArray("entries")
-                    if (entriesArray != null) {
-                        val memoryEntries = _entriesByBookId.value.toMutableMap()
-                        for (i in 0 until entriesArray.length()) {
-                            val obj = entriesArray.getJSONObject(i)
-                            val bookId = obj.getInt("bookId")
-                            if (!memoryEntries.containsKey(bookId)) {
-                                val entry = ReadingEntry(
-                                    bookId = bookId,
-                                    lastContentId = if (obj.has("lastContentId")) obj.getInt("lastContentId") else null,
-                                    lastOpenedAt = if (obj.has("lastOpenedAt")) obj.getLong("lastOpenedAt") else null,
-                                    favoritedAt = if (obj.has("favoritedAt")) obj.getLong("favoritedAt") else null,
-                                    positionUpdatedAt = if (obj.has("positionUpdatedAt")) obj.getLong("positionUpdatedAt") else null,
-                                    updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
-                                    isFavorite = obj.optBoolean("isFavorite", false),
-                                    ckRecordId = if (obj.has("ckRecordId")) obj.getString("ckRecordId") else null
-                                )
-                                memoryEntries[bookId] = entry
-                            }
-                        }
-                        _entriesByBookId.value = memoryEntries
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-        }
-
         dataFile?.let { file ->
             val root = JSONObject()
 
