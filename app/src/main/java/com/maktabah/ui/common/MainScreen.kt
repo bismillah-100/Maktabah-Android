@@ -191,15 +191,13 @@ fun MainScreen(
         androidx.lifecycle.viewmodel.compose
             .viewModel()
     LaunchedEffect(Unit) {
-        historyViewModel.initialize(context)
         annotationsViewModel.initialize(context, annotationManager, libraryViewModel.dataManager)
-
         scope.launch {
             HistoryViewModel.refreshFlow.collect {
-                historyViewModel.initialize(context)
+                // Notify UI bahwa data history berubah dari CloudKit
+                // HistoryViewModel sudah auto-reload via applyCloudKitChanges
             }
         }
-
     }
 
     val currentRouteState = rememberUpdatedState(currentRoute)
@@ -219,6 +217,7 @@ fun MainScreen(
                         android.content.Context.MODE_PRIVATE
                     )
                     if (ckPrefs.getString("ckWebAuthToken", null) != null) {
+                        cloudKitSyncManager.retryPendingSyncs(context, historyViewModel)
                         cloudKitSyncManager.checkAccountChangeAndSync(
                             context,
                             annotationManager,
@@ -911,7 +910,6 @@ private fun AppNavHost(
 
             if (activeTab != null) {
                 LaunchedEffect(activeTab.bookId) {
-                    historyViewModel.initialize(context)
                     val affectedEntries = historyViewModel.addBookToHistory(activeTab.bookId)
                     cloudKitSyncManager.uploadHistory(context, affectedEntries)
                 }

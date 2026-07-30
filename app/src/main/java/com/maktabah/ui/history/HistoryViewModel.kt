@@ -1,8 +1,11 @@
 package com.maktabah.ui.history
 
-import android.content.Context
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import com.maktabah.database.HistoryDatabaseManager
 import com.maktabah.models.ReadingEntry
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -16,11 +19,11 @@ import kotlinx.coroutines.flow.stateIn
 import androidx.lifecycle.viewModelScope
 import com.maktabah.manager.LibraryDataManager
 import com.maktabah.utils.normalizeArabic
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.coroutines.launch
 import java.io.File
 
-class HistoryViewModel : ViewModel() {
+class HistoryViewModel(app: Application) : AndroidViewModel(app) {
+
     companion object {
         private val _refreshFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
         val refreshFlow: SharedFlow<Unit> = _refreshFlow.asSharedFlow()
@@ -30,6 +33,10 @@ class HistoryViewModel : ViewModel() {
         }
     }
 
+    private val dbManager = HistoryDatabaseManager(
+        File(app.filesDir, "History.sqlite")
+    )
+
     private val _entriesByBookId = MutableStateFlow<Map<Int, ReadingEntry>>(emptyMap())
     val entriesByBookId: StateFlow<Map<Int, ReadingEntry>> = _entriesByBookId.asStateFlow()
 
@@ -37,21 +44,27 @@ class HistoryViewModel : ViewModel() {
     val historyOrder: StateFlow<List<Int>> = _historyOrder.asStateFlow()
 
     private val maxHistoryCount = 50
-    private var dataFile: File? = null
-    @Volatile private var isSyncing = false
-    private var isRefreshing = false
 
-    fun initialize(context: Context) {
-        if (isRefreshing) return
-        isRefreshing = true
-        try {
-            if (dataFile == null) {
-                dataFile = File(context.filesDir, "user_data.json")
-            }
-            loadFromFile()
-        } finally {
-            isRefreshing = false
-        }
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private var filteredHistoryFlow: StateFlow<List<Int>>? = null
+    private var filteredFavoritesFlow: StateFlow<List<Int>>? = null
+
+    init {
+        // Migrasi one-shot dari JSON lama ke SQLite
+        val jsonFile = File(app.filesDir, "user_data.json")
+        val prefs = app.getSharedPreferences("history_db_prefs", android.content.Context.MODE_PRIVATE)
+        dbManager.migrateFromJsonIfNeeded(jsonFile, prefs)
+
+        // Load dari SQLite
+        loadFromDatabase()
+    }
+
+    private fun loadFromDatabase() {
+        val (entries, order) = dbManager.loadFromDatabase()
+        _entriesByBookId.value = entries.associateBy { it.bookId }
+        _historyOrder.value = order
     }
 
     fun getFavoriteBookIds(): List<Int> {
@@ -61,54 +74,41 @@ class HistoryViewModel : ViewModel() {
             .map { it.bookId }
     }
 
-    private val _searchQuery = MutableStateFlow("")
-    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
-
-    private var filteredHistoryFlow: StateFlow<List<Int>>? = null
-    private var filteredFavoritesFlow: StateFlow<List<Int>>? = null
-
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query.normalizeArabic()
     }
-	
-	@OptIn(kotlinx.coroutines.FlowPreview::class)
-	fun getFilteredHistory(dataManager: LibraryDataManager): StateFlow<List<Int>> {
-		return filteredHistoryFlow ?: combine(
-			_historyOrder,
-			_searchQuery.debounce { query -> if (query.isEmpty()) 0L else 500L }
-		) { order, query ->
-			val cleanQuery = query.normalizeArabic()
-			if (cleanQuery.isBlank()) {
-				order
-			} else {
-				order.filter { dataManager.bookContainsQuery(it, cleanQuery) }
-			}
-		}.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), _historyOrder.value).also {
-			filteredHistoryFlow = it
-		}
-	}
 
-	@OptIn(kotlinx.coroutines.FlowPreview::class)
-	fun getFilteredFavorites(dataManager: LibraryDataManager): StateFlow<List<Int>> {
-		return filteredFavoritesFlow ?: combine(
-			_entriesByBookId,
-			_searchQuery.debounce { query -> if (query.isEmpty()) 0L else 500L }
-		) { entries, query ->
-			val cleanQuery = query.normalizeArabic()
-			val favorites = entries.values
-				.filter { it.isFavorite }
-				.sortedByDescending { it.favoritedAt ?: 0L }
-				.map { it.bookId }
-	
-			if (cleanQuery.isBlank()) {
-				favorites
-			} else {
-				favorites.filter { dataManager.bookContainsQuery(it, cleanQuery) }
-			}
-		}.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), getFavoriteBookIds()).also {
-			filteredFavoritesFlow = it
-		}
-	}
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    fun getFilteredHistory(dataManager: LibraryDataManager): StateFlow<List<Int>> {
+        return filteredHistoryFlow ?: combine(
+            _historyOrder,
+            _searchQuery.debounce { query -> if (query.isEmpty()) 0L else 500L }
+        ) { order, query ->
+            val cleanQuery = query.normalizeArabic()
+            if (cleanQuery.isBlank()) order
+            else order.filter { dataManager.bookContainsQuery(it, cleanQuery) }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), _historyOrder.value).also {
+            filteredHistoryFlow = it
+        }
+    }
+
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    fun getFilteredFavorites(dataManager: LibraryDataManager): StateFlow<List<Int>> {
+        return filteredFavoritesFlow ?: combine(
+            _entriesByBookId,
+            _searchQuery.debounce { query -> if (query.isEmpty()) 0L else 500L }
+        ) { entries, query ->
+            val cleanQuery = query.normalizeArabic()
+            val favorites = entries.values
+                .filter { it.isFavorite }
+                .sortedByDescending { it.favoritedAt ?: 0L }
+                .map { it.bookId }
+            if (cleanQuery.isBlank()) favorites
+            else favorites.filter { dataManager.bookContainsQuery(it, cleanQuery) }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), getFavoriteBookIds()).also {
+            filteredFavoritesFlow = it
+        }
+    }
 
     fun addBookToHistory(bookId: Int): List<ReadingEntry> {
         val entries = _entriesByBookId.value.toMutableMap()
@@ -142,8 +142,10 @@ class HistoryViewModel : ViewModel() {
                     )
                     if (!updatedOldEntry.isFavorite) {
                         entries.remove(idToRemove)
+                        viewModelScope.launch(Dispatchers.IO) { dbManager.deleteEntry(idToRemove) }
                     } else {
                         entries[idToRemove] = updatedOldEntry
+                        viewModelScope.launch(Dispatchers.IO) { dbManager.upsertEntry(updatedOldEntry) }
                     }
                     affectedEntries.add(updatedOldEntry)
                 }
@@ -152,8 +154,12 @@ class HistoryViewModel : ViewModel() {
 
         _entriesByBookId.value = entries
         _historyOrder.value = order
-        saveToFile()
-        
+
+        viewModelScope.launch(Dispatchers.IO) {
+            dbManager.upsertEntry(newEntry)
+            dbManager.saveHistoryOrder(order)
+        }
+
         return affectedEntries
     }
 
@@ -168,7 +174,7 @@ class HistoryViewModel : ViewModel() {
             )
             entries[bookId] = newEntry
             _entriesByBookId.value = entries
-            saveToFile()
+            viewModelScope.launch(Dispatchers.IO) { dbManager.upsertEntry(newEntry) }
         } else {
             addBookToHistory(bookId)
             updateLastContentId(contentId, bookId)
@@ -189,11 +195,12 @@ class HistoryViewModel : ViewModel() {
         )
         if (!newEntry.isFavorite && newEntry.lastOpenedAt == null) {
             entries.remove(bookId)
+            viewModelScope.launch(Dispatchers.IO) { dbManager.deleteEntry(bookId) }
         } else {
             entries[bookId] = newEntry
+            viewModelScope.launch(Dispatchers.IO) { dbManager.upsertEntry(newEntry) }
         }
         _entriesByBookId.value = entries
-        saveToFile()
         return newEntry
     }
 
@@ -212,158 +219,120 @@ class HistoryViewModel : ViewModel() {
             )
             if (!newEntry.isFavorite) {
                 entries.remove(bookId)
+                viewModelScope.launch(Dispatchers.IO) {
+                    dbManager.deleteEntry(bookId)
+                    dbManager.saveHistoryOrder(order)
+                }
             } else {
                 entries[bookId] = newEntry
+                viewModelScope.launch(Dispatchers.IO) {
+                    dbManager.upsertEntry(newEntry)
+                    dbManager.saveHistoryOrder(order)
+                }
             }
             _entriesByBookId.value = entries
-            saveToFile()
             return newEntry
         }
-        saveToFile()
+        viewModelScope.launch(Dispatchers.IO) { dbManager.saveHistoryOrder(order) }
         return null
     }
 
-    private fun saveToFile() {
-        dataFile?.let { file ->
-            val root = JSONObject()
-
-            val orderArray = JSONArray()
-            _historyOrder.value.forEach { orderArray.put(it) }
-            root.put("historyOrder", orderArray)
-
-            val entriesArray = JSONArray()
-            _entriesByBookId.value.values.forEach { entry ->
-                val obj = JSONObject()
-                obj.put("bookId", entry.bookId)
-                entry.lastContentId?.let { obj.put("lastContentId", it) }
-                entry.lastOpenedAt?.let { obj.put("lastOpenedAt", it) }
-                entry.favoritedAt?.let { obj.put("favoritedAt", it) }
-                entry.positionUpdatedAt?.let { obj.put("positionUpdatedAt", it) }
-                obj.put("updatedAt", entry.updatedAt)
-                obj.put("isFavorite", entry.isFavorite)
-                entry.ckRecordId?.let { obj.put("ckRecordId", it) }
-                entriesArray.put(obj)
-            }
-            root.put("entries", entriesArray)
-
-            file.writeText(root.toString())
-        }
-    }
-
-    private fun loadFromFile() {
-        dataFile?.let { file ->
-            if (file.exists()) {
-                try {
-                    val root = JSONObject(file.readText())
-
-                    val orderArray = root.optJSONArray("historyOrder")
-                    val orderList = mutableListOf<Int>()
-                    if (orderArray != null) {
-                        for (i in 0 until orderArray.length()) {
-                            orderList.add(orderArray.getInt(i))
-                        }
-                    }
-                    _historyOrder.value = orderList
-
-                    val entriesArray = root.optJSONArray("entries")
-                    val entriesMap = mutableMapOf<Int, ReadingEntry>()
-                    if (entriesArray != null) {
-                        for (i in 0 until entriesArray.length()) {
-                            val obj = entriesArray.getJSONObject(i)
-                            val entry = ReadingEntry(
-                                bookId = obj.getInt("bookId"),
-                                lastContentId = if (obj.has("lastContentId")) obj.getInt("lastContentId") else null,
-                                lastOpenedAt = if (obj.has("lastOpenedAt")) obj.getLong("lastOpenedAt") else null,
-                                favoritedAt = if (obj.has("favoritedAt")) obj.getLong("favoritedAt") else null,
-                                positionUpdatedAt = if (obj.has("positionUpdatedAt")) obj.getLong("positionUpdatedAt") else null,
-                                updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
-                                isFavorite = obj.optBoolean("isFavorite", false),
-                                ckRecordId = if (obj.has("ckRecordId")) obj.getString("ckRecordId") else null
-                            )
-                            entriesMap[entry.bookId] = entry
-                        }
-                    }
-                    _entriesByBookId.value = entriesMap
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-        }
-    }
-
     fun applyCloudKitChanges(entriesToSave: List<ReadingEntry>, recordIdsToDelete: List<String>) {
-        isSyncing = true
-        try {
-            val entries = _entriesByBookId.value.toMutableMap()
-            var didChange = false
+        val entries = _entriesByBookId.value.toMutableMap()
+        var didChange = false
 
-            // Process Deletions
-            if (recordIdsToDelete.isNotEmpty()) {
-                val bookIdsToDelete = entries.values.filter { entry ->
-                    val ckId = entry.ckRecordId ?: entry.bookId.toString()
-                    recordIdsToDelete.contains(ckId)
-                }.map { it.bookId }
+        // Deletions
+        if (recordIdsToDelete.isNotEmpty()) {
+            val bookIdsToDelete = entries.values.filter { entry ->
+                val ckId = entry.ckRecordId ?: entry.bookId.toString()
+                recordIdsToDelete.contains(ckId)
+            }.map { it.bookId }
 
-                for (bookId in bookIdsToDelete) {
-                    entries.remove(bookId)
+            for (bookId in bookIdsToDelete) {
+                entries.remove(bookId)
+                didChange = true
+            }
+        }
+
+        // Updates/Insertions
+        val upserted = mutableListOf<ReadingEntry>()
+        for (incoming in entriesToSave) {
+            val existing = entries[incoming.bookId]
+            if (existing == null || incoming.updatedAt > existing.updatedAt) {
+                entries[incoming.bookId] = incoming
+                upserted.add(incoming)
+                didChange = true
+            }
+        }
+
+        // Sync history order berdasarkan lastOpenedAt
+        val validHistoryEntries = entries.values.filter { it.lastOpenedAt != null }
+        val sortedIds = validHistoryEntries
+            .sortedByDescending { it.lastOpenedAt ?: 0L }
+            .map { it.bookId }
+
+        val newOrder = if (sortedIds.size > maxHistoryCount) {
+            val toKeep = sortedIds.subList(0, maxHistoryCount)
+            val toRemove = sortedIds.subList(maxHistoryCount, sortedIds.size)
+            toRemove.forEach { idToRemove ->
+                val oldEntry = entries[idToRemove]
+                if (oldEntry != null) {
+                    val updatedOldEntry = oldEntry.copy(
+                        lastOpenedAt = null,
+                        lastContentId = null,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    if (!updatedOldEntry.isFavorite) entries.remove(idToRemove)
+                    else entries[idToRemove] = updatedOldEntry
                     didChange = true
                 }
             }
+            toKeep
+        } else {
+            sortedIds
+        }
 
-            // Process Updates/Insertions
-            for (incoming in entriesToSave) {
-                val existing = entries[incoming.bookId]
-                if (existing == null || incoming.updatedAt > existing.updatedAt) {
-                    entries[incoming.bookId] = incoming
-                    didChange = true
-                }
-            }
+        val currentOrder = _historyOrder.value
+        if (newOrder != currentOrder || didChange) {
+            val finalEntries = entries.toMap()
+            val finalOrder = newOrder
+            _entriesByBookId.value = finalEntries
+            _historyOrder.value = finalOrder
 
-            // Sync history order based on lastOpenedAt
-            val validHistoryEntries = entries.values.filter { it.lastOpenedAt != null }
-            val sortedIds = validHistoryEntries
-                .sortedByDescending { it.lastOpenedAt ?: 0L }
-                .map { it.bookId }
-            
-            val newOrder = if (sortedIds.size > maxHistoryCount) {
-                val toKeep = sortedIds.subList(0, maxHistoryCount)
-                val toRemove = sortedIds.subList(maxHistoryCount, sortedIds.size)
-                toRemove.forEach { idToRemove ->
-                    val oldEntry = entries[idToRemove]
-                    if (oldEntry != null) {
-                        val updatedOldEntry = oldEntry.copy(
-                            lastOpenedAt = null,
-                            lastContentId = null,
-                            updatedAt = System.currentTimeMillis()
-                        )
-                        if (!updatedOldEntry.isFavorite) {
-                            entries.remove(idToRemove)
-                        } else {
-                            entries[idToRemove] = updatedOldEntry
-                        }
-                        didChange = true
-                    }
-                }
-                toKeep
-            } else {
-                sortedIds
-            }
+            // Hitung deleted IDs untuk batch DB write
+            val deletedBookIds = recordIdsToDelete.mapNotNull { ckId ->
+                _entriesByBookId.value.values.find { it.ckRecordId == ckId }?.bookId
+            } + (currentOrder - newOrder.toSet())
+                .filter { finalEntries[it]?.let { e -> !e.isFavorite } ?: true }
 
-            val currentOrder = _historyOrder.value
-            if (newOrder != currentOrder || didChange) {
-                _entriesByBookId.value = entries
-                _historyOrder.value = newOrder
-                saveToFile()
-                notifyRefresh()
+            viewModelScope.launch(Dispatchers.IO) {
+                dbManager.applyCloudKitBatch(upserted, deletedBookIds.distinct(), finalOrder)
             }
-        } finally {
-            isSyncing = false
+            notifyRefresh()
         }
     }
 
     fun clearAll() {
         _entriesByBookId.value = emptyMap()
         _historyOrder.value = emptyList()
-        dataFile?.delete()
+        viewModelScope.launch(Dispatchers.IO) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    openRWDb { db ->
+                        db.prepare("DELETE FROM reading_entries;")?.use { it.step() }
+                        db.prepare("DELETE FROM history_order;")?.use { it.step() }
+                        db.prepare("DELETE FROM sync_pending;")?.use { it.step() }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun openRWDb(block: (com.maktabah.database.SQLiteDB) -> Unit) {
+        com.maktabah.database.SQLiteDB(
+            File(getApplication<Application>().filesDir, "History.sqlite").absolutePath,
+            com.maktabah.database.SQLiteDB.SQLITE_OPEN_READWRITE or
+                com.maktabah.database.SQLiteDB.SQLITE_OPEN_FULLMUTEX
+        ).use(block)
     }
 }

@@ -22,8 +22,7 @@ class SyncMessagingService : FirebaseMessagingService() {
             
             val annotationsDbFile = File(applicationContext.filesDir, "annotations.sqlite")
             val annotationManager = AnnotationManager(annotationsDbFile)
-            val historyViewModel = HistoryViewModel()
-            historyViewModel.initialize(applicationContext)
+            val historyViewModel = HistoryViewModel(applicationContext as android.app.Application)
             val cloudKitSyncManager = CloudKitSyncManager()
             
             CoroutineScope(Dispatchers.IO).launch {

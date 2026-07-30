@@ -23,6 +23,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
+import com.maktabah.database.HistoryDatabaseManager
 
 class CloudKitSyncManager {
     private val syncMutex = Mutex()
@@ -35,12 +36,19 @@ class CloudKitSyncManager {
 
     /**
      * Upload history entries ke CloudKit dengan buffer + debounce 2 detik.
-     * Entry yang dikirim dalam window 2 detik akan digabung dan dikirim sekaligus.
+     * Entry yang masuk dalam window 2 detik digabung jadi satu batch.
      * Tidak suspend — aman dipanggil dari UI tanpa terikat lifecycle composable.
+     * Setiap entry ditambahkan ke sync_pending sebelum buffer, dihapus setelah berhasil.
      */
     fun uploadHistory(context: Context, entries: List<ReadingEntry>) {
         if (entries.isEmpty()) return
         val appContext = context.applicationContext
+        // Tandai sebagai pending sebelum masuk buffer
+        val db = HistoryDatabaseManager.instance
+        for (entry in entries) {
+            val key = entry.ckRecordId ?: entry.bookId.toString()
+            db?.addPendingSync(key, if (!entry.isFavorite && entry.lastOpenedAt == null) "delete" else "upload")
+        }
         historyUploadScope.launch {
             historyBufferMutex.withLock {
                 for (entry in entries) {
@@ -65,15 +73,58 @@ class CloudKitSyncManager {
         }
         val recordsToSave = JSONArray()
         val recordIDsToDelete = JSONArray()
+        val uploadedIds = mutableListOf<String>()
+        val deletedIds = mutableListOf<String>()
         for (entry in entriesToUpload) {
             val recordId = entry.ckRecordId ?: entry.bookId.toString()
             if (!entry.isFavorite && entry.lastOpenedAt == null) {
                 recordIDsToDelete.put(recordId)
+                deletedIds.add(recordId)
             } else {
                 recordsToSave.put(buildReadingEntryRecord(entry, recordId))
+                uploadedIds.add(recordId)
             }
         }
-        CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, recordIDsToDelete)
+        val result = CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, recordIDsToDelete)
+        if (result.isSuccess) {
+            // Upload berhasil — hapus dari antrian pending
+            HistoryDatabaseManager.instance?.removePendingSync(uploadedIds + deletedIds)
+        }
+    }
+
+    /**
+     * Retry upload/delete entries yang masih di sync_pending dari sesi sebelumnya.
+     * Dipanggil saat app resume (ON_RESUME lifecycle event) sebelum fetchChanges.
+     */
+    suspend fun retryPendingSyncs(context: Context, historyViewModel: com.maktabah.ui.history.HistoryViewModel) {
+        val db = HistoryDatabaseManager.instance ?: return
+        val pendingUploads = db.fetchPendingSync("upload")
+        val pendingDeletes = db.fetchPendingSync("delete")
+        if (pendingUploads.isEmpty() && pendingDeletes.isEmpty()) return
+
+        val allEntries = historyViewModel.entriesByBookId.value
+        val entriesToRetry = mutableListOf<ReadingEntry>()
+
+        // Cari entries yang masih pending upload di memory ViewModel
+        for (ckId in pendingUploads) {
+            val entry = allEntries.values.find { (it.ckRecordId ?: it.bookId.toString()) == ckId }
+            if (entry != null) entriesToRetry.add(entry)
+        }
+        // Buat dummy delete entries untuk ckIds yang perlu dihapus
+        for (ckId in pendingDeletes) {
+            entriesToRetry.add(ReadingEntry(
+                bookId = ckId.toIntOrNull() ?: continue,
+                ckRecordId = ckId,
+                lastOpenedAt = null,
+                isFavorite = false
+            ))
+        }
+        if (entriesToRetry.isEmpty()) {
+            // Tidak ada di memory — data sudah tidak relevan, bersihkan pending
+            db.removePendingSync(pendingUploads + pendingDeletes)
+            return
+        }
+        uploadHistory(context, entriesToRetry)
     }
 
     private fun buildReadingEntryRecord(entry: ReadingEntry, recordId: String): JSONObject =
