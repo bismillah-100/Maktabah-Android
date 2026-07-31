@@ -26,7 +26,8 @@ object BookArchiveIntegrator {
         var archiveId: Int? = null
         try {
             SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
-                db.prepare("SELECT Archive FROM \"0bok\" WHERE bkid = $bookId LIMIT 1;")?.use { stmt ->
+                db.prepare("SELECT Archive FROM \"0bok\" WHERE bkid = ? LIMIT 1;")?.use { stmt ->
+                    stmt.bindInt(1, bookId)
                     if (stmt.step() == SQLiteDB.SQLITE_ROW) {
                         archiveId = stmt.columnInt(0)
                     }
