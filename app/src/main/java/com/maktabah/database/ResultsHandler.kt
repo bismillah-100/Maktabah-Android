@@ -12,8 +12,18 @@ import java.util.UUID
  */
 class ResultsHandler(private val dbFile: File) {
 
-    init {
-        setupDatabase()
+    @Volatile
+    private var isDbSetup = false
+
+    private fun ensureSetup() {
+        if (!isDbSetup) {
+            synchronized(this) {
+                if (!isDbSetup) {
+                    setupDatabase()
+                    isDbSetup = true
+                }
+            }
+        }
     }
 
     // region Setup & Tables
@@ -99,6 +109,7 @@ class ResultsHandler(private val dbFile: File) {
                 }
             rowId = db.lastInsertRowId()
         }
+        addPendingSync(ckId, "upload")
         return rowId
     }
 
@@ -119,6 +130,7 @@ class ResultsHandler(private val dbFile: File) {
                 }
             rowId = db.lastInsertRowId()
         }
+        addPendingSync(ckId, "upload")
         return rowId
     }
 
@@ -153,7 +165,12 @@ class ResultsHandler(private val dbFile: File) {
 
     fun updateFolderName(folderId: Long, newName: String) {
         val now = System.currentTimeMillis() / 1000L
+        var ckId: String? = null
         openDb { db ->
+            db.prepare("SELECT ckRecordId FROM folders WHERE id = ? LIMIT 1")?.use { stmt ->
+                stmt.bindLong(1, folderId)
+                if (stmt.step() == SQLiteDB.SQLITE_ROW) ckId = stmt.columnText(0)
+            }
             db.prepare("UPDATE folders SET name = ?, lastModified = ? WHERE id = ?;")?.use { stmt ->
                 stmt.bindText(1, newName)
                 stmt.bindLong(2, now)
@@ -161,11 +178,17 @@ class ResultsHandler(private val dbFile: File) {
                 stmt.step()
             }
         }
+        ckId?.let { addPendingSync(it, "upload") }
     }
 
     fun updateParent(folderId: Long, newParentId: Long?) {
         val now = System.currentTimeMillis() / 1000L
+        var ckId: String? = null
         openDb { db ->
+            db.prepare("SELECT ckRecordId FROM folders WHERE id = ? LIMIT 1")?.use { stmt ->
+                stmt.bindLong(1, folderId)
+                if (stmt.step() == SQLiteDB.SQLITE_ROW) ckId = stmt.columnText(0)
+            }
             val pCkId = if (newParentId != null) fetchFolderCkRecordId(db, newParentId) else null
             db.prepare("UPDATE folders SET parent = ?, lastModified = ?, parentCkRecordId = ? WHERE id = ?;")
                 ?.use { stmt ->
@@ -176,6 +199,7 @@ class ResultsHandler(private val dbFile: File) {
                     stmt.step()
                 }
         }
+        ckId?.let { addPendingSync(it, "upload") }
     }
 
     fun deleteFolder(folderId: Long) {
@@ -217,6 +241,9 @@ class ResultsHandler(private val dbFile: File) {
                 db.prepare("ROLLBACK;")?.use { it.step() }
                 throw e
             }
+        }
+        for (ckId in ckIdsToDelete) {
+            addPendingSync(ckId, "delete")
         }
     }
 
@@ -268,6 +295,7 @@ class ResultsHandler(private val dbFile: File) {
                 stmt.step()
             }
         }
+        addPendingSync(ckId, "upload")
     }
 
     /**
@@ -304,6 +332,7 @@ class ResultsHandler(private val dbFile: File) {
 
     fun updateResultQueryName(folderId: Long?, oldName: String, newName: String) {
         val now = System.currentTimeMillis() / 1000L
+        val ckIds = fetchCkRecordIdsForResults(folderId, oldName)
         openDb { db ->
             val sql = if (folderId != null) {
                 "UPDATE results SET name = ?, lastModified = ? WHERE folder_id = ? AND name = ?;"
@@ -322,10 +351,12 @@ class ResultsHandler(private val dbFile: File) {
                 stmt.step()
             }
         }
+        for (ckId in ckIds) addPendingSync(ckId, "upload")
     }
 
     fun updateResultParent(newParentId: Long?, oldParent: Long?, name: String) {
         val now = System.currentTimeMillis() / 1000L
+        val ckIds = fetchCkRecordIdsForResults(oldParent, name)
         openDb { db ->
             val fCkId = if (newParentId != null) fetchFolderCkRecordId(db, newParentId) else null
             val sql = if (oldParent != null) {
@@ -346,9 +377,11 @@ class ResultsHandler(private val dbFile: File) {
                 stmt.step()
             }
         }
+        for (ckId in ckIds) addPendingSync(ckId, "upload")
     }
 
     fun deleteResult(folderId: Long?, name: String) {
+        val ckIds = fetchCkRecordIdsForResults(folderId, name)
         openDb { db ->
             val sql = if (folderId != null) {
                 "DELETE FROM results WHERE folder_id = ? AND name = ?;"
@@ -365,6 +398,7 @@ class ResultsHandler(private val dbFile: File) {
                 stmt.step()
             }
         }
+        for (ckId in ckIds) addPendingSync(ckId, "delete")
     }
 
     // endregion
@@ -796,6 +830,7 @@ class ResultsHandler(private val dbFile: File) {
     // region Private Helpers
 
     private inline fun openDb(block: (SQLiteDB) -> Unit) {
+        ensureSetup()
         SQLiteDB(
             dbFile.absolutePath,
             SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_CREATE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,

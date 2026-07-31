@@ -9,7 +9,12 @@ import com.maktabah.models.ReadingEntry
 import com.maktabah.models.SyncFolder
 import com.maktabah.models.SyncResult
 import com.maktabah.ui.history.HistoryViewModel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -18,9 +23,131 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
+import com.maktabah.database.HistoryDatabaseManager
 
 class CloudKitSyncManager {
     private val syncMutex = Mutex()
+
+    // region History Upload Buffer (debounce, mirip iOS)
+    private val historyBufferMutex = Mutex()
+    private val historyUploadBuffer = mutableMapOf<String, ReadingEntry>()
+    private var historyDebounceJob: Job? = null
+    private val historyUploadScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    /**
+     * Upload history entries ke CloudKit dengan buffer + debounce 2 detik.
+     * Entry yang masuk dalam window 2 detik digabung jadi satu batch.
+     * Tidak suspend — aman dipanggil dari UI tanpa terikat lifecycle composable.
+     * Setiap entry ditambahkan ke sync_pending sebelum buffer, dihapus setelah berhasil.
+     */
+    fun uploadHistory(context: Context, entries: List<ReadingEntry>) {
+        if (entries.isEmpty()) return
+        val appContext = context.applicationContext
+        historyUploadScope.launch {
+            // Tandai sebagai pending sebelum masuk buffer
+            val db = HistoryDatabaseManager.instance
+            for (entry in entries) {
+                val key = entry.ckRecordId ?: entry.bookId.toString()
+                db?.addPendingSync(key, if (!entry.isFavorite && entry.lastOpenedAt == null) "delete" else "upload")
+            }
+            historyBufferMutex.withLock {
+                for (entry in entries) {
+                    val key = entry.ckRecordId ?: entry.bookId.toString()
+                    historyUploadBuffer[key] = entry
+                }
+                historyDebounceJob?.cancel()
+                historyDebounceJob = historyUploadScope.launch {
+                    delay(2_000)
+                    flushHistoryBuffer(appContext)
+                }
+            }
+        }
+    }
+
+    private suspend fun flushHistoryBuffer(context: Context) {
+        val entriesToUpload: List<ReadingEntry>
+        historyBufferMutex.withLock {
+            if (historyUploadBuffer.isEmpty()) return
+            entriesToUpload = historyUploadBuffer.values.toList()
+            historyUploadBuffer.clear()
+        }
+        val recordsToSave = JSONArray()
+        val recordIDsToDelete = JSONArray()
+        val uploadedIds = mutableListOf<String>()
+        val deletedIds = mutableListOf<String>()
+        for (entry in entriesToUpload) {
+            val recordId = entry.ckRecordId ?: entry.bookId.toString()
+            if (!entry.isFavorite && entry.lastOpenedAt == null) {
+                recordIDsToDelete.put(recordId)
+                deletedIds.add(recordId)
+            } else {
+                recordsToSave.put(buildReadingEntryRecord(entry, recordId))
+                uploadedIds.add(recordId)
+            }
+        }
+        val result = CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, recordIDsToDelete)
+        if (result.isSuccess) {
+            // Upload berhasil — hapus dari antrian pending
+            HistoryDatabaseManager.instance?.removePendingSync(uploadedIds + deletedIds)
+        }
+    }
+
+    /**
+     * Retry upload/delete entries yang masih di sync_pending dari sesi sebelumnya.
+     * Dipanggil saat app resume (ON_RESUME lifecycle event) sebelum fetchChanges.
+     */
+    suspend fun retryPendingSyncs(context: Context, historyViewModel: com.maktabah.ui.history.HistoryViewModel) {
+        val db = HistoryDatabaseManager.instance ?: return
+        val pendingUploads = db.fetchPendingSync("upload")
+        val pendingDeletes = db.fetchPendingSync("delete")
+        if (pendingUploads.isEmpty() && pendingDeletes.isEmpty()) return
+
+        val allEntries = historyViewModel.entriesByBookId.value
+        val entriesToRetry = mutableListOf<ReadingEntry>()
+
+        // Cari entries yang masih pending upload di memory ViewModel
+        for (ckId in pendingUploads) {
+            val entry = allEntries.values.find { (it.ckRecordId ?: it.bookId.toString()) == ckId }
+            if (entry != null) entriesToRetry.add(entry)
+        }
+        // Buat dummy delete entries untuk ckIds yang perlu dihapus
+        for (ckId in pendingDeletes) {
+            entriesToRetry.add(ReadingEntry(
+                bookId = ckId.toIntOrNull() ?: continue,
+                ckRecordId = ckId,
+                lastOpenedAt = null,
+                isFavorite = false
+            ))
+        }
+        if (entriesToRetry.isEmpty()) {
+            // Tidak ada di memory — data sudah tidak relevan, bersihkan pending
+            db.removePendingSync(pendingUploads + pendingDeletes)
+            return
+        }
+        uploadHistory(context, entriesToRetry)
+    }
+
+    private fun buildReadingEntryRecord(entry: ReadingEntry, recordId: String): JSONObject =
+        JSONObject().apply {
+            put("recordType", "ReadingEntry")
+            put("recordName", recordId)
+            put("zoneID", JSONObject().apply {
+                put("zoneName", "AnnotationsZone")
+                put("ownerRecordName", "_defaultOwner_")
+            })
+            put("fields", JSONObject().apply {
+                put("bookId", JSONObject().apply { put("value", entry.bookId) })
+                put("isFavorite", JSONObject().apply { put("value", if (entry.isFavorite) 1 else 0) })
+                val lastModSec = if (entry.updatedAt > 10000000000L) entry.updatedAt / 1000L else entry.updatedAt
+                put("lastModified", JSONObject().apply { put("value", lastModSec) })
+                put("lastContentId", JSONObject().apply { put("value", entry.lastContentId ?: JSONObject.NULL) })
+                put("lastOpenedAt", JSONObject().apply { put("value", entry.lastOpenedAt ?: JSONObject.NULL) })
+                put("favoritedAt", JSONObject().apply { put("value", entry.favoritedAt ?: JSONObject.NULL) })
+                put("positionUpdatedAt", JSONObject().apply { put("value", entry.positionUpdatedAt ?: JSONObject.NULL) })
+            })
+        }
+
+    // endregion
 
     suspend fun fetchChanges(
         context: Context,
@@ -321,6 +448,7 @@ class CloudKitSyncManager {
             }
         } }
 
+    /** Manual sync — dipakai oleh onSyncHistoryRequested di ReaderScreen. */
     suspend fun syncHistoryAndFavorites(context: Context, entries: List<ReadingEntry>) =
         withContext(Dispatchers.IO) {
             val recordsToSave = JSONArray()
@@ -331,40 +459,10 @@ class CloudKitSyncManager {
                 if (!entry.isFavorite && entry.lastOpenedAt == null) {
                     recordIDsToDelete.put(recordId)
                 } else {
-                    val record = JSONObject().apply {
-                        put("recordType", "ReadingEntry")
-                        put("recordName", recordId)
-                        put("zoneID", JSONObject().apply {
-                            put("zoneName", "AnnotationsZone")
-                            put("ownerRecordName", "_defaultOwner_")
-                        })
-                        put("fields", JSONObject().apply {
-                            put("bookId", JSONObject().apply { put("value", entry.bookId) })
-                            put(
-                                "isFavorite",
-                                JSONObject().apply { put("value", if (entry.isFavorite) 1 else 0) })
-                            val lastModSec = if (entry.updatedAt > 10000000000L) entry.updatedAt / 1000L else entry.updatedAt
-                            put("lastModified", JSONObject().apply { put("value", lastModSec) })
-                            put("lastContentId", JSONObject().apply {
-                                put("value", entry.lastContentId ?: JSONObject.NULL)
-                            })
-                            put("lastOpenedAt", JSONObject().apply {
-                                put("value", entry.lastOpenedAt ?: JSONObject.NULL)
-                            })
-                            put("favoritedAt", JSONObject().apply {
-                                put("value", entry.favoritedAt ?: JSONObject.NULL)
-                            })
-                            put("positionUpdatedAt", JSONObject().apply {
-                                put("value", entry.positionUpdatedAt ?: JSONObject.NULL)
-                            })
-                        })
-                    }
-                    recordsToSave.put(record)
+                    recordsToSave.put(buildReadingEntryRecord(entry, recordId))
                 }
             }
-
-            val result =
-                CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, recordIDsToDelete)
+            val result = CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, recordIDsToDelete)
             if (result.isSuccess) {
                 "Success: Uploaded history and favorites"
             } else {

@@ -271,6 +271,8 @@ class ResultsViewModel : ViewModel() {
         // Remove node from tree
         removeNodeFromTree(node)
         _folderRoots.value = _folderRoots.value.toList()
+        
+        appContext?.let { CloudKitResultSyncHelper.delete(it, emptyList()) }
     }
 
     fun moveFolder(draggedNode: FolderNode, newParentId: Long?): Boolean {
@@ -322,6 +324,8 @@ class ResultsViewModel : ViewModel() {
         _folderResults.value = current
 
         resultById.entries.removeAll { (_, r) -> r.parentId == parentFolderId && r.name == name }
+        
+        appContext?.let { CloudKitResultSyncHelper.delete(it, emptyList()) }
     }
 
     fun updateResultName(resultId: Long, newName: String): Boolean {
@@ -552,6 +556,7 @@ class ResultsViewModel : ViewModel() {
 object CloudKitResultSyncHelper {
     val syncEvent = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+    private var syncJob: kotlinx.coroutines.Job? = null
 
     fun uploadFolders(context: android.content.Context, folders: List<com.maktabah.models.SyncFolder>) {
         triggerSync(context)
@@ -566,7 +571,9 @@ object CloudKitResultSyncHelper {
     }
 
     private fun triggerSync(context: android.content.Context) {
-        scope.launch {
+        syncJob?.cancel()
+        syncJob = scope.launch {
+            kotlinx.coroutines.delay(3000)
             val result = com.maktabah.cloudKit.CloudKitSyncManager().syncResults(context)
             if (com.maktabah.BuildConfig.DEBUG) {
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
