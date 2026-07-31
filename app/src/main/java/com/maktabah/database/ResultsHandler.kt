@@ -19,13 +19,8 @@ class ResultsHandler(private val dbFile: File) {
         if (!isDbSetup) {
             synchronized(this) {
                 if (!isDbSetup) {
+                    setupDatabase()
                     isDbSetup = true
-                    try {
-                        setupDatabase()
-                    } catch (e: Exception) {
-                        isDbSetup = false
-                        throw e
-                    }
                 }
             }
         }
@@ -90,10 +85,10 @@ class ResultsHandler(private val dbFile: File) {
                 ?.use { it.step() }
             db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_results_folder_name_bk ON results (COALESCE(folder_id, 0), name, bkId);")
                 ?.use { it.step() }
-        }
 
-        resolveOrphanFolders()
-        resolveOrphanResults()
+            resolveOrphanFoldersInternal(db)
+            resolveOrphanResultsInternal(db)
+        }
     }
 
     // endregion
@@ -741,116 +736,124 @@ class ResultsHandler(private val dbFile: File) {
 
     fun resolveOrphanFolders() {
         openDb { db ->
-            db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-            try {
-                val orphans = mutableListOf<Triple<Long, String, Long?>>()
-                db.prepare(
-                    """
-                    SELECT f1.id, f1.name, f2.id as expected_parent
-                    FROM folders f1
-                    LEFT JOIN folders f2 ON f1.parentCkRecordId = f2.ckRecordId
-                    WHERE f1.parentCkRecordId IS NOT NULL 
-                    AND COALESCE(f1.parent, -1) != COALESCE(f2.id, -1)
-                    """,
-                )?.use { stmt ->
-                    while (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                        orphans.add(
-                            Triple(
-                                stmt.columnLong(0),
-                                stmt.columnText(1) ?: "",
-                                if (stmt.columnType(2) != SQLiteDB.SQLITE_NULL) stmt.columnLong(2) else null,
-                            ),
-                        )
-                    }
-                }
+            resolveOrphanFoldersInternal(db)
+        }
+    }
 
-                for ((id, name, expectedParent) in orphans) {
-                    val newParentId = expectedParent ?: continue
-                    var conflictId: Long? = null
-                    db.prepare("SELECT id FROM folders WHERE parent = ? AND name = ? AND id != ? LIMIT 1")
-                        ?.use { stmt ->
-                            stmt.bindLong(1, newParentId)
-                            stmt.bindText(2, name)
-                            stmt.bindLong(3, id)
-                            if (stmt.step() == SQLiteDB.SQLITE_ROW) conflictId = stmt.columnLong(0)
-                        }
-
-                    if (conflictId != null) {
-                        // Merge: move children and results to conflict, delete orphan
-                        db.prepare("UPDATE results SET folder_id = ? WHERE folder_id = ?;")?.use { stmt ->
-                            stmt.bindLong(1, conflictId); stmt.bindLong(2, id); stmt.step()
-                        }
-                        db.prepare("UPDATE folders SET parent = ? WHERE parent = ?;")?.use { stmt ->
-                            stmt.bindLong(1, conflictId); stmt.bindLong(2, id); stmt.step()
-                        }
-                        db.prepare("DELETE FROM folders WHERE id = ?;")?.use { stmt ->
-                            stmt.bindLong(1, id); stmt.step()
-                        }
-                    } else {
-                        db.prepare("UPDATE folders SET parent = ? WHERE id = ?;")?.use { stmt ->
-                            stmt.bindLong(1, newParentId); stmt.bindLong(2, id); stmt.step()
-                        }
-                    }
+    private fun resolveOrphanFoldersInternal(db: SQLiteDB) {
+        db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
+        try {
+            val orphans = mutableListOf<Triple<Long, String, Long?>>()
+            db.prepare(
+                """
+                SELECT f1.id, f1.name, f2.id as expected_parent
+                FROM folders f1
+                LEFT JOIN folders f2 ON f1.parentCkRecordId = f2.ckRecordId
+                WHERE f1.parentCkRecordId IS NOT NULL 
+                AND COALESCE(f1.parent, -1) != COALESCE(f2.id, -1)
+                """,
+            )?.use { stmt ->
+                while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                    orphans.add(
+                        Triple(
+                            stmt.columnLong(0),
+                            stmt.columnText(1) ?: "",
+                            if (stmt.columnType(2) != SQLiteDB.SQLITE_NULL) stmt.columnLong(2) else null,
+                        ),
+                    )
                 }
-                db.prepare("COMMIT;")?.use { it.step() }
-            } catch (e: Exception) {
-                db.prepare("ROLLBACK;")?.use { it.step() }
             }
+
+            for ((id, name, expectedParent) in orphans) {
+                val newParentId = expectedParent ?: continue
+                var conflictId: Long? = null
+                db.prepare("SELECT id FROM folders WHERE parent = ? AND name = ? AND id != ? LIMIT 1")
+                    ?.use { stmt ->
+                        stmt.bindLong(1, newParentId)
+                        stmt.bindText(2, name)
+                        stmt.bindLong(3, id)
+                        if (stmt.step() == SQLiteDB.SQLITE_ROW) conflictId = stmt.columnLong(0)
+                    }
+
+                if (conflictId != null) {
+                    // Merge: move children and results to conflict, delete orphan
+                    db.prepare("UPDATE results SET folder_id = ? WHERE folder_id = ?;")?.use { stmt ->
+                        stmt.bindLong(1, conflictId); stmt.bindLong(2, id); stmt.step()
+                    }
+                    db.prepare("UPDATE folders SET parent = ? WHERE parent = ?;")?.use { stmt ->
+                        stmt.bindLong(1, conflictId); stmt.bindLong(2, id); stmt.step()
+                    }
+                    db.prepare("DELETE FROM folders WHERE id = ?;")?.use { stmt ->
+                        stmt.bindLong(1, id); stmt.step()
+                    }
+                } else {
+                    db.prepare("UPDATE folders SET parent = ? WHERE id = ?;")?.use { stmt ->
+                        stmt.bindLong(1, newParentId); stmt.bindLong(2, id); stmt.step()
+                    }
+                }
+            }
+            db.prepare("COMMIT;")?.use { it.step() }
+        } catch (e: Exception) {
+            db.prepare("ROLLBACK;")?.use { it.step() }
         }
     }
 
     fun resolveOrphanResults() {
         openDb { db ->
-            db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-            try {
-                val orphans = mutableListOf<Quadruple>()
-                db.prepare(
-                    """
-                    SELECT r.id, r.name, r.bkId, f.id as expected_folder
-                    FROM results r
-                    LEFT JOIN folders f ON r.folderCkRecordId = f.ckRecordId
-                    WHERE r.folderCkRecordId IS NOT NULL
-                    AND COALESCE(r.folder_id, -1) != COALESCE(f.id, -1)
-                    """,
-                )?.use { stmt ->
-                    while (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                        orphans.add(
-                            Quadruple(
-                                stmt.columnLong(0),
-                                stmt.columnText(1) ?: "",
-                                stmt.columnInt(2),
-                                if (stmt.columnType(3) != SQLiteDB.SQLITE_NULL) stmt.columnLong(3) else null,
-                            ),
-                        )
-                    }
-                }
+            resolveOrphanResultsInternal(db)
+        }
+    }
 
-                for (orphan in orphans) {
-                    val newFolderId = orphan.expectedFolder ?: continue
-                    var hasConflict = false
-                    db.prepare("SELECT id FROM results WHERE folder_id = ? AND name = ? AND bkId = ? AND id != ? LIMIT 1")
-                        ?.use { stmt ->
-                            stmt.bindLong(1, newFolderId)
-                            stmt.bindText(2, orphan.name)
-                            stmt.bindInt(3, orphan.bkId)
-                            stmt.bindLong(4, orphan.id)
-                            if (stmt.step() == SQLiteDB.SQLITE_ROW) hasConflict = true
-                        }
-
-                    if (hasConflict) {
-                        db.prepare("DELETE FROM results WHERE id = ?;")?.use { stmt ->
-                            stmt.bindLong(1, orphan.id); stmt.step()
-                        }
-                    } else {
-                        db.prepare("UPDATE results SET folder_id = ? WHERE id = ?;")?.use { stmt ->
-                            stmt.bindLong(1, newFolderId); stmt.bindLong(2, orphan.id); stmt.step()
-                        }
-                    }
+    private fun resolveOrphanResultsInternal(db: SQLiteDB) {
+        db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
+        try {
+            val orphans = mutableListOf<Quadruple>()
+            db.prepare(
+                """
+                SELECT r.id, r.name, r.bkId, f.id as expected_folder
+                FROM results r
+                LEFT JOIN folders f ON r.folderCkRecordId = f.ckRecordId
+                WHERE r.folderCkRecordId IS NOT NULL
+                AND COALESCE(r.folder_id, -1) != COALESCE(f.id, -1)
+                """,
+            )?.use { stmt ->
+                while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                    orphans.add(
+                        Quadruple(
+                            stmt.columnLong(0),
+                            stmt.columnText(1) ?: "",
+                            stmt.columnInt(2),
+                            if (stmt.columnType(3) != SQLiteDB.SQLITE_NULL) stmt.columnLong(3) else null,
+                        ),
+                    )
                 }
-                db.prepare("COMMIT;")?.use { it.step() }
-            } catch (e: Exception) {
-                db.prepare("ROLLBACK;")?.use { it.step() }
             }
+
+            for (orphan in orphans) {
+                val newFolderId = orphan.expectedFolder ?: continue
+                var hasConflict = false
+                db.prepare("SELECT id FROM results WHERE folder_id = ? AND name = ? AND bkId = ? AND id != ? LIMIT 1")
+                    ?.use { stmt ->
+                        stmt.bindLong(1, newFolderId)
+                        stmt.bindText(2, orphan.name)
+                        stmt.bindInt(3, orphan.bkId)
+                        stmt.bindLong(4, orphan.id)
+                        if (stmt.step() == SQLiteDB.SQLITE_ROW) hasConflict = true
+                    }
+
+                if (hasConflict) {
+                    db.prepare("DELETE FROM results WHERE id = ?;")?.use { stmt ->
+                        stmt.bindLong(1, orphan.id); stmt.step()
+                    }
+                } else {
+                    db.prepare("UPDATE results SET folder_id = ? WHERE id = ?;")?.use { stmt ->
+                        stmt.bindLong(1, newFolderId); stmt.bindLong(2, orphan.id); stmt.step()
+                    }
+                }
+            }
+            db.prepare("COMMIT;")?.use { it.step() }
+        } catch (e: Exception) {
+            db.prepare("ROLLBACK;")?.use { it.step() }
         }
     }
 
