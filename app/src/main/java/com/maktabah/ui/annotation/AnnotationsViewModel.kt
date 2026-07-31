@@ -33,7 +33,7 @@ class AnnotationsViewModel : ViewModel() {
     val searchQuery = MutableStateFlow("")
 
     fun updateSearchQuery(query: String) {
-        searchQuery.value = query.normalizeArabic()
+        searchQuery.value = query
     }
 
     private val _searchScope = MutableStateFlow(AnnotationSearchScope.ALL)
