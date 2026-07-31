@@ -207,15 +207,17 @@ class ResultsHandler(private val dbFile: File) {
 
         openDb { db ->
             val allIds = getAllDescendantIds(db, folderId)
-            for (fId in allIds) {
-                db.prepare("SELECT ckRecordId FROM folders WHERE id = ? LIMIT 1")?.use { stmt ->
-                    stmt.bindLong(1, fId)
-                    if (stmt.step() == SQLiteDB.SQLITE_ROW) {
+
+            allIds.chunked(900).forEach { chunk ->
+                val placeholders = chunk.joinToString(",") { "?" }
+                db.prepare("SELECT ckRecordId FROM folders WHERE id IN ($placeholders);")?.use { stmt ->
+                    chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
+                    while (stmt.step() == SQLiteDB.SQLITE_ROW) {
                         stmt.columnText(0)?.let { ckIdsToDelete.add(it) }
                     }
                 }
-                db.prepare("SELECT ckRecordId FROM results WHERE folder_id = ?")?.use { stmt ->
-                    stmt.bindLong(1, fId)
+                db.prepare("SELECT ckRecordId FROM results WHERE folder_id IN ($placeholders);")?.use { stmt ->
+                    chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
                     while (stmt.step() == SQLiteDB.SQLITE_ROW) {
                         stmt.columnText(0)?.let { ckIdsToDelete.add(it) }
                     }
@@ -224,18 +226,22 @@ class ResultsHandler(private val dbFile: File) {
 
             db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
             try {
-                for (id in allIds) {
-                    db.prepare("DELETE FROM results WHERE folder_id = ?;")?.use { stmt ->
-                        stmt.bindLong(1, id)
+                allIds.chunked(900).forEach { chunk ->
+                    val placeholders = chunk.joinToString(",") { "?" }
+                    db.prepare("DELETE FROM results WHERE folder_id IN ($placeholders);")?.use { stmt ->
+                        chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
                         stmt.step()
                     }
                 }
-                for (id in allIds.reversed()) {
-                    db.prepare("DELETE FROM folders WHERE id = ?;")?.use { stmt ->
-                        stmt.bindLong(1, id)
+
+                allIds.reversed().chunked(900).forEach { chunk ->
+                    val placeholders = chunk.joinToString(",") { "?" }
+                    db.prepare("DELETE FROM folders WHERE id IN ($placeholders);")?.use { stmt ->
+                        chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
                         stmt.step()
                     }
                 }
+
                 db.prepare("COMMIT;")?.use { it.step() }
             } catch (e: Exception) {
                 db.prepare("ROLLBACK;")?.use { it.step() }
@@ -585,32 +591,37 @@ class ResultsHandler(private val dbFile: File) {
                 try {
                     // 1. Deletions
                     if (recordIdsToDelete.isNotEmpty()) {
-                        db.prepare("SELECT id FROM folders WHERE ckRecordId = ? LIMIT 1")?.use { selectStmt ->
-                            db.prepare("DELETE FROM results WHERE folder_id = ?;")?.use { delResStmt ->
-                                db.prepare("DELETE FROM folders WHERE id = ?;")?.use { delFolStmt ->
-                                    for (ckId in recordIdsToDelete) {
-                                        var localId: Long? = null
-                                        selectStmt.bindText(1, ckId)
-                                        if (selectStmt.step() == SQLiteDB.SQLITE_ROW) localId = selectStmt.columnLong(0)
-                                        selectStmt.reset()
-                                        selectStmt.clearBindings()
-
-                                        if (localId != null) {
-                                            val allIds = getAllDescendantIds(db, localId)
-                                            for (fId in allIds) {
-                                                delResStmt.bindLong(1, fId)
-                                                delResStmt.step()
-                                                delResStmt.reset()
-                                                delResStmt.clearBindings()
-
-                                                delFolStmt.bindLong(1, fId)
-                                                delFolStmt.step()
-                                                delFolStmt.reset()
-                                                delFolStmt.clearBindings()
-                                            }
-                                        }
-                                    }
+                        val allLocalIds = mutableListOf<Long>()
+                        recordIdsToDelete.chunked(900).forEach { chunk ->
+                            val placeholders = chunk.joinToString(",") { "?" }
+                            db.prepare("SELECT id FROM folders WHERE ckRecordId IN ($placeholders);")?.use { stmt ->
+                                chunk.forEachIndexed { index, ckId -> stmt.bindText(index + 1, ckId) }
+                                while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                                    allLocalIds.add(stmt.columnLong(0))
                                 }
+                            }
+                        }
+
+                        val allDescendantIds = mutableSetOf<Long>()
+                        for (localId in allLocalIds) {
+                            allDescendantIds.addAll(getAllDescendantIds(db, localId))
+                        }
+
+                        val allIdsList = allDescendantIds.toList()
+
+                        allIdsList.chunked(900).forEach { chunk ->
+                            val placeholders = chunk.joinToString(",") { "?" }
+                            db.prepare("DELETE FROM results WHERE folder_id IN ($placeholders);")?.use { stmt ->
+                                chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
+                                stmt.step()
+                            }
+                        }
+
+                        allIdsList.reversed().chunked(900).forEach { chunk ->
+                            val placeholders = chunk.joinToString(",") { "?" }
+                            db.prepare("DELETE FROM folders WHERE id IN ($placeholders);")?.use { stmt ->
+                                chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
+                                stmt.step()
                             }
                         }
                     }
