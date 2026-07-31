@@ -52,13 +52,15 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
     private var filteredFavoritesFlow: StateFlow<List<Int>>? = null
 
     init {
-        // Migrasi one-shot dari JSON lama ke SQLite
-        val jsonFile = File(app.filesDir, "user_data.json")
-        val prefs = app.getSharedPreferences("history_db_prefs", android.content.Context.MODE_PRIVATE)
-        dbManager.migrateFromJsonIfNeeded(jsonFile, prefs)
+        viewModelScope.launch(Dispatchers.IO) {
+            // Migrasi one-shot dari JSON lama ke SQLite
+            val jsonFile = File(app.filesDir, "user_data.json")
+            val prefs = app.getSharedPreferences("history_db_prefs", android.content.Context.MODE_PRIVATE)
+            dbManager.migrateFromJsonIfNeeded(jsonFile, prefs)
 
-        // Load dari SQLite
-        loadFromDatabase()
+            // Load dari SQLite
+            loadFromDatabase()
+        }
     }
 
     private fun loadFromDatabase() {
@@ -313,23 +315,11 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
         _entriesByBookId.value = emptyMap()
         _historyOrder.value = emptyList()
         viewModelScope.launch(Dispatchers.IO) {
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    openRWDb { db ->
-                        db.prepare("DELETE FROM reading_entries;")?.use { it.step() }
-                        db.prepare("DELETE FROM history_order;")?.use { it.step() }
-                        db.prepare("DELETE FROM sync_pending;")?.use { it.step() }
-                    }
-                } catch (_: Exception) {}
+            try {
+                dbManager.clearAllData()
+            } catch (e: Exception) {
+                android.util.Log.e("HistoryViewModel", "Failed to clear history database", e)
             }
         }
-    }
-
-    private fun openRWDb(block: (com.maktabah.database.SQLiteDB) -> Unit) {
-        com.maktabah.database.SQLiteDB(
-            File(getApplication<Application>().filesDir, "History.sqlite").absolutePath,
-            com.maktabah.database.SQLiteDB.SQLITE_OPEN_READWRITE or
-                com.maktabah.database.SQLiteDB.SQLITE_OPEN_FULLMUTEX
-        ).use(block)
     }
 }

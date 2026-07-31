@@ -103,6 +103,21 @@ class HistoryDatabaseManager(private val dbFile: File) {
         }
     }
 
+    fun clearAllData() {
+        openRW().use { db ->
+            db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
+            try {
+                db.prepare("DELETE FROM reading_entries;")?.use { it.step() }
+                db.prepare("DELETE FROM history_order;")?.use { it.step() }
+                db.prepare("DELETE FROM sync_pending;")?.use { it.step() }
+                db.prepare("COMMIT;")?.use { it.step() }
+            } catch (e: Exception) {
+                db.prepare("ROLLBACK;")?.use { it.step() }
+                throw e
+            }
+        }
+    }
+
     fun saveHistoryOrder(order: List<Int>) {
         openRW().use { db ->
             db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
@@ -202,12 +217,14 @@ class HistoryDatabaseManager(private val dbFile: File) {
     fun removePendingSync(ckRecordIds: List<String>) {
         if (ckRecordIds.isEmpty()) return
         openRW().use { db ->
-            db.prepare("DELETE FROM sync_pending WHERE ck_record_id = ?;")?.use { stmt ->
-                for (id in ckRecordIds) {
-                    stmt.bindText(1, id)
+            for (chunk in ckRecordIds.chunked(900)) {
+                val placeholders = chunk.joinToString(",") { "?" }
+                val sql = "DELETE FROM sync_pending WHERE ck_record_id IN ($placeholders);"
+                db.prepare(sql)?.use { stmt ->
+                    chunk.forEachIndexed { index, id ->
+                        stmt.bindText(index + 1, id)
+                    }
                     stmt.step()
-                    stmt.reset()
-                    stmt.clearBindings()
                 }
             }
         }

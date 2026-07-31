@@ -43,13 +43,13 @@ class CloudKitSyncManager {
     fun uploadHistory(context: Context, entries: List<ReadingEntry>) {
         if (entries.isEmpty()) return
         val appContext = context.applicationContext
-        // Tandai sebagai pending sebelum masuk buffer
-        val db = HistoryDatabaseManager.instance
-        for (entry in entries) {
-            val key = entry.ckRecordId ?: entry.bookId.toString()
-            db?.addPendingSync(key, if (!entry.isFavorite && entry.lastOpenedAt == null) "delete" else "upload")
-        }
         historyUploadScope.launch {
+            // Tandai sebagai pending sebelum masuk buffer
+            val db = HistoryDatabaseManager.instance
+            for (entry in entries) {
+                val key = entry.ckRecordId ?: entry.bookId.toString()
+                db?.addPendingSync(key, if (!entry.isFavorite && entry.lastOpenedAt == null) "delete" else "upload")
+            }
             historyBufferMutex.withLock {
                 for (entry in entries) {
                     val key = entry.ckRecordId ?: entry.bookId.toString()
