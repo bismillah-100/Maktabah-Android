@@ -42,7 +42,10 @@ class HistoryDatabaseManager(private val dbFile: File) {
     // region Setup
 
     private fun setupDatabase() {
-        openRW().use { db ->
+        SQLiteDB(
+            dbFile.absolutePath,
+            SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_CREATE or SQLiteDB.SQLITE_OPEN_FULLMUTEX
+        ).use { db ->
             db.prepare("PRAGMA journal_mode=WAL;")?.use { it.step() }
             db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
             db.prepare("""

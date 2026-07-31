@@ -19,8 +19,13 @@ class ResultsHandler(private val dbFile: File) {
         if (!isDbSetup) {
             synchronized(this) {
                 if (!isDbSetup) {
-                    setupDatabase()
                     isDbSetup = true
+                    try {
+                        setupDatabase()
+                    } catch (e: Exception) {
+                        isDbSetup = false
+                        throw e
+                    }
                 }
             }
         }
