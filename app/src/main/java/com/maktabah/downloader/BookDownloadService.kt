@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import com.maktabah.MainActivity
 import com.maktabah.R
 import com.maktabah.models.BookDownloadState
+import com.maktabah.models.BundleBookIndexEntry
 import com.maktabah.models.IntegratePhase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -125,103 +126,9 @@ class BookDownloadService : Service() {
             val index = try { manager.fetchIndex() } catch (e: Exception) { emptyList() }
 
             if (currentState.isBulk) {
-                val toDownload = currentState.bulkBookIds
-                var successCount = 0
-
-                for ((idx, bookId) in toDownload.withIndex()) {
-                    val entry = index.find { it.bkid == bookId }
-                    if (entry != null) {
-                        val overallStartProgress = (idx * 100) / toDownload.size
-                        updateStates { states ->
-                            states.map {
-                                if (it.id == stateId) it.copy(progress = overallStartProgress) else it
-                            }
-                        }
-                        updateNotification()
-
-                        val success = manager.downloadBook(
-                            entry,
-                            onPhaseChanged = { phase ->
-                                updateStates { states ->
-                                    states.map {
-                                        if (it.id == stateId) it.copy(phase = phase) else it
-                                    }
-                                }
-                                updateNotification()
-                            },
-                            onProgress = { progress ->
-                                val overallProgress = (idx * 100 + progress) / toDownload.size
-                                updateStates { states ->
-                                    states.map {
-                                        if (it.id == stateId) it.copy(progress = overallProgress) else it
-                                    }
-                                }
-                                updateNotification()
-                            }
-                        )
-
-                        if (success) {
-                            markBookAsDownloaded(bookId)
-                            successCount++
-                        }
-                    }
-                }
-
-                updateStates { states -> states.filter { it.id != stateId } }
-                showCompletedNotification(
-                    applicationContext.getString(R.string.download_notification_completed_title),
-                    applicationContext.getString(R.string.library_selected_books_count, successCount)
-                )
+                handleBulkDownload(stateId, currentState, manager, index)
             } else {
-                val entry = index.find { it.bkid == currentState.bookId }
-                if (entry != null) {
-                    val success = manager.downloadBook(
-                        entry,
-                        onPhaseChanged = { phase ->
-                            updateStates { states ->
-                                states.map {
-                                    if (it.id == stateId) it.copy(phase = phase) else it
-                                }
-                            }
-                            updateNotification()
-                        },
-                        onProgress = { progress ->
-                            updateStates { states ->
-                                states.map {
-                                    if (it.id == stateId) it.copy(progress = progress) else it
-                                }
-                            }
-                            updateNotification()
-                        }
-                    )
-
-                    if (success) {
-                        markBookAsDownloaded(currentState.bookId)
-                        updateStates { states -> states.filter { it.id != stateId } }
-                        showCompletedNotification(
-                            applicationContext.getString(R.string.download_notification_completed_title),
-                            currentState.bookName
-                        )
-                    } else {
-                        updateStates { states ->
-                            states.map {
-                                if (it.id == stateId) it.copy(
-                                    isDownloading = false,
-                                    error = applicationContext.getString(R.string.library_download_failed)
-                                ) else it
-                            }
-                        }
-                    }
-                } else {
-                    updateStates { states ->
-                        states.map {
-                            if (it.id == stateId) it.copy(
-                                isDownloading = false,
-                                error = applicationContext.getString(R.string.library_book_not_found_index)
-                            ) else it
-                        }
-                    }
-                }
+                handleSingleDownload(stateId, currentState, manager, index)
             }
 
             activeJobs.remove(stateId)
@@ -229,6 +136,118 @@ class BookDownloadService : Service() {
         }
 
         activeJobs[stateId] = job
+    }
+
+    private suspend fun handleBulkDownload(
+        stateId: String,
+        currentState: BookDownloadState,
+        manager: BookDownloadManager,
+        index: List<BundleBookIndexEntry>
+    ) {
+        val toDownload = currentState.bulkBookIds
+        var successCount = 0
+
+        for ((idx, bookId) in toDownload.withIndex()) {
+            val entry = index.find { it.bkid == bookId }
+            if (entry != null) {
+                val overallStartProgress = (idx * 100) / toDownload.size
+                updateStates { states ->
+                    states.map {
+                        if (it.id == stateId) it.copy(progress = overallStartProgress) else it
+                    }
+                }
+                updateNotification()
+
+                val success = manager.downloadBook(
+                    entry,
+                    onPhaseChanged = { phase ->
+                        updateStates { states ->
+                            states.map {
+                                if (it.id == stateId) it.copy(phase = phase) else it
+                            }
+                        }
+                        updateNotification()
+                    },
+                    onProgress = { progress ->
+                        val overallProgress = (idx * 100 + progress) / toDownload.size
+                        updateStates { states ->
+                            states.map {
+                                if (it.id == stateId) it.copy(progress = overallProgress) else it
+                            }
+                        }
+                        updateNotification()
+                    }
+                )
+
+                if (success) {
+                    markBookAsDownloaded(bookId)
+                    successCount++
+                }
+            }
+        }
+
+        updateStates { states -> states.filter { it.id != stateId } }
+        showCompletedNotification(
+            applicationContext.getString(R.string.download_notification_completed_title),
+            applicationContext.getString(R.string.library_selected_books_count, successCount)
+        )
+    }
+
+    private suspend fun handleSingleDownload(
+        stateId: String,
+        currentState: BookDownloadState,
+        manager: BookDownloadManager,
+        index: List<BundleBookIndexEntry>
+    ) {
+        val entry = index.find { it.bkid == currentState.bookId }
+        if (entry != null) {
+            val success = manager.downloadBook(
+                entry,
+                onPhaseChanged = { phase ->
+                    updateStates { states ->
+                        states.map {
+                            if (it.id == stateId) it.copy(phase = phase) else it
+                        }
+                    }
+                    updateNotification()
+                },
+                onProgress = { progress ->
+                    updateStates { states ->
+                        states.map {
+                            if (it.id == stateId) it.copy(progress = progress) else it
+                        }
+                    }
+                    updateNotification()
+                }
+            )
+
+            if (success) {
+                markBookAsDownloaded(currentState.bookId)
+                updateStates { states -> states.filter { it.id != stateId } }
+                showCompletedNotification(
+                    applicationContext.getString(R.string.download_notification_completed_title),
+                    currentState.bookName
+                )
+            } else {
+                updateStates { states ->
+                    states.map {
+                        if (it.id == stateId) it.copy(
+                            isDownloading = false,
+                            error = applicationContext.getString(R.string.library_download_failed)
+                        ) else it
+                    }
+                }
+            }
+        } else {
+            updateStates { states ->
+                states.map {
+                    if (it.id == stateId) it.copy(
+                        isDownloading = false,
+                        error = applicationContext.getString(R.string.library_book_not_found_index)
+                    ) else it
+                }
+            }
+        }
     }
 
     private fun cancelDownloadInternal(stateId: String) {
