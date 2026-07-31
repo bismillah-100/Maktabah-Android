@@ -44,7 +44,7 @@ class SyncMessagingService : FirebaseMessagingService() {
 
     @Deprecated("Deprecated in superclass")
     override fun onNewToken(token: String) {
-        Log.d("SyncMessagingService", "Refreshed token: $token")
+        Log.d("SyncMessagingService", "Refreshed FCM token")
         registerFcmToken(applicationContext, token)
     }
 }

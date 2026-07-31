@@ -231,7 +231,7 @@ fun AnnotationsScreen(
             topBar = {
                 AnnotationsTopBar(
                     searchQuery = searchQuery,
-                    onSearchQueryChange = { viewModel.searchQuery.value = it },
+                    onSearchQueryChange = { viewModel.updateSearchQuery(it) },
                     searchScope = searchScope,
                     onSearchScopeChange = { viewModel.setSearchScope(it) },
                     bookIdFilter = bookIdFilter,

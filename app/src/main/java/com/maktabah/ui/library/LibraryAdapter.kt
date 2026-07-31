@@ -53,6 +53,7 @@ class LibraryAdapter(
     override fun onViewRecycled(holder: ViewHolder) {
         super.onViewRecycled(holder)
         holder.itemView.tag = null
+        holder.unbind()
     }
 
     var primaryColor: Int = Color.TRANSPARENT
@@ -256,6 +257,12 @@ class LibraryAdapter(
         private fun getSecondaryColor(): Int = secondaryColor
 
         private fun getOnSurfaceVariantColor(): Int = onSurfaceVariantColor
+
+        fun unbind() {
+            itemView.setOnClickListener(null)
+            itemView.setOnLongClickListener(null)
+            typeIcon?.setOnClickListener(null)
+        }
 
         fun updateDividerForLast(isLast: Boolean) {
             if (isLast) {

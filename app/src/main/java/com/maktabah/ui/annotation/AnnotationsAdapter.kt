@@ -60,6 +60,11 @@ class AnnotationsAdapter(
     override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
         super.onViewRecycled(holder)
         holder.itemView.tag = null
+        if (holder is HeaderViewHolder) {
+            holder.unbind()
+        } else if (holder is ItemViewHolder) {
+            holder.unbind()
+        }
     }
 
     var primaryColor: Int = Color.TRANSPARENT
@@ -263,6 +268,11 @@ class AnnotationsAdapter(
             itemView.background = com.maktabah.utils.ItemHighlightDrawable { itemView.parent as? android.view.View }
         }
 
+        fun unbind() {
+            itemView.setOnClickListener(null)
+            typeIcon.setOnClickListener(null)
+        }
+
         fun bind(item: AnnotationFlatItem.Header, onToggle: () -> Unit) {
             nameText.text = item.group.title
 
@@ -353,6 +363,11 @@ class AnnotationsAdapter(
 
         init {
             itemView.background = com.maktabah.utils.ItemHighlightDrawable { itemView.parent as? android.view.View }
+        }
+
+        fun unbind() {
+            itemView.setOnClickListener(null)
+            selectIcon?.setOnClickListener(null)
         }
 
         fun bind(

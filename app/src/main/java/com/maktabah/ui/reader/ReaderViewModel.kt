@@ -16,6 +16,7 @@ import com.maktabah.models.Annotation
 import com.maktabah.models.BookContent
 import com.maktabah.models.FlashTarget
 import com.maktabah.models.TOCNode
+import com.maktabah.utils.normalizeArabic
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import com.maktabah.models.AnnotationSearchScope
@@ -383,7 +384,7 @@ class ReaderViewModel : ViewModel() {
     }
 
     fun setSearchQuery(query: String?) {
-        _searchQuery.value = query
+        _searchQuery.value = query?.normalizeArabic()
     }
 
     fun addAnnotationDirectly(

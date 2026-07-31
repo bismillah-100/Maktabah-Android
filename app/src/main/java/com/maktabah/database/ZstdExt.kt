@@ -11,11 +11,14 @@ fun decompressBlob(blob: ByteBuffer?, ctx: ZstdDecompressCtx): String {
     if (decompressedSize <= 0) return ""
 
     val dstBuf = ZstdContextPool.getDirectBuffer(decompressedSize)
-    ctx.decompressDirectByteBuffer(dstBuf, 0, decompressedSize, blob, 0, blob.limit())
-    val dst = ByteArray(decompressedSize)
-    dstBuf.get(dst)
-    ZstdContextPool.releaseDirectBuffer(dstBuf)
-    return String(dst)
+    return try {
+        ctx.decompressDirectByteBuffer(dstBuf, 0, decompressedSize, blob, 0, blob.limit())
+        val dst = ByteArray(decompressedSize)
+        dstBuf.get(dst)
+        String(dst)
+    } finally {
+        ZstdContextPool.releaseDirectBuffer(dstBuf)
+    }
 }
 
 fun decompressBlob(blob: ByteBuffer?): String {
