@@ -12,8 +12,18 @@ import java.util.UUID
  */
 class ResultsHandler(private val dbFile: File) {
 
-    init {
-        setupDatabase()
+    @Volatile
+    private var isDbSetup = false
+
+    private fun ensureSetup() {
+        if (!isDbSetup) {
+            synchronized(this) {
+                if (!isDbSetup) {
+                    setupDatabase()
+                    isDbSetup = true
+                }
+            }
+        }
     }
 
     // region Setup & Tables
@@ -820,6 +830,7 @@ class ResultsHandler(private val dbFile: File) {
     // region Private Helpers
 
     private inline fun openDb(block: (SQLiteDB) -> Unit) {
+        ensureSetup()
         SQLiteDB(
             dbFile.absolutePath,
             SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_CREATE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,

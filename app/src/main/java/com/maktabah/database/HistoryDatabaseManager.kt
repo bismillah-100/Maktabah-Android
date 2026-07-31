@@ -19,11 +19,24 @@ class HistoryDatabaseManager(private val dbFile: File) {
             private set
 
         private const val MIGRATION_FLAG = "HistoryVM_SQLiteMigrated"
+
+        @Volatile
+        private var isDbSetup = false
     }
 
     init {
         instance = this
-        setupDatabase()
+    }
+
+    private fun ensureSetup() {
+        if (!isDbSetup) {
+            synchronized(this) {
+                if (!isDbSetup) {
+                    setupDatabase()
+                    isDbSetup = true
+                }
+            }
+        }
     }
 
     // region Setup
@@ -408,15 +421,21 @@ class HistoryDatabaseManager(private val dbFile: File) {
 
     // region Helpers
 
-    private fun openRW() = SQLiteDB(
-        dbFile.absolutePath,
-        SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_CREATE or SQLiteDB.SQLITE_OPEN_FULLMUTEX
-    )
+    private fun openRW(): SQLiteDB {
+        ensureSetup()
+        return SQLiteDB(
+            dbFile.absolutePath,
+            SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_CREATE or SQLiteDB.SQLITE_OPEN_FULLMUTEX
+        )
+    }
 
-    private fun openRO() = SQLiteDB(
-        dbFile.absolutePath,
-        SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX
-    )
+    private fun openRO(): SQLiteDB {
+        ensureSetup()
+        return SQLiteDB(
+            dbFile.absolutePath,
+            SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX
+        )
+    }
 
     // endregion
 }
