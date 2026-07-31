@@ -416,11 +416,135 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
         return result
     }
 
+    private fun filterAuthorRoots(
+        roots: List<CategoryData>,
+        query: String,
+        showOnlyDownloaded: Boolean,
+        downloadedIds: Set<Int>
+    ): List<CategoryData> {
+        var filtered = roots
+        if (query.isNotEmpty()) {
+            filtered = filterAuthorHierarchy(filtered, query)
+        }
+        if (showOnlyDownloaded) {
+            filtered = filtered.mapNotNull { cat ->
+                val downloadedBooks = cat.children.mapNotNull { child ->
+                    if (child is BooksData && downloadedIds.contains(child.id)) child else null
+                }
+                if (downloadedBooks.isNotEmpty()) {
+                    cat.copy(children = downloadedBooks.toMutableList())
+                } else null
+            }
+        }
+        return filtered
+    }
+
+    private class LibraryTreeFlattener(
+        val expanded: Set<Int>,
+        val viewModeVal: LibraryViewMode,
+        val query: String,
+        val cleanQuery: String,
+        val showOnlyDownloaded: Boolean,
+        val downloadedIds: Set<Int>,
+        val categoryLimits: Map<Int, Int>
+    ) {
+        val result = mutableListOf<FlatLibraryItem>()
+
+        fun hasMatchingBooks(cats: List<Any>): Boolean {
+            for (c in cats) {
+                if (c is BooksData) {
+                    val matchesQuery = cleanQuery.isEmpty() || c.name.normalizeArabic()
+                        .contains(cleanQuery, ignoreCase = true)
+                    val matchesDownloaded = !showOnlyDownloaded || downloadedIds.contains(c.id)
+                    if (matchesQuery && matchesDownloaded) return true
+                } else if (c is CategoryData) {
+                    if (hasMatchingBooks(c.children)) return true
+                }
+            }
+            return false
+        }
+
+        fun checkHasDownloaded(cats: List<Any>): Boolean {
+            for (c in cats) {
+                if (c is BooksData && downloadedIds.contains(c.id)) return true
+                if (c is CategoryData && checkHasDownloaded(c.children)) return true
+            }
+            return false
+        }
+
+        fun traverse(categories: List<Any>, level: Int, parentCategoryId: Int?): Boolean {
+            var hasVisibleContent = false
+            var bookCount = 0
+            var hiddenCount = 0
+            val limit = if (parentCategoryId != null) categoryLimits[parentCategoryId]
+                ?: 100 else Int.MAX_VALUE
+
+            for (item in categories) {
+                if (item is BooksData) {
+                    val matchesQuery = if (viewModeVal == LibraryViewMode.AUTHOR) {
+                        true
+                    } else {
+                        cleanQuery.isEmpty() || item.name.normalizeArabic()
+                            .contains(cleanQuery, ignoreCase = true)
+                    }
+                    val matchesDownloaded =
+                        !showOnlyDownloaded || downloadedIds.contains(item.id)
+
+                    if (matchesQuery && matchesDownloaded) {
+                        if (bookCount >= limit) {
+                            hiddenCount++
+                        } else {
+                            result.add(FlatLibraryItem(item, level, isDownloaded = downloadedIds.contains(item.id)))
+                            hasVisibleContent = true
+                            bookCount++
+                        }
+                    }
+                } else if (item is CategoryData) {
+                    val isSearching =
+                        if (viewModeVal == LibraryViewMode.AUTHOR) false else query.isNotEmpty()
+                    val isCategoryVisible = if (isSearching) {
+                        hasMatchingBooks(item.children)
+                    } else {
+                        true
+                    }
+
+                    if (isCategoryVisible) {
+                        val categoryIndex = result.size
+                        result.add(FlatLibraryItem(item, level))
+
+                        val isExpanded = expanded.contains(item.id)
+
+                        val childrenHasVisible = if (isExpanded) {
+                            traverse(item.children, level + 1, item.id)
+                        } else {
+                            if (showOnlyDownloaded) {
+                                checkHasDownloaded(item.children)
+                            } else {
+                                true
+                            }
+                        }
+
+                        if (showOnlyDownloaded && !childrenHasVisible) {
+                            result.removeAt(categoryIndex)
+                        } else {
+                            hasVisibleContent = true
+                        }
+                    }
+                }
+            }
+
+            if (hiddenCount > 0 && parentCategoryId != null) {
+                result.add(FlatLibraryItem(LoadMoreData(parentCategoryId, hiddenCount), level))
+            }
+
+            return hasVisibleContent
+        }
+    }
+
     private var updateFlatItemsJob: kotlinx.coroutines.Job? = null
     private fun updateFlatItems() {
         updateFlatItemsJob?.cancel()
         updateFlatItemsJob = viewModelScope.launch(Dispatchers.Default) {
-            val result = mutableListOf<FlatLibraryItem>()
             val expanded = _expandedCategories.value
             val viewModeVal = _viewMode.value
             var roots =
@@ -429,111 +553,21 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
             val cleanQuery = query.normalizeArabic()
             val showOnlyDownloaded = _showOnlyDownloaded.value
             val downloadedIds = _downloadedBookIds.value
+            val categoryLimits = _categoryLimits.value
 
             if (viewModeVal == LibraryViewMode.AUTHOR) {
-                if (query.isNotEmpty()) {
-                    roots = filterAuthorHierarchy(roots, query)
-                }
-                if (showOnlyDownloaded) {
-                    roots = roots.mapNotNull { cat ->
-                        val downloadedBooks = cat.children.mapNotNull { child ->
-                            if (child is BooksData && downloadedIds.contains(child.id)) child else null
-                        }
-                        if (downloadedBooks.isNotEmpty()) {
-                            cat.copy(children = downloadedBooks.toMutableList())
-                        } else null
-                    }
-                }
+                roots = filterAuthorRoots(roots, query, showOnlyDownloaded, downloadedIds)
             }
 
-            fun hasMatchingBooks(cats: List<Any>): Boolean {
-                for (c in cats) {
-                    if (c is BooksData) {
-                        val matchesQuery = cleanQuery.isEmpty() || c.name.normalizeArabic()
-                            .contains(cleanQuery, ignoreCase = true)
-                        val matchesDownloaded = !showOnlyDownloaded || downloadedIds.contains(c.id)
-                        if (matchesQuery && matchesDownloaded) return true
-                    } else if (c is CategoryData) {
-                        if (hasMatchingBooks(c.children)) return true
-                    }
-                }
-                return false
-            }
-
-            fun traverse(categories: List<Any>, level: Int, parentCategoryId: Int?): Boolean {
-                var hasVisibleContent = false
-                var bookCount = 0
-                var hiddenCount = 0
-                val limit = if (parentCategoryId != null) _categoryLimits.value[parentCategoryId]
-                    ?: 100 else Int.MAX_VALUE
-
-                for (item in categories) {
-                    if (item is BooksData) {
-                        val matchesQuery = if (viewModeVal == LibraryViewMode.AUTHOR) {
-                            true
-                        } else {
-                            cleanQuery.isEmpty() || item.name.normalizeArabic()
-                                .contains(cleanQuery, ignoreCase = true)
-                        }
-                        val matchesDownloaded =
-                            !showOnlyDownloaded || downloadedIds.contains(item.id)
-
-                        if (matchesQuery && matchesDownloaded) {
-                            if (bookCount >= limit) {
-                                hiddenCount++
-                            } else {
-                                result.add(FlatLibraryItem(item, level, isDownloaded = downloadedIds.contains(item.id)))
-                                hasVisibleContent = true
-                                bookCount++
-                            }
-                        }
-                    } else if (item is CategoryData) {
-                        val isSearching =
-                            if (viewModeVal == LibraryViewMode.AUTHOR) false else query.isNotEmpty()
-                        val isCategoryVisible = if (isSearching) {
-                            hasMatchingBooks(item.children)
-                        } else {
-                            true
-                        }
-
-                        if (isCategoryVisible) {
-                            val categoryIndex = result.size
-                            result.add(FlatLibraryItem(item, level))
-
-                            val isExpanded = expanded.contains(item.id)
-
-                            val childrenHasVisible = if (isExpanded) {
-                                traverse(item.children, level + 1, item.id)
-                            } else {
-                                if (showOnlyDownloaded) {
-                                    fun checkHasDownloaded(cats: List<Any>): Boolean {
-                                        for (c in cats) {
-                                            if (c is BooksData && downloadedIds.contains(c.id)) return true
-                                            if (c is CategoryData && checkHasDownloaded(c.children)) return true
-                                        }
-                                        return false
-                                    }
-                                    checkHasDownloaded(item.children)
-                                } else {
-                                    true
-                                }
-                            }
-
-                            if (showOnlyDownloaded && !childrenHasVisible) {
-                                result.removeAt(categoryIndex)
-                            } else {
-                                hasVisibleContent = true
-                            }
-                        }
-                    }
-                }
-
-                if (hiddenCount > 0 && parentCategoryId != null) {
-                    result.add(FlatLibraryItem(LoadMoreData(parentCategoryId, hiddenCount), level))
-                }
-
-                return hasVisibleContent
-            }
+            val flattener = LibraryTreeFlattener(
+                expanded = expanded,
+                viewModeVal = viewModeVal,
+                query = query,
+                cleanQuery = cleanQuery,
+                showOnlyDownloaded = showOnlyDownloaded,
+                downloadedIds = downloadedIds,
+                categoryLimits = categoryLimits
+            )
 
             val totalRootsCount = roots.size
             val displayedCount = _displayedAuthorCount.value
@@ -547,13 +581,13 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
                 }
             }
 
-            traverse(roots, 0, null)
+            flattener.traverse(roots, 0, null)
 
             if (viewModeVal == LibraryViewMode.AUTHOR && hasMore) {
-                result.add(FlatLibraryItem(LoadMoreAuthors(remainingCount), 0))
+                flattener.result.add(FlatLibraryItem(LoadMoreAuthors(remainingCount), 0))
             }
 
-            _flatVisibleItems.value = result
+            _flatVisibleItems.value = flattener.result
         }
     }
 
