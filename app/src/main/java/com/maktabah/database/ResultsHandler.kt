@@ -179,10 +179,10 @@ class ResultsHandler(private val dbFile: File) {
     }
 
     fun deleteFolder(folderId: Long) {
-        val allIds = getAllDescendantIds(folderId)
         val ckIdsToDelete = mutableListOf<String>()
 
         openDb { db ->
+            val allIds = getAllDescendantIds(db, folderId)
             for (fId in allIds) {
                 db.prepare("SELECT ckRecordId FROM folders WHERE id = ? LIMIT 1")?.use { stmt ->
                     stmt.bindLong(1, fId)
@@ -221,23 +221,29 @@ class ResultsHandler(private val dbFile: File) {
     }
 
     fun getAllDescendantIds(folderId: Long): List<Long> {
-        val ids = mutableListOf(folderId)
+        var result = emptyList<Long>()
         openDb { db ->
-            fun recurse(parentId: Long) {
-                db.prepare("SELECT id FROM folders WHERE parent = ?")?.use { stmt ->
-                    stmt.bindLong(1, parentId)
-                    val children = mutableListOf<Long>()
-                    while (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                        children.add(stmt.columnLong(0))
-                    }
-                    for (childId in children) {
-                        ids.add(childId)
-                        recurse(childId)
-                    }
+            result = getAllDescendantIds(db, folderId)
+        }
+        return result
+    }
+
+    fun getAllDescendantIds(db: SQLiteDB, folderId: Long): List<Long> {
+        val ids = mutableListOf(folderId)
+        fun recurse(parentId: Long) {
+            db.prepare("SELECT id FROM folders WHERE parent = ?")?.use { stmt ->
+                stmt.bindLong(1, parentId)
+                val children = mutableListOf<Long>()
+                while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                    children.add(stmt.columnLong(0))
+                }
+                for (childId in children) {
+                    ids.add(childId)
+                    recurse(childId)
                 }
             }
-            recurse(folderId)
         }
+        recurse(folderId)
         return ids
     }
 
@@ -556,7 +562,7 @@ class ResultsHandler(private val dbFile: File) {
                                         selectStmt.clearBindings()
 
                                         if (localId != null) {
-                                            val allIds = getAllDescendantIds(localId)
+                                            val allIds = getAllDescendantIds(db, localId)
                                             for (fId in allIds) {
                                                 delResStmt.bindLong(1, fId)
                                                 delResStmt.step()

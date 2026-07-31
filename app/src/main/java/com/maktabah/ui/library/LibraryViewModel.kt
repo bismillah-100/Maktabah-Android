@@ -585,6 +585,8 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
                     val archiveId = dataManager.booksById[bookId]?.archive
                     if (archiveId != null) {
                         val file = File(filesDir, "${archiveId}.sqlite")
+                        val ftsFile = File(filesDir, "${archiveId}_fts.sqlite")
+                        ftsFile.delete()
                         if (file.delete()) {
                             deletedCount++
                             deletedBookIds.add(bookId)
