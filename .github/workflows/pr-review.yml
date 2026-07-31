@@ -29,6 +29,4 @@ jobs:
             - Android app using Jetpack Compose, MVVM Architecture, and Coroutines.
             - SQLite is accessed natively via JNI (C++) using wrapper classes.
             - UI and ViewModel layers must be completely separate; logic should not reside in Compose functions.
-            
-            [CRITICAL INSTRUCTION]
-            - You MUST output ONLY valid JSON. Do not include any conversational text, greetings, or explanations before or after the JSON block.
+
