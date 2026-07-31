@@ -432,15 +432,15 @@ class SearchViewModel : ViewModel() {
 
             val allResults = mutableListOf<SearchResult>()
             var processed = 0
+            val filesDir = context.filesDir
 
             for (bookId in selectedIds) {
                 val book = dataManager.booksById[bookId] ?: continue
                 _currentBookName.value = book.name
                 _currentBookProgress.value = null
 
-                val archiveFile = File(context.filesDir, "${book.archive}.sqlite")
-                val ftsPath = archiveFile.absolutePath.replace(".sqlite", "_fts.sqlite")
-                val ftsFile = File(ftsPath)
+                val archiveFile = File(filesDir, "${book.archive}.sqlite")
+                val ftsFile = File(filesDir, "${book.archive}_fts.sqlite")
 
                 if (archiveFile.exists() && ftsFile.exists()) {
                     try {

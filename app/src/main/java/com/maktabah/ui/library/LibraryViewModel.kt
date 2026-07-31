@@ -579,12 +579,15 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             var deletedCount = 0
             val deletedBookIds = mutableListOf<Int>()
+            val filesDir = context.filesDir
             for (bookId in selected) {
                 if (_downloadedBookIds.value.contains(bookId)) {
                     val archiveId = dataManager.booksById[bookId]?.archive
                     if (archiveId != null) {
-                        val file = File(context.filesDir, "${archiveId}.sqlite")
-                        if (file.exists() && file.delete()) {
+                        val file = File(filesDir, "${archiveId}.sqlite")
+                        val ftsFile = File(filesDir, "${archiveId}_fts.sqlite")
+                        ftsFile.delete()
+                        if (file.delete()) {
                             deletedCount++
                             deletedBookIds.add(bookId)
                         }
