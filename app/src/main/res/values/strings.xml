@@ -176,6 +176,9 @@
     <string name="annotations_menu_desc">Descending</string>
     <string name="annotations_menu_edit">Edit Annotation</string>
     <string name="annotations_menu_delete">Delete Annotation</string>
+    <string name="color_picker_title">Color Picker</string>
+    <string name="color_picker_save">Choose</string>
+    <string name="color_picker_cancel">Cancel</string>
     <string name="annotations_menu_select">Select…</string>
     <string name="annotations_menu_reload">Sync / Reload</string>
     <string name="annotations_menu_export_rtf">Export to RTF</string>

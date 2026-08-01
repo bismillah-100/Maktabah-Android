@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -48,6 +50,8 @@ import com.maktabah.models.ActiveAnnotationState
 import com.maktabah.models.Annotation
 import com.maktabah.models.BookContent
 import com.maktabah.ui.annotation.AnnotationCoordinator
+import com.maktabah.ui.common.ColorPickerDialog
+import com.maktabah.utils.ColorPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -78,6 +82,10 @@ fun AnnotationEditorDialog(
         )
     }
     var tagsText by remember(active) { mutableStateOf(active.annotation?.tags ?: "") }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val recentColors = remember(active) { ColorPreferences.getRecentColors(context) }
+    var showColorPicker by remember { mutableStateOf(false) }
 
     var existingTags by remember { mutableStateOf<List<String>>(emptyList()) }
     LaunchedEffect(bookId) {
@@ -161,22 +169,18 @@ fun AnnotationEditorDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState()),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
                         ) {
-                            val standardColors = listOf(
-                                "#FFFF00", // Yellow
-                                "#00FF00", // Green
-                                "#FF0000", // Red
-                                "#0000FF", // Blue
-                                "#FFA500", // Orange
-                                "#FF00FF", // Pink
-                            )
-                            standardColors.forEach { colorHex ->
+                            recentColors.forEach { colorHex ->
                                 val color = Color(colorHex.toColorInt())
                                 Box(
                                     modifier = Modifier
                                         .size(36.dp)
                                         .background(color, shape = CircleShape)
-                                        .clickable { selectedColor = colorHex }
+                                        .clickable {
+                                            selectedColor = colorHex
+                                            ColorPreferences.selectColor(context, colorHex)
+                                        }
                                         .border(
                                             width = if (selectedColor.equals(
                                                     colorHex,
@@ -188,8 +192,52 @@ fun AnnotationEditorDialog(
                                         ),
                                 )
                             }
+                            
+                            // Color Picker Trigger
+                            val isCustomColor = selectedColor !in recentColors
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .background(
+                                        if (isCustomColor) Color(selectedColor.toColorInt()) else MaterialTheme.colorScheme.surfaceVariant,
+                                        shape = CircleShape
+                                    )
+                                    .clickable { showColorPicker = true }
+                                    .border(
+                                        width = if (isCustomColor) 3.dp else 1.dp,
+                                        color = if (isCustomColor) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = androidx.compose.ui.Alignment.Center
+                            ) {
+                                androidx.compose.material3.Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Color Picker",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = if (isCustomColor) {
+                                        // Dynamic tint based on background brightness
+                                        val hsv = FloatArray(3)
+                                        android.graphics.Color.colorToHSV(selectedColor.toColorInt(), hsv)
+                                        if (hsv[2] < 0.5f) Color.White else Color.Black
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            }
                         }
                     }
+                }
+
+                if (showColorPicker) {
+                    ColorPickerDialog(
+                        initialColor = selectedColor,
+                        onColorSelected = { hex ->
+                            selectedColor = hex
+                            ColorPreferences.selectColor(context, hex)
+                            showColorPicker = false
+                        },
+                        onDismissRequest = { showColorPicker = false }
+                    )
                 }
 
                 OutlinedTextField(
