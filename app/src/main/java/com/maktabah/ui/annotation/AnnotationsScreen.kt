@@ -128,7 +128,18 @@ fun AnnotationsScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            pendingImportUri = uri
+            val fileName = uri.lastPathSegment ?: uri.toString()
+            val cleanFileName = fileName.substringAfterLast('/')
+            val extension = cleanFileName.substringAfterLast('.', "").lowercase()
+            if (extension == "json") {
+                pendingImportUri = uri
+            } else {
+                Toast.makeText(
+                    context,
+                    "Hanya file .json yang diperbolehkan",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         }
     }
 
@@ -269,7 +280,14 @@ fun AnnotationsScreen(
                         isExportSelectedOnly = selectedOnly
                         exportJsonLauncher.launch("maktabah_annotations.json")
                     },
-                    onImportJsonRequested = { importJsonLauncher.launch(arrayOf("application/json", "*/*")) },
+                    onImportJsonRequested = {
+                        importJsonLauncher.launch(
+                            arrayOf(
+                                "application/json",
+                                "text/json"
+                            )
+                        )
+                    },
                 )
             },
         ) { padding ->
