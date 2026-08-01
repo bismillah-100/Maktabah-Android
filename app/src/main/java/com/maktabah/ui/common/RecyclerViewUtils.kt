@@ -27,6 +27,10 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.maktabah.ui.library.TreeItemAnimator
 import com.maktabah.utils.GroupedCardDecoration
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 /**
  * Common colors used by library and annotation adapters/decorations.
@@ -161,9 +165,25 @@ fun GroupedRecyclerView(
     val focusManager = LocalFocusManager.current
     var canScrollForward by remember { mutableStateOf(false) }
 
+    // State for custom scrollbar
+    var scrollOffset by remember { mutableStateOf(0f) }
+    var scrollRange by remember { mutableStateOf(0f) }
+    var scrollExtent by remember { mutableStateOf(0f) }
+    var isScrolling by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    var scrollJob by remember { mutableStateOf<Job?>(null) }
+
     AndroidView(
         modifier = modifier
             .fillMaxSize()
+            .drawGenericVerticalScrollbar(
+                isScrollInProgress = isScrolling,
+                scrollOffset = scrollOffset,
+                scrollRange = scrollRange,
+                scrollExtent = scrollExtent,
+                topPadding = padding.calculateTopPadding(),
+                bottomPadding = bottomContentPadding
+            )
             .fadingEdge(canScrollForward, padding.calculateTopPadding()),
         factory = { ctx ->
             RecyclerView(ctx).apply {
@@ -173,6 +193,9 @@ fun GroupedRecyclerView(
                 layoutManager = LinearLayoutManager(ctx)
                 this.itemAnimator = itemAnimator
                 clipToPadding = false
+
+                // Use custom scrollbar instead of native
+                isVerticalScrollBarEnabled = false
 
                 setOnTouchListener { v, event ->
                     if (event.action == android.view.MotionEvent.ACTION_DOWN) {
@@ -193,7 +216,18 @@ fun GroupedRecyclerView(
 
                 addOnScrollListener(object : RecyclerView.OnScrollListener() {
                     override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                        scrollOffset = recyclerView.computeVerticalScrollOffset().toFloat()
+                        scrollRange = recyclerView.computeVerticalScrollRange().toFloat()
+                        scrollExtent = recyclerView.computeVerticalScrollExtent().toFloat()
                         canScrollForward = recyclerView.canScrollVertically(1)
+
+                        isScrolling = true
+                        scrollJob?.cancel()
+                        scrollJob = scope.launch {
+                            delay(500)
+                            isScrolling = false
+                        }
+
                         onScrolled(recyclerView, dx, dy)
                     }
                     override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
