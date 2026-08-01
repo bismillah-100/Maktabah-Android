@@ -40,8 +40,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.CircularProgressIndicator
@@ -64,37 +62,34 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.produceState
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.maktabah.R
 import com.maktabah.models.CategoryData
 import com.maktabah.models.FlatLibraryItem
 import com.maktabah.models.SearchMode
 import com.maktabah.models.SearchResult
-import com.maktabah.ui.common.drawVerticalScrollbar
 import com.maktabah.ui.common.DonationIconButton
 import com.maktabah.ui.common.GroupedRecyclerView
 import com.maktabah.ui.common.InsetGroupedItem
+import com.maktabah.ui.common.drawVerticalScrollbar
 import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.common.rememberGroupedListColors
 import com.maktabah.ui.library.LibraryViewModel
@@ -287,8 +282,8 @@ fun SearchScreen(
 
                         QueryInputBar(
                             query = query,
-                            onQueryChange = { newQuery -> 
-                                query = newQuery 
+                            onQueryChange = { newQuery ->
+                                query = newQuery
                                 if (newQuery.isEmpty()) {
                                     viewModel.clearResults()
                                     onClearGlobalQuery()
@@ -303,7 +298,7 @@ fun SearchScreen(
                                     libraryViewModel.dataManager
                                 )
                             },
-                            canSearch = query.isNotBlank() && selectedBookIds.isNotEmpty(),
+                            canSearch = query.isNotBlank(),
                             placeholder = stringResource(R.string.search_query_placeholder),
                             modifier =
                                 Modifier
@@ -719,7 +714,7 @@ private fun SearchResultsOverlay(
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         val listState = rememberLazyListState()
-        
+
         val searchKeywords = remember(query, searchMode) {
             val normalized = query.normalizeArabic()
             if (normalized.isBlank()) emptyList<String>()
