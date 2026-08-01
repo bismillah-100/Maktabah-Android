@@ -23,11 +23,14 @@ import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Output
 import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -128,6 +131,8 @@ fun AnnotationsScreen(
     var popoverAnchor by remember { mutableStateOf<androidx.compose.ui.unit.IntRect?>(null) }
     var popoverBookId by remember { mutableStateOf<Int?>(null) }
     var showBookInfoId by remember { mutableStateOf<Int?>(null) }
+    var popoverAnnotation by remember { mutableStateOf<com.maktabah.models.Annotation?>(null) }
+    var editingAnnotation by remember { mutableStateOf<com.maktabah.models.Annotation?>(null) }
 
     val importJsonLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -345,6 +350,17 @@ fun AnnotationsScreen(
                             popoverBookId = group.bkId
                         }
                     },
+                    onAnnotationLongClick = { ann, view ->
+                        val location = IntArray(2)
+                        view.getLocationInWindow(location)
+                        popoverAnchor = androidx.compose.ui.unit.IntRect(
+                            left = location[0],
+                            top = location[1],
+                            right = location[0] + view.width,
+                            bottom = location[1] + view.height
+                        )
+                        popoverAnnotation = ann
+                    },
                     libraryViewModel = libraryViewModel,
                 )
             }
@@ -380,6 +396,56 @@ fun AnnotationsScreen(
             defaultTitle = "",
             libraryViewModel = libraryViewModel,
             onDismissRequest = { showBookInfoId = null }
+        )
+    }
+
+    if (popoverAnchor != null && popoverAnnotation != null) {
+        val ann = popoverAnnotation!!
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            com.maktabah.ui.common.TapCenteredPopover(
+                expanded = true,
+                onDismiss = {
+                    popoverAnchor = null
+                    popoverAnnotation = null
+                },
+                anchorBounds = popoverAnchor,
+                actions = listOf(
+                    com.maktabah.ui.common.PopoverMenuAction(
+                        label = stringResource(R.string.annotations_menu_edit),
+                        icon = Icons.Default.Edit,
+                        onClick = {
+                            editingAnnotation = ann
+                        }
+                    ),
+                    com.maktabah.ui.common.PopoverMenuAction(
+                        label = stringResource(R.string.annotations_menu_delete),
+                        icon = Icons.Default.Delete,
+                        onClick = {
+                            scope.launch {
+                                withContext(Dispatchers.IO) {
+                                    ann.id?.let { id ->
+                                        annotationManager.deleteAnnotation(id, ann.ckRecordId)
+                                    }
+                                }
+                                viewModel.forceReload(annotationManager)
+                            }
+                        }
+                    )
+                )
+            )
+        }
+    }
+
+    if (editingAnnotation != null) {
+        com.maktabah.ui.reader.AnnotationEditorDialog(
+            active = com.maktabah.models.ActiveAnnotationState(annotation = editingAnnotation!!),
+            bookId = editingAnnotation!!.bkId,
+            content = null,
+            showHarakat = true,
+            annotationManager = annotationManager,
+            scope = scope,
+            onSyncRequested = { viewModel.forceReload(annotationManager) },
+            onDismissRequest = { editingAnnotation = null }
         )
     }
 }
@@ -719,6 +785,7 @@ private fun AnnotationsList(
     onToggleAnnotationSelection: (Long) -> Unit,
     annotationManager: AnnotationManager,
     onHeaderLongClick: (AnnotationGroup, android.view.View) -> Unit,
+    onAnnotationLongClick: (com.maktabah.models.Annotation, android.view.View) -> Unit,
     libraryViewModel: LibraryViewModel,
 ) {
     val scope = rememberCoroutineScope()
@@ -739,6 +806,7 @@ private fun AnnotationsList(
                 onToggleGroupSelection = onToggleGroupSelection,
                 onToggleAnnotationSelection = onToggleAnnotationSelection,
                 onHeaderLongClick = onHeaderLongClick,
+                onAnnotationLongClick = onAnnotationLongClick,
             ).apply {
                 this.primaryColor = colors.primaryColor
                 this.secondaryColor = colors.secondaryColor

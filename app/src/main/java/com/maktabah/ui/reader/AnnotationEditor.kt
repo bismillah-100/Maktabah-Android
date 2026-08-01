@@ -243,13 +243,13 @@ fun AnnotationEditorDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val currentContent = content ?: return@Button
+                    if (active.annotation == null && content == null) return@Button
                     val (diacLoc, diacLen, plainLoc, plainLen) =
                         if (active.annotation == null) {
                             AnnotationCoordinator.calculateBothRanges(
                                 active.loc,
                                 active.len,
-                                content.nass,
+                                content!!.nass,
                                 showHarakat
                             )
                         } else {
@@ -264,20 +264,20 @@ fun AnnotationEditorDialog(
                     val annotationToSave = Annotation(
                         id = active.annotation?.id,
                         bkId = bookId,
-                        contentId = active.annotation?.contentId ?: currentContent.id,
+                        contentId = active.annotation?.contentId ?: content!!.id,
                         colorHex = if (selectedType == 1) "#000000" else selectedColor,
                         note = noteText.ifBlank { null },
                         type = selectedType,
                         createdAt = active.annotation?.createdAt?.let {
                             if (it in 1L..9999999999L) it * 1000L else it
                         } ?: System.currentTimeMillis(),
-                        page = active.annotation?.page ?: currentContent.page,
+                        page = active.annotation?.page ?: content!!.page,
                         context = active.annotation?.context ?: active.selectedText,
                         rangeLocation = plainLoc,
                         rangeLength = plainLen,
                         rangeDiacLocation = diacLoc,
                         rangeDiacLength = diacLen,
-                        part = active.annotation?.part ?: currentContent.part,
+                        part = active.annotation?.part ?: content!!.part,
                         tags = tagsText
                             .split(",")
                             .map { it.trim() }
