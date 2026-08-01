@@ -30,6 +30,7 @@ import com.maktabah.update.UpdateUIState
 import com.maktabah.update.UpdateViewModel
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownTypography
+import com.mikepenz.markdown.model.markdownPadding
 
 @Composable
 fun UpdateDialog(viewModel: UpdateViewModel) {
@@ -66,6 +67,7 @@ fun UpdateDialog(viewModel: UpdateViewModel) {
                                 ) {
                                     Markdown(
                                         content = state.release.body,
+                                        padding = markdownPadding(block = 4.dp, list = 1.dp),
                                         typography = markdownTypography(
                                             h1 = MaterialTheme.typography.titleLarge,
                                             h2 = MaterialTheme.typography.titleMedium,
