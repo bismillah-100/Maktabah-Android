@@ -40,6 +40,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -124,6 +127,10 @@ fun SearchScreen(
     var activeSearchMode by remember(lastSearchMode) { mutableStateOf(lastSearchMode) }
     var isFocused by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
+
+    var popoverAnchor by remember { mutableStateOf<androidx.compose.ui.unit.IntRect?>(null) }
+    var popoverBookId by remember { mutableStateOf<Int?>(null) }
+    var showBookInfoId by remember { mutableStateOf<Int?>(null) }
 
     val resultsViewModel: ResultsViewModel = viewModel()
     val showSavedResults by viewModel.showSavedResults.collectAsState()
@@ -263,7 +270,18 @@ fun SearchScreen(
                             bottomContentPadding = bottomPadding + 88.dp,
                             hasDonated = hasDonated,
                             isDataLoaded = isDataLoaded && isTreeLoaded,
-                            onOpenSavedResults = { viewModel.setShowSavedResults(true) }
+                            onOpenSavedResults = { viewModel.setShowSavedResults(true) },
+                            onBookLongClick = { bookId, view ->
+                                val location = IntArray(2)
+                                view.getLocationInWindow(location)
+                                popoverAnchor = androidx.compose.ui.unit.IntRect(
+                                    left = location[0],
+                                    top = location[1],
+                                    right = location[0] + view.width,
+                                    bottom = location[1] + view.height
+                                )
+                                popoverBookId = bookId
+                            }
                         )
 
                         QueryInputBar(
@@ -368,6 +386,40 @@ fun SearchScreen(
                                     .padding(bottom = androidx.compose.ui.unit.max(bottomPadding, imeBottom)),
                         )
                     }
+
+                    if (popoverAnchor != null && popoverBookId != null) {
+                        val bookId = popoverBookId!!
+                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                            com.maktabah.ui.common.TapCenteredPopover(
+                                expanded = true,
+                                onDismiss = {
+                                    popoverAnchor = null
+                                    popoverBookId = null
+                                },
+                                anchorBounds = popoverAnchor,
+                                actions = buildList {
+                                    add(
+                                        com.maktabah.ui.common.PopoverMenuAction(
+                                            label = stringResource(R.string.reader_menu_book_info),
+                                            icon = Icons.Default.Info,
+                                            onClick = {
+                                                showBookInfoId = bookId
+                                            }
+                                        )
+                                    )
+                                }
+                            )
+                        }
+                    }
+
+                    if (showBookInfoId != null) {
+                        com.maktabah.ui.reader.BookInfoSheet(
+                            bookId = showBookInfoId!!,
+                            defaultTitle = "",
+                            libraryViewModel = libraryViewModel,
+                            onDismissRequest = { showBookInfoId = null }
+                        )
+                    }
                 }
                 1 -> {
                     SavedResultsScreen(
@@ -409,7 +461,8 @@ private fun FilterAndCategoryContent(
     bottomContentPadding: Dp,
     hasDonated: Boolean,
     isDataLoaded: Boolean,
-    onOpenSavedResults: () -> Unit
+    onOpenSavedResults: () -> Unit,
+    onBookLongClick: (Int, android.view.View) -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -446,6 +499,7 @@ private fun FilterAndCategoryContent(
                 onToggleBook = { viewModel.toggleBookSelection(it) },
                 onLoadMore = { viewModel.loadMore(it, libraryViewModel.dataManager) },
                 onToggleCategorySelection = { viewModel.toggleCategorySelection(it) },
+                onBookLongClick = onBookLongClick,
                 padding = padding,
                 bottomContentPadding = bottomContentPadding
             )
@@ -505,6 +559,7 @@ private fun SearchFilterList(
     onToggleBook: (Int) -> Unit,
     onLoadMore: (Int) -> Unit,
     onToggleCategorySelection: (CategoryData) -> Unit,
+    onBookLongClick: (Int, android.view.View) -> Unit,
     padding: PaddingValues,
     bottomContentPadding: Dp,
 ) {
@@ -518,6 +573,7 @@ private fun SearchFilterList(
                 onCategoryToggle = onToggleCategory,
                 onBookClick = { }, // Not used in selection mode
                 onBookSelectionToggle = onToggleBook,
+                onBookLongClick = onBookLongClick,
                 onLoadMore = onLoadMore,
                 onLoadMoreAuthors = { }, // Not used in search filter
                 onCategorySelectionToggle = onToggleCategorySelection

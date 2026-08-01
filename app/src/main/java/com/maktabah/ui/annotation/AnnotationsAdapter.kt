@@ -46,6 +46,7 @@ class AnnotationsAdapter(
     private val onAnnotationClick: (Int, Int?, Int?, Int?, String?) -> Unit,
     private val onToggleGroupSelection: (AnnotationGroup) -> Unit,
     private val onToggleAnnotationSelection: (Long) -> Unit,
+    private val onHeaderLongClick: ((AnnotationGroup, View) -> Unit)? = null,
 ) : ListAdapter<AnnotationFlatItem, RecyclerView.ViewHolder>(DiffCallback()) {
 
     private lateinit var recyclerView: RecyclerView
@@ -270,6 +271,7 @@ class AnnotationsAdapter(
 
         fun unbind() {
             itemView.setOnClickListener(null)
+            itemView.setOnLongClickListener(null)
             typeIcon.setOnClickListener(null)
         }
 
@@ -348,6 +350,11 @@ class AnnotationsAdapter(
                 })
                 animator.start()
                 onToggle()
+            }
+
+            itemView.setOnLongClickListener {
+                onHeaderLongClick?.invoke(item.group, it)
+                true
             }
         }
     }
