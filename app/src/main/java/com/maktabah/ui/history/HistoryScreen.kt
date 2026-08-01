@@ -37,6 +37,7 @@ import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
@@ -208,7 +209,8 @@ fun HistoryScreen(
                         onToggleFavorite = { id ->
                             val entry = historyViewModel.toggleFavorite(id)
                             cloudKitSyncManager.uploadHistory(context, listOf(entry))
-                        }
+                        },
+                        libraryViewModel = libraryViewModel
                     )
 
                     item(key = "history_favorites_spacer") {
@@ -232,7 +234,8 @@ fun HistoryScreen(
                         onRemoveFavorite = { id ->
                             val entry = historyViewModel.toggleFavorite(id)
                             cloudKitSyncManager.uploadHistory(context, listOf(entry))
-                        }
+                        },
+                        libraryViewModel = libraryViewModel
                     )
 
                     if (!hasDonated) {
@@ -313,6 +316,7 @@ private fun LazyListScope.historySection(
     onNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
     onRemoveHistory: (Int) -> Unit,
     onToggleFavorite: (Int) -> Unit,
+    libraryViewModel: LibraryViewModel,
 ) {
     item(key = "history_header") {
         SectionHeader(
@@ -363,6 +367,7 @@ private fun LazyListScope.historySection(
                                         var showMenu by remember { mutableStateOf(false) }
 
                                         Box {
+                                            var showBookInfoId by remember { mutableStateOf<Int?>(null) }
                                             InsetGroupedItem(
                                                 index = 0,
                                                 lastIndex = 0,
@@ -413,8 +418,24 @@ private fun LazyListScope.historySection(
 															onClick = { onToggleFavorite(bookId) },
 														)
 													)
+                                                    add(
+                                                        PopoverMenuAction(
+                                                            label = stringResource(R.string.reader_menu_book_info),
+                                                            icon = Icons.Default.Info,
+                                                            onClick = { showBookInfoId = bookId },
+                                                        )
+                                                    )
 												},
 											)
+
+                                            if (showBookInfoId != null) {
+                                                com.maktabah.ui.reader.BookInfoSheet(
+                                                    bookId = showBookInfoId!!,
+                                                    defaultTitle = bookName,
+                                                    libraryViewModel = libraryViewModel,
+                                                    onDismissRequest = { showBookInfoId = null }
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -435,6 +456,7 @@ private fun LazyListScope.favoritesSection(
     bookById: (Int) -> com.maktabah.models.BooksData?,
     onNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
     onRemoveFavorite: (Int) -> Unit,
+    libraryViewModel: LibraryViewModel,
 ) {
     item(key = "favorites_header") {
         SectionHeader(
@@ -469,6 +491,7 @@ private fun LazyListScope.favoritesSection(
                             .padding(horizontal = 16.dp, vertical = 4.dp)
                             .animateItem()
                     ) {
+                        var showBookInfoId by remember { mutableStateOf<Int?>(null) }
                         InsetGroupedItem(
                             index = 0,
                             lastIndex = 0,
@@ -504,8 +527,24 @@ private fun LazyListScope.favoritesSection(
 										onClick = { onRemoveFavorite(bookId) },
 									)
 								)
+                                add(
+                                    PopoverMenuAction(
+                                        label = stringResource(R.string.reader_menu_book_info),
+                                        icon = Icons.Default.Info,
+                                        onClick = { showBookInfoId = bookId },
+                                    )
+                                )
 							},
 						)
+
+                        if (showBookInfoId != null) {
+                            com.maktabah.ui.reader.BookInfoSheet(
+                                bookId = showBookInfoId!!,
+                                defaultTitle = bookName,
+                                libraryViewModel = libraryViewModel,
+                                onDismissRequest = { showBookInfoId = null }
+                            )
+                        }
                     }
                 }
             }

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -123,6 +124,10 @@ fun AnnotationsScreen(
 
     var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
     var isExportSelectedOnly by remember { mutableStateOf(false) }
+
+    var popoverAnchor by remember { mutableStateOf<androidx.compose.ui.unit.IntRect?>(null) }
+    var popoverBookId by remember { mutableStateOf<Int?>(null) }
+    var showBookInfoId by remember { mutableStateOf<Int?>(null) }
 
     val importJsonLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -327,9 +332,55 @@ fun AnnotationsScreen(
                     onToggleGroupSelection = { viewModel.toggleGroupSelection(it) },
                     onToggleAnnotationSelection = { viewModel.toggleAnnotationSelection(it) },
                     annotationManager = annotationManager,
+                    onHeaderLongClick = { group, view ->
+                        if (group is com.maktabah.models.AnnotationGroup.BookGroup) {
+                            val location = IntArray(2)
+                            view.getLocationInWindow(location)
+                            popoverAnchor = androidx.compose.ui.unit.IntRect(
+                                left = location[0],
+                                top = location[1],
+                                right = location[0] + view.width,
+                                bottom = location[1] + view.height
+                            )
+                            popoverBookId = group.bkId
+                        }
+                    },
+                    libraryViewModel = libraryViewModel,
                 )
             }
         }
+    }
+
+    if (popoverAnchor != null && popoverBookId != null) {
+        val bookId = popoverBookId!!
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            com.maktabah.ui.common.TapCenteredPopover(
+                expanded = true,
+                onDismiss = {
+                    popoverAnchor = null
+                    popoverBookId = null
+                },
+                anchorBounds = popoverAnchor,
+                actions = listOf(
+                    com.maktabah.ui.common.PopoverMenuAction(
+                        label = stringResource(R.string.reader_menu_book_info),
+                        icon = Icons.Default.Info,
+                        onClick = {
+                            showBookInfoId = bookId
+                        }
+                    )
+                )
+            )
+        }
+    }
+
+    if (showBookInfoId != null) {
+        com.maktabah.ui.reader.BookInfoSheet(
+            bookId = showBookInfoId!!,
+            defaultTitle = "",
+            libraryViewModel = libraryViewModel,
+            onDismissRequest = { showBookInfoId = null }
+        )
     }
 }
 
@@ -667,6 +718,8 @@ private fun AnnotationsList(
     onToggleGroupSelection: (AnnotationGroup) -> Unit,
     onToggleAnnotationSelection: (Long) -> Unit,
     annotationManager: AnnotationManager,
+    onHeaderLongClick: (AnnotationGroup, android.view.View) -> Unit,
+    libraryViewModel: LibraryViewModel,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -685,6 +738,7 @@ private fun AnnotationsList(
                 onAnnotationClick = onAnnotationClick,
                 onToggleGroupSelection = onToggleGroupSelection,
                 onToggleAnnotationSelection = onToggleAnnotationSelection,
+                onHeaderLongClick = onHeaderLongClick,
             ).apply {
                 this.primaryColor = colors.primaryColor
                 this.secondaryColor = colors.secondaryColor
