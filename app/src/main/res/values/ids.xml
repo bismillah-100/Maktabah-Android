@@ -15,4 +15,5 @@
     <item name="library_recycler_view" type="id" />
     <item name="search_recycler_view" type="id" />
     <item name="annotations_recycler_view" type="id" />
+    <item name="tag_selection_mode" type="id" />
 </resources>
