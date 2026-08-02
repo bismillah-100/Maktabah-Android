@@ -66,8 +66,8 @@ fun UpdateDialog(viewModel: UpdateViewModel) {
                                         .verticalScroll(rememberScrollState())
                                 ) {
                                     Markdown(
-                                        content = state.release.body,
-                                        padding = markdownPadding(block = 4.dp, list = 1.dp),
+                                        state.release.body.trimIndent(),
+                                        padding = markdownPadding(block = 2.dp, list = 2.dp),
                                         typography = markdownTypography(
                                             h1 = MaterialTheme.typography.titleLarge,
                                             h2 = MaterialTheme.typography.titleMedium,
@@ -75,6 +75,7 @@ fun UpdateDialog(viewModel: UpdateViewModel) {
                                             h4 = MaterialTheme.typography.bodyLarge,
                                             h5 = MaterialTheme.typography.bodyMedium,
                                             h6 = MaterialTheme.typography.bodySmall,
+                                            paragraph = MaterialTheme.typography.bodyMedium,
                                         )
                                     )
                                 }
