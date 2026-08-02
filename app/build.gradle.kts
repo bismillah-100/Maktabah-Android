@@ -133,7 +133,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.19.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("com.google.android.material:material:1.14.0")
-    implementation("androidx.constraintlayout:constraintlayout:2.2.1")
+    implementation("androidx.constraintlayout:constraintlayout:2.2.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
@@ -150,15 +150,15 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.browser:browser:1.10.0")
-    implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.27.0-rc02")
+    implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.43.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     // File Downloads & Decompression
     implementation("com.squareup.okhttp3:okhttp:5.4.0")
-    implementation("com.github.luben:zstd-jni:1.5.7-11@aar")
+    implementation("com.github.luben:zstd-jni:1.5.7-12@aar")
 
     // Firebase
-    implementation(platform("com.google.firebase:firebase-bom:34.15.0"))
+    implementation(platform("com.google.firebase:firebase-bom:34.17.0"))
     implementation("com.google.firebase:firebase-messaging")
 }
