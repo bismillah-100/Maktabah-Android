@@ -521,42 +521,50 @@ class SearchViewModel : ViewModel() {
                             archiveFile.absolutePath,
                             com.maktabah.database.SQLiteDB.SQLITE_OPEN_READONLY or com.maktabah.database.SQLiteDB.SQLITE_OPEN_FULLMUTEX
                         ).use { db ->
-                            for (item in groupItems) {
-                                val bkId = item.tableName.toIntOrNull() ?: continue
-                                val contentId = item.bookId
+                            val itemsByBook = groupItems.groupBy { it.tableName.toIntOrNull() }.mapNotNull { (k, v) -> k?.let { it to v } }
+                            for ((bkId, bookItems) in itemsByBook) {
                                 val book = dataManager.booksById[bkId]
                                 val isMultilingual = book?.isMultiLanguage ?: false
-                                _currentBookName.value = book?.name ?: item.bookTitle
+                                val currentName = book?.name ?: bookItems.firstOrNull()?.bookTitle ?: ""
+                                withContext(Dispatchers.Main) {
+                                    _currentBookName.value = currentName
+                                }
 
                                 try {
                                     db.prepare("SELECT nass, page, part FROM b$bkId WHERE id = ? LIMIT 1")?.use { stmt ->
-                                        stmt.bindLong(1, contentId.toLong())
-                                        if (stmt.step() == com.maktabah.database.SQLiteDB.SQLITE_ROW) {
-                                            val nassBlob = stmt.columnBlobDirect(0)
-                                            val page = stmt.columnInt(1)
-                                            val part = stmt.columnInt(2)
+                                        for (item in bookItems) {
+                                            val contentId = item.bookId
 
-                                            if (nassBlob != null) {
-                                                val nassString = com.maktabah.database.decompressBlob(nassBlob, zstdCtx)
-                                                val stripped = nassString.stripSpanTags()
-                                                
-                                                val normalized = stripped.convertToArabicDigits()
-                                                val queryConverted = item.query.convertToArabicDigits()
-                                                
-                                                val searchKeywords = if (queryConverted.isNotBlank()) listOf(queryConverted) else emptyList()
-                                                val snippet = normalized.snippetAround(searchKeywords, contextLength = 60)
+                                            stmt.bindLong(1, contentId.toLong())
+                                            if (stmt.step() == com.maktabah.database.SQLiteDB.SQLITE_ROW) {
+                                                val nassBlob = stmt.columnBlobDirect(0)
+                                                val page = stmt.columnInt(1)
+                                                val part = stmt.columnInt(2)
+
+                                                if (nassBlob != null) {
+                                                    val nassString = com.maktabah.database.decompressBlob(nassBlob, zstdCtx)
+                                                    val stripped = nassString.stripSpanTags()
+
+                                                    val normalized = stripped.normalizeArabic().convertToArabicDigits()
+                                                    val queryConverted = item.query.normalizeArabic().convertToArabicDigits()
+
+                                                    val searchKeywords = if (queryConverted.isNotBlank()) listOf(queryConverted) else emptyList()
+                                                    val snippet = normalized.snippetAround(searchKeywords, contextLength = 60)
 
 
-                                                allResults.add(
-                                                    SearchResult(
-                                                        bookId = bkId,
-                                                        contentId = contentId,
-                                                        text = snippet,
-                                                        page = page,
-                                                        part = part
+                                                    allResults.add(
+                                                        SearchResult(
+                                                            bookId = bkId,
+                                                            contentId = contentId,
+                                                            text = snippet,
+                                                            page = page,
+                                                            part = part
+                                                        )
                                                     )
-                                                )
+                                                }
                                             }
+                                            stmt.reset()
+                                            stmt.clearBindings()
                                         }
                                     }
                                 } catch (e: Exception) {
