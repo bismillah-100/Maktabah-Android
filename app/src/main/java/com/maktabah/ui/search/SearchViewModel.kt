@@ -204,14 +204,11 @@ class SearchViewModel : ViewModel() {
                         var matches = false
                         for (c in cats) {
                             if (c is BooksData) {
-                                if (cleanQuery.isEmpty() || c.name.normalizeArabic()
-                                        .contains(cleanQuery, ignoreCase = true)
-                                ) {
+                                if (c.name.matchesText(cleanQuery)) {
                                     matches = true
                                 }
                             } else if (c is CategoryData) {
-                                val catMatches =
-                                    c.name.normalizeArabic().contains(cleanQuery, ignoreCase = true)
+                                val catMatches = c.name.matchesText(cleanQuery)
                                 val childrenMatch = findMatching(c.children)
                                 if (catMatches || childrenMatch) {
                                     matchingIds.add(c.id)
@@ -314,8 +311,7 @@ class SearchViewModel : ViewModel() {
             fun hasMatchingBooks(cats: List<Any>): Boolean {
                 for (c in cats) {
                     if (c is BooksData) {
-                        val matchesQuery = cleanQuery.isEmpty() || c.name.normalizeArabic()
-                            .contains(cleanQuery, ignoreCase = true)
+                        val matchesQuery = c.name.matchesText(cleanQuery)
                         val matchesDownloaded = downloadedIds.contains(c.id)
                         if (matchesQuery && matchesDownloaded) return true
                     } else if (c is CategoryData) {
@@ -334,8 +330,7 @@ class SearchViewModel : ViewModel() {
 
                 for (item in categories) {
                     if (item is BooksData) {
-                        val matchesQuery = cleanQuery.isEmpty() || item.name.normalizeArabic()
-                            .contains(cleanQuery, ignoreCase = true)
+                        val matchesQuery = item.name.matchesText(cleanQuery)
                         val matchesDownloaded = downloadedIds.contains(item.id)
 
                         if (matchesQuery && matchesDownloaded) {
@@ -608,16 +603,25 @@ class SearchViewModel : ViewModel() {
             filterJob = viewModelScope.launch(Dispatchers.Default) {
                 delay(500) // UI Debounce
                 val cleanQuery = currentFilter.normalizeArabic()
+                if (cleanQuery.isEmpty()) {
+                    _filteredSearchResults.value = allResults
+                    return@launch
+                }
                 val normalizedNames = mutableMapOf<Int, String>()
                 val filtered = allResults.filter { result ->
                     ensureActive() // Cooperative cancellation
                     val normalizedName = normalizedNames.getOrPut(result.bookId) {
                         booksMap[result.bookId]?.name?.normalizeArabic() ?: ""
                     }
-                    normalizedName.contains(cleanQuery, ignoreCase = true)
+                    cleanQuery.isEmpty() || normalizedName.contains(cleanQuery, ignoreCase = true)
                 }
                 _filteredSearchResults.value = filtered
             }
         }
+    }
+
+    private fun String.matchesText(cleanQuery: String): Boolean {
+        if (cleanQuery.isEmpty()) return true
+        return this.normalizeArabic().contains(cleanQuery, ignoreCase = true)
     }
 }
