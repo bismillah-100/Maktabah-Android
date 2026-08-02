@@ -78,7 +78,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawScrollbarIntern
     if (viewportHeight <= 0f) return
 
     val scrollbarHeight = ((viewportHeight / totalHeight) * viewportHeight).coerceAtLeast(20.dp.toPx())
-    val scrollableContentHeight = (totalHeight - viewportHeight).coerceAtLeast(1f)
+    val scrollableContentHeight = (totalHeight - viewportHeightFull).coerceAtLeast(1f)
     val scrollRatio = (scrollOffset / scrollableContentHeight).coerceIn(0f, 1f)
     val scrollbarY = scrollRatio * (viewportHeight - scrollbarHeight) + topPaddingPx
 

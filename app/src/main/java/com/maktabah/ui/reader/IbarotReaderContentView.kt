@@ -98,7 +98,7 @@ fun IbarotReaderContentView(
     val scrollExtent = remember { mutableFloatStateOf(0f) }
     var isScrollInProgress by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    var scrollJob by remember { mutableStateOf<Job?>(null) }
+    val scrollJobRef = remember { arrayOf<Job?>(null) }
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Box(
@@ -181,14 +181,16 @@ fun IbarotReaderContentView(
                     descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
 
                     setOnScrollChangeListener { v, _, scrollY, _, _ ->
+                        val sv = v as NestedScrollView
+                        val childHeight = sv.getChildAt(0)?.height?.toFloat() ?: 0f
                         scrollOffset.floatValue = scrollY.toFloat()
-                        scrollRange.floatValue = (v as NestedScrollView).getChildAt(0).height.toFloat()
-                        scrollExtent.floatValue = v.height.toFloat()
+                        scrollRange.floatValue = childHeight + sv.paddingTop + sv.paddingBottom
+                        scrollExtent.floatValue = sv.height.toFloat()
                         if (!isScrollInProgress) {
                             isScrollInProgress = true
                         }
-                        scrollJob?.cancel()
-                        scrollJob = scope.launch {
+                        scrollJobRef[0]?.cancel()
+                        scrollJobRef[0] = scope.launch {
                             delay(150)
                             isScrollInProgress = false
                         }
