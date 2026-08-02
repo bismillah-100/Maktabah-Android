@@ -590,7 +590,8 @@ class SearchViewModel : ViewModel() {
     }
 
     private fun String.matchesQuery(cleanQuery: String): Boolean {
-        return cleanQuery.isEmpty() || this.normalizeArabic().contains(cleanQuery, ignoreCase = true)
+        if (cleanQuery.isEmpty()) return true
+        return this.normalizeArabic().contains(cleanQuery, ignoreCase = true)
     }
 
     private var filterJob: kotlinx.coroutines.Job? = null
@@ -622,10 +623,5 @@ class SearchViewModel : ViewModel() {
                 _filteredSearchResults.value = filtered
             }
         }
-    }
-
-    private fun String.matchesText(cleanQuery: String): Boolean {
-        if (cleanQuery.isEmpty()) return true
-        return this.normalizeArabic().contains(cleanQuery, ignoreCase = true)
     }
 }
