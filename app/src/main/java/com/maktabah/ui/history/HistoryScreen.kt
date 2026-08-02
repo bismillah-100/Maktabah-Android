@@ -88,7 +88,6 @@ import com.maktabah.cloudKit.CloudKitSyncManager
 import com.maktabah.database.AnnotationManager
 import com.maktabah.models.ReadingEntry
 import com.maktabah.utils.normalizeArabic
-import com.maktabah.ui.common.drawVerticalScrollbar
 import com.maktabah.ui.common.DonationCard
 import com.maktabah.ui.common.DonationIconButton
 import com.maktabah.ui.common.InsetGroupedItem
@@ -188,11 +187,6 @@ fun HistoryScreen(
                     state = listState,
                     modifier = Modifier
                         .fillMaxSize()
-                        .drawVerticalScrollbar(
-                            state = listState,
-                            topPadding = padding.calculateTopPadding(),
-                            bottomPadding = bottomPadding
-                        )
                         .fadingEdge(listState, padding.calculateTopPadding()),
                     contentPadding = PaddingValues(
                         top = padding.calculateTopPadding() + 16.dp,
@@ -656,11 +650,6 @@ private fun AddFavoriteSheet(
                         modifier = Modifier
                             .nestedScroll(nestedScrollConnection)
                             .fillMaxSize()
-                            .drawVerticalScrollbar(
-                                state = listState,
-                                topPadding = topPadding,
-                                bottomPadding = 32.dp
-                            )
                             .fadingEdge(listState, 48.dp),
                         state = listState,
                         contentPadding = PaddingValues(top = topPadding, bottom = 32.dp)

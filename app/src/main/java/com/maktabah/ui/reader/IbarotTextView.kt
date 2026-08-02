@@ -265,7 +265,6 @@ constructor(
 
     init {
         setTextIsSelectable(true)
-        isVerticalScrollBarEnabled = true
         textSize = 24f
         setPadding(32, 32, 32, 32)
         layoutDirection = LAYOUT_DIRECTION_RTL

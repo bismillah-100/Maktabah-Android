@@ -21,15 +21,19 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import com.maktabah.ui.common.drawGenericVerticalScrollbar
 import kotlinx.coroutines.delay
 import androidx.compose.ui.graphics.BlendMode
@@ -91,26 +95,29 @@ fun IbarotReaderContentView(
     val scrollRange = remember { mutableFloatStateOf(0f) }
     val scrollExtent = remember { mutableFloatStateOf(0f) }
     var isScrollInProgress by remember { mutableStateOf(false) }
+    var scrollTrigger by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(isScrollInProgress) {
-        if (isScrollInProgress) {
-            delay(1500)
+    LaunchedEffect(scrollTrigger) {
+        if (scrollTrigger > 0) {
+            isScrollInProgress = true
+            delay(150)
             isScrollInProgress = false
         }
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .drawGenericVerticalScrollbar(
-                isScrollInProgress = isScrollInProgress,
-                scrollOffsetProvider = { scrollOffset.floatValue },
-                scrollRangeProvider = { scrollRange.floatValue },
-                scrollExtentProvider = { scrollExtent.floatValue },
-                topPadding = paddingValues.calculateTopPadding(),
-                bottomPadding = paddingValues.calculateBottomPadding()
-            )
-    ) {
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .drawGenericVerticalScrollbar(
+                    isScrollInProgress = isScrollInProgress,
+                    scrollOffsetProvider = { scrollOffset.floatValue },
+                    scrollRangeProvider = { scrollRange.floatValue },
+                    scrollExtentProvider = { scrollExtent.floatValue },
+                    topPadding = paddingValues.calculateTopPadding(),
+                    bottomPadding = paddingValues.calculateBottomPadding()
+                )
+        ) {
         AndroidView(
             modifier =
                 Modifier
@@ -182,7 +189,7 @@ fun IbarotReaderContentView(
                         scrollOffset.floatValue = scrollY.toFloat()
                         scrollRange.floatValue = (v as NestedScrollView).getChildAt(0).height.toFloat()
                         scrollExtent.floatValue = v.height.toFloat()
-                        isScrollInProgress = true
+                        scrollTrigger++
                     }
                 }
             val textView =
@@ -517,7 +524,8 @@ fun IbarotReaderContentView(
             )
         }
     }
-  }
+    }
+}
 }
 
 private fun renderContent(
