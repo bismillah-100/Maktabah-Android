@@ -87,9 +87,9 @@ fun IbarotReaderContentView(
     var topOverscroll by remember { mutableFloatStateOf(0f) }
     var botOverscroll by remember { mutableFloatStateOf(0f) }
 
-    var scrollOffset by remember { mutableFloatStateOf(0f) }
-    var scrollRange by remember { mutableFloatStateOf(0f) }
-    var scrollExtent by remember { mutableFloatStateOf(0f) }
+    val scrollOffset = remember { mutableFloatStateOf(0f) }
+    val scrollRange = remember { mutableFloatStateOf(0f) }
+    val scrollExtent = remember { mutableFloatStateOf(0f) }
     var isScrollInProgress by remember { mutableStateOf(false) }
 
     LaunchedEffect(isScrollInProgress) {
@@ -104,9 +104,9 @@ fun IbarotReaderContentView(
             .fillMaxSize()
             .drawGenericVerticalScrollbar(
                 isScrollInProgress = isScrollInProgress,
-                scrollOffset = scrollOffset,
-                scrollRange = scrollRange,
-                scrollExtent = scrollExtent,
+                scrollOffsetProvider = { scrollOffset.floatValue },
+                scrollRangeProvider = { scrollRange.floatValue },
+                scrollExtentProvider = { scrollExtent.floatValue },
                 topPadding = paddingValues.calculateTopPadding(),
                 bottomPadding = paddingValues.calculateBottomPadding()
             )
@@ -179,9 +179,9 @@ fun IbarotReaderContentView(
                     descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
 
                     setOnScrollChangeListener { v, _, scrollY, _, _ ->
-                        scrollOffset = scrollY.toFloat()
-                        scrollRange = (v as NestedScrollView).getChildAt(0).height.toFloat()
-                        scrollExtent = v.height.toFloat()
+                        scrollOffset.floatValue = scrollY.toFloat()
+                        scrollRange.floatValue = (v as NestedScrollView).getChildAt(0).height.toFloat()
+                        scrollExtent.floatValue = v.height.toFloat()
                         isScrollInProgress = true
                     }
                 }

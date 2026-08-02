@@ -166,9 +166,9 @@ fun GroupedRecyclerView(
     var canScrollForward by remember { mutableStateOf(false) }
 
     // State for custom scrollbar
-    var scrollOffset by remember { mutableStateOf(0f) }
-    var scrollRange by remember { mutableStateOf(0f) }
-    var scrollExtent by remember { mutableStateOf(0f) }
+    val scrollOffset = remember { mutableStateOf(0f) }
+    val scrollRange = remember { mutableStateOf(0f) }
+    val scrollExtent = remember { mutableStateOf(0f) }
     var isScrolling by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var scrollJob by remember { mutableStateOf<Job?>(null) }
@@ -178,9 +178,9 @@ fun GroupedRecyclerView(
             .fillMaxSize()
             .drawGenericVerticalScrollbar(
                 isScrollInProgress = isScrolling,
-                scrollOffset = scrollOffset,
-                scrollRange = scrollRange,
-                scrollExtent = scrollExtent,
+                scrollOffsetProvider = { scrollOffset.value },
+                scrollRangeProvider = { scrollRange.value },
+                scrollExtentProvider = { scrollExtent.value },
                 topPadding = padding.calculateTopPadding(),
                 bottomPadding = bottomContentPadding
             )
@@ -216,9 +216,9 @@ fun GroupedRecyclerView(
 
                 addOnScrollListener(object : RecyclerView.OnScrollListener() {
                     override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                        scrollOffset = recyclerView.computeVerticalScrollOffset().toFloat()
-                        scrollRange = recyclerView.computeVerticalScrollRange().toFloat()
-                        scrollExtent = recyclerView.computeVerticalScrollExtent().toFloat()
+                        scrollOffset.value = recyclerView.computeVerticalScrollOffset().toFloat()
+                        scrollRange.value = recyclerView.computeVerticalScrollRange().toFloat()
+                        scrollExtent.value = recyclerView.computeVerticalScrollExtent().toFloat()
                         canScrollForward = recyclerView.canScrollVertically(1)
 
                         isScrolling = true

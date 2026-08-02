@@ -86,9 +86,9 @@ fun Modifier.drawVerticalScrollbar(
 @Composable
 fun Modifier.drawGenericVerticalScrollbar(
     isScrollInProgress: Boolean,
-    scrollOffset: Float,
-    scrollRange: Float,
-    scrollExtent: Float,
+    scrollOffsetProvider: () -> Float,
+    scrollRangeProvider: () -> Float,
+    scrollExtentProvider: () -> Float,
     width: Dp = 4.dp,
     color: Color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
     topPadding: Dp = 0.dp,
@@ -107,11 +107,14 @@ fun Modifier.drawGenericVerticalScrollbar(
     return drawWithContent {
         drawContent()
 
-        if (scrollRange > scrollExtent && alpha > 0f) {
+        val currentScrollRange = scrollRangeProvider()
+        val currentScrollExtent = scrollExtentProvider()
+
+        if (currentScrollRange > currentScrollExtent && alpha > 0f) {
             drawScrollbarInternal(
                 alpha = alpha,
-                scrollOffset = scrollOffset,
-                totalHeight = scrollRange,
+                scrollOffset = scrollOffsetProvider(),
+                totalHeight = currentScrollRange,
                 viewportHeightFull = size.height,
                 topPaddingPx = topPadding.toPx(),
                 bottomPaddingPx = bottomPadding.toPx(),

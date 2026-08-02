@@ -141,7 +141,8 @@ fun AnnotationsScreen(
             val fileName = uri.lastPathSegment ?: uri.toString()
             val cleanFileName = fileName.substringAfterLast('/')
             val extension = cleanFileName.substringAfterLast('.', "").lowercase()
-            if (extension == "json") {
+            val mimeType = context.contentResolver.getType(uri)
+            if (extension == "json" || mimeType == "application/json" || mimeType == "text/json") {
                 pendingImportUri = uri
             } else {
                 Toast.makeText(

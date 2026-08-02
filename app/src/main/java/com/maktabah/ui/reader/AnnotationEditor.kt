@@ -84,7 +84,12 @@ fun AnnotationEditorDialog(
     var tagsText by remember(active) { mutableStateOf(active.annotation?.tags ?: "") }
 
     val context = androidx.compose.ui.platform.LocalContext.current
-    val recentColors = remember(active) { ColorPreferences.getRecentColors(context) }
+    var recentColors by remember { mutableStateOf(ColorPreferences.DEFAULT_COLORS) }
+    LaunchedEffect(active) {
+        recentColors = withContext(Dispatchers.IO) {
+            ColorPreferences.getRecentColors(context)
+        }
+    }
     var showColorPicker by remember { mutableStateOf(false) }
 
     var existingTags by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -179,7 +184,9 @@ fun AnnotationEditorDialog(
                                         .background(color, shape = CircleShape)
                                         .clickable {
                                             selectedColor = colorHex
-                                            ColorPreferences.selectColor(context, colorHex)
+                                            scope.launch(Dispatchers.IO) {
+                                                ColorPreferences.selectColor(context, colorHex)
+                                            }
                                         }
                                         .border(
                                             width = if (selectedColor.equals(
@@ -233,7 +240,9 @@ fun AnnotationEditorDialog(
                         initialColor = selectedColor,
                         onColorSelected = { hex ->
                             selectedColor = hex
-                            ColorPreferences.selectColor(context, hex)
+                            scope.launch(Dispatchers.IO) {
+                                ColorPreferences.selectColor(context, hex)
+                            }
                             showColorPicker = false
                         },
                         onDismissRequest = { showColorPicker = false }
