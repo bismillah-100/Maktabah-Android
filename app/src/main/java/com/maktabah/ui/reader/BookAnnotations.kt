@@ -35,6 +35,7 @@ import com.maktabah.models.Annotation
 import com.maktabah.models.AnnotationSearchScope
 import com.maktabah.models.FlashTarget
 import com.maktabah.ui.annotation.AnnotationItem
+import com.maktabah.ui.common.drawVerticalScrollbar
 import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.search.SearchWithScope
 import com.maktabah.utils.normalizeArabic
@@ -133,7 +134,12 @@ fun BookAnnotationsSheet(
                         modifier = Modifier
                             .nestedScroll(nestedScrollConnection)
                             .fillMaxSize()
-                            .fadingEdge(listState, 48.dp),
+                            .drawVerticalScrollbar(
+                                state = listState,
+                                topPadding = topPadding,
+                                bottomPadding = 32.dp
+                            )
+                            .fadingEdge(listState, topPadding),
                         state = listState,
                         contentPadding = PaddingValues(top = topPadding, bottom = 32.dp),
                     ) {

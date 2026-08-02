@@ -72,6 +72,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.widget.NestedScrollView
 import com.maktabah.R
 import com.maktabah.database.AnnotationManager
+import com.maktabah.utils.ColorPreferences
 import com.maktabah.models.ActiveAnnotationState
 import com.maktabah.ui.history.HistoryViewModel
 import com.maktabah.ui.library.LibraryViewModel
@@ -462,7 +463,7 @@ fun ReaderScreen(
                             selectedText = str,
                             rawNass = content?.nass ?: "",
                             type = 0,
-                            colorHex = "#FFFF00",
+                            colorHex = ColorPreferences.getLatestColor(context),
                             onComplete = {
                                 onSyncRequested()
                             }

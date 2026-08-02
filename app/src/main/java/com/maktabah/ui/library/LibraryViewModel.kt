@@ -104,6 +104,10 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
         loadDownloadIndex(context)
     }
 
+    fun getBookFlow(bookId: Int): kotlinx.coroutines.flow.Flow<com.maktabah.models.BooksData?> {
+        return _isDataLoaded.map { dataManager.booksById[bookId] }
+    }
+
     fun reloadData(context: Context) {
         viewModelScope.launch {
             _isDataLoaded.value = false
