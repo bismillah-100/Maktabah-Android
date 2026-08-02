@@ -40,6 +40,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -61,28 +62,25 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.produceState
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.maktabah.R
 import com.maktabah.models.CategoryData
 import com.maktabah.models.FlatLibraryItem
@@ -91,6 +89,7 @@ import com.maktabah.models.SearchResult
 import com.maktabah.ui.common.DonationIconButton
 import com.maktabah.ui.common.GroupedRecyclerView
 import com.maktabah.ui.common.InsetGroupedItem
+import com.maktabah.ui.common.drawVerticalScrollbar
 import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.common.rememberGroupedListColors
 import com.maktabah.ui.library.LibraryViewModel
@@ -124,6 +123,10 @@ fun SearchScreen(
     var activeSearchMode by remember(lastSearchMode) { mutableStateOf(lastSearchMode) }
     var isFocused by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
+
+    var popoverAnchor by remember { mutableStateOf<androidx.compose.ui.unit.IntRect?>(null) }
+    var popoverBookId by remember { mutableStateOf<Int?>(null) }
+    var showBookInfoId by remember { mutableStateOf<Int?>(null) }
 
     val resultsViewModel: ResultsViewModel = viewModel()
     val showSavedResults by viewModel.showSavedResults.collectAsState()
@@ -263,13 +266,24 @@ fun SearchScreen(
                             bottomContentPadding = bottomPadding + 88.dp,
                             hasDonated = hasDonated,
                             isDataLoaded = isDataLoaded && isTreeLoaded,
-                            onOpenSavedResults = { viewModel.setShowSavedResults(true) }
+                            onOpenSavedResults = { viewModel.setShowSavedResults(true) },
+                            onBookLongClick = { bookId, view ->
+                                val location = IntArray(2)
+                                view.getLocationInWindow(location)
+                                popoverAnchor = androidx.compose.ui.unit.IntRect(
+                                    left = location[0],
+                                    top = location[1],
+                                    right = location[0] + view.width,
+                                    bottom = location[1] + view.height
+                                )
+                                popoverBookId = bookId
+                            }
                         )
 
                         QueryInputBar(
                             query = query,
-                            onQueryChange = { newQuery -> 
-                                query = newQuery 
+                            onQueryChange = { newQuery ->
+                                query = newQuery
                                 if (newQuery.isEmpty()) {
                                     viewModel.clearResults()
                                     onClearGlobalQuery()
@@ -284,7 +298,7 @@ fun SearchScreen(
                                     libraryViewModel.dataManager
                                 )
                             },
-                            canSearch = query.isNotBlank() && selectedBookIds.isNotEmpty(),
+                            canSearch = query.isNotBlank(),
                             placeholder = stringResource(R.string.search_query_placeholder),
                             modifier =
                                 Modifier
@@ -368,6 +382,42 @@ fun SearchScreen(
                                     .padding(bottom = androidx.compose.ui.unit.max(bottomPadding, imeBottom)),
                         )
                     }
+
+                    if (popoverAnchor != null && popoverBookId != null) {
+                        val bookId = popoverBookId!!
+                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                            com.maktabah.ui.common.TapCenteredPopover(
+                                expanded = true,
+                                onDismiss = {
+                                    popoverAnchor = null
+                                    popoverBookId = null
+                                },
+                                anchorBounds = popoverAnchor,
+                                actions = buildList {
+                                    add(
+                                        com.maktabah.ui.common.PopoverMenuAction(
+                                            label = stringResource(R.string.reader_menu_book_info),
+                                            icon = Icons.Default.Info,
+                                            onClick = {
+                                                showBookInfoId = bookId
+                                                popoverAnchor = null
+                                                popoverBookId = null
+                                            }
+                                        )
+                                    )
+                                }
+                            )
+                        }
+                    }
+
+                    if (showBookInfoId != null) {
+                        com.maktabah.ui.reader.BookInfoSheet(
+                            bookId = showBookInfoId!!,
+                            defaultTitle = "",
+                            libraryViewModel = libraryViewModel,
+                            onDismissRequest = { showBookInfoId = null }
+                        )
+                    }
                 }
                 1 -> {
                     SavedResultsScreen(
@@ -409,7 +459,8 @@ private fun FilterAndCategoryContent(
     bottomContentPadding: Dp,
     hasDonated: Boolean,
     isDataLoaded: Boolean,
-    onOpenSavedResults: () -> Unit
+    onOpenSavedResults: () -> Unit,
+    onBookLongClick: (Int, android.view.View) -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -446,6 +497,7 @@ private fun FilterAndCategoryContent(
                 onToggleBook = { viewModel.toggleBookSelection(it) },
                 onLoadMore = { viewModel.loadMore(it, libraryViewModel.dataManager) },
                 onToggleCategorySelection = { viewModel.toggleCategorySelection(it) },
+                onBookLongClick = onBookLongClick,
                 padding = padding,
                 bottomContentPadding = bottomContentPadding
             )
@@ -505,6 +557,7 @@ private fun SearchFilterList(
     onToggleBook: (Int) -> Unit,
     onLoadMore: (Int) -> Unit,
     onToggleCategorySelection: (CategoryData) -> Unit,
+    onBookLongClick: (Int, android.view.View) -> Unit,
     padding: PaddingValues,
     bottomContentPadding: Dp,
 ) {
@@ -518,6 +571,7 @@ private fun SearchFilterList(
                 onCategoryToggle = onToggleCategory,
                 onBookClick = { }, // Not used in selection mode
                 onBookSelectionToggle = onToggleBook,
+                onBookLongClick = onBookLongClick,
                 onLoadMore = onLoadMore,
                 onLoadMoreAuthors = { }, // Not used in search filter
                 onCategorySelectionToggle = onToggleCategorySelection
@@ -662,7 +716,7 @@ private fun SearchResultsOverlay(
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         val listState = rememberLazyListState()
-        
+
         val searchKeywords = remember(query, searchMode) {
             val normalized = query.normalizeArabic()
             if (normalized.isBlank()) emptyList<String>()
@@ -676,6 +730,11 @@ private fun SearchResultsOverlay(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
+                .drawVerticalScrollbar(
+                    state = listState,
+                    topPadding = padding.calculateTopPadding(),
+                    bottomPadding = bottomPadding
+                )
                 .fadingEdge(listState, padding.calculateTopPadding()),
             contentPadding = PaddingValues(
                 top = padding.calculateTopPadding() + 8.dp,
