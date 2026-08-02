@@ -590,7 +590,8 @@ class SearchViewModel : ViewModel() {
     }
 
     private fun String.matchesQuery(cleanQuery: String): Boolean {
-        return cleanQuery.isEmpty() || this.normalizeArabic().contains(cleanQuery, ignoreCase = true)
+        if (cleanQuery.isEmpty()) return true
+        return this.normalizeArabic().contains(cleanQuery, ignoreCase = true)
     }
 
     private var filterJob: kotlinx.coroutines.Job? = null
@@ -607,6 +608,10 @@ class SearchViewModel : ViewModel() {
             filterJob = viewModelScope.launch(Dispatchers.Default) {
                 delay(500) // UI Debounce
                 val cleanQuery = currentFilter.normalizeArabic()
+                if (cleanQuery.isEmpty()) {
+                    _filteredSearchResults.value = allResults
+                    return@launch
+                }
                 val normalizedNames = mutableMapOf<Int, String>()
                 val filtered = allResults.filter { result ->
                     ensureActive() // Cooperative cancellation

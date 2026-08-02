@@ -454,11 +454,15 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
     ) {
         val result = mutableListOf<FlatLibraryItem>()
 
+        private fun matchesText(text: String, cleanQuery: String): Boolean {
+            if (cleanQuery.isEmpty()) return true
+            return text.normalizeArabic().contains(cleanQuery, ignoreCase = true)
+        }
+
         fun hasMatchingBooks(cats: List<Any>): Boolean {
             for (c in cats) {
                 if (c is BooksData) {
-                    val matchesQuery = cleanQuery.isEmpty() || c.name.normalizeArabic()
-                        .contains(cleanQuery, ignoreCase = true)
+                    val matchesQuery = matchesText(c.name, cleanQuery)
                     val matchesDownloaded = !showOnlyDownloaded || downloadedIds.contains(c.id)
                     if (matchesQuery && matchesDownloaded) return true
                 } else if (c is CategoryData) {
@@ -488,8 +492,7 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
                     val matchesQuery = if (viewModeVal == LibraryViewMode.AUTHOR) {
                         true
                     } else {
-                        cleanQuery.isEmpty() || item.name.normalizeArabic()
-                            .contains(cleanQuery, ignoreCase = true)
+                        matchesText(item.name, cleanQuery)
                     }
                     val matchesDownloaded =
                         !showOnlyDownloaded || downloadedIds.contains(item.id)

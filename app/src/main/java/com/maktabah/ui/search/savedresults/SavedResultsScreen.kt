@@ -178,7 +178,7 @@ fun SavedResultsScreen(
 
                 SearchTextField(
                     value = searchQuery,
-                    onValueChange = { searchQuery = it.normalizeArabic() },
+                    onValueChange = { searchQuery = it },
                     onClearClick = { searchQuery = "" },
                     placeholder = stringResource(R.string.saved_results_search_globally),
                     modifier = Modifier

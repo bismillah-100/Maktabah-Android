@@ -117,7 +117,7 @@ class CloudKitCoreManager private constructor() {
             try {
                 val baseUrlWithoutRecords = "https://api.apple-cloudkit.com/database/1/${com.maktabah.BuildConfig.CLOUDKIT_CONTAINER_ID}/$cloudKitEnvironment/$scope"
                 val url = URL("$baseUrlWithoutRecords/users/caller?ckAPIToken=$apiToken&ckWebAuthToken=${URLEncoder.encode(webAuthToken, "UTF-8")}")
-                android.util.Log.d("CloudKitCore", "fetchUserInfo trying URL: $url")
+                android.util.Log.d("CloudKitCore", "fetchUserInfo trying URL for scope: $scope")
                 
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "GET"
@@ -127,11 +127,11 @@ class CloudKitCoreManager private constructor() {
 
                 if (responseCode == HttpURLConnection.HTTP_OK) {
                     val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
-                    android.util.Log.d("CloudKitCore", "fetchUserInfo Success ($scope): $responseStr")
+                    android.util.Log.d("CloudKitCore", "fetchUserInfo Success ($scope)")
                     return@withContext Result.success(JSONObject(responseStr))
                 } else {
                     val errorStr = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                    android.util.Log.e("CloudKitCore", "fetchUserInfo Error ($scope): $errorStr")
+                    android.util.Log.e("CloudKitCore", "fetchUserInfo Error ($scope)")
                     val reason = try { JSONObject(errorStr).getString("reason") } catch(_: Exception) { errorStr.take(100) }
                     lastException = Exception("Err ($scope): $reason")
                 }

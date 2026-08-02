@@ -145,7 +145,7 @@ fun HistoryScreen(
             },
             topBar = {
                 HistoryTopBar(
-                    searchQuery = searchQuery.normalizeArabic(),
+                    searchQuery = searchQuery,
                     onSearchQueryChange = { historyViewModel.updateSearchQuery(it) },
                     isSyncing = isSyncing,
                     hasDonated = hasDonated,

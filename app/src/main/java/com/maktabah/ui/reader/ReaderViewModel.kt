@@ -384,7 +384,7 @@ class ReaderViewModel : ViewModel() {
     }
 
     fun setSearchQuery(query: String?) {
-        _searchQuery.value = query?.normalizeArabic()
+        _searchQuery.value = query
     }
 
     fun addAnnotationDirectly(

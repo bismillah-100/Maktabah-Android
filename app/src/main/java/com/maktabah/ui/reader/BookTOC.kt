@@ -370,7 +370,7 @@ fun BookTOCSheet(
             Box(modifier = Modifier.padding(start = 16.dp, end = 16.dp)) {
                 SearchTextField(
                     value = searchQuery,
-                    onValueChange = { searchQuery = it.normalizeArabic() },
+                    onValueChange = { searchQuery = it },
                     placeholder = stringResource(R.string.reader_toc_search_placeholder),
                     onClearClick = { searchQuery = "" }
                 )
