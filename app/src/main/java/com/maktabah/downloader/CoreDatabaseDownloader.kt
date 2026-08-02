@@ -106,6 +106,12 @@ class CoreDatabaseDownloader(private val context: Context) {
 	}.flowOn(Dispatchers.IO)
 
 	private fun decompressZstdFile(source: File, dest: File) {
-		source.inputStream().use { fileIn -> ZstdInputStream(fileIn).use { zstdIn -> dest.outputStream().use { zstdIn.copyTo(it) } } }
+		source.inputStream().use { fileIn ->
+			ZstdInputStream(fileIn).use { zstdIn ->
+				dest.outputStream().use { fileOut ->
+					zstdIn.copyTo(fileOut)
+				}
+			}
+		}
 	}
 }

@@ -122,17 +122,19 @@ class BookDownloadService : Service() {
         updateNotification()
 
         val job = serviceScope.launch {
-            val manager = BookDownloadManager(applicationContext)
-            val index = try { manager.fetchIndex() } catch (e: Exception) { emptyList() }
+            try {
+                val manager = BookDownloadManager(applicationContext)
+                val index = try { manager.fetchIndex() } catch (e: Exception) { emptyList() }
 
-            if (currentState.isBulk) {
-                handleBulkDownload(stateId, currentState, manager, index)
-            } else {
-                handleSingleDownload(stateId, currentState, manager, index)
+                if (currentState.isBulk) {
+                    handleBulkDownload(stateId, currentState, manager, index)
+                } else {
+                    handleSingleDownload(stateId, currentState, manager, index)
+                }
+            } finally {
+                activeJobs.remove(stateId)
+                checkStopService()
             }
-
-            activeJobs.remove(stateId)
-            checkStopService()
         }
 
         activeJobs[stateId] = job
