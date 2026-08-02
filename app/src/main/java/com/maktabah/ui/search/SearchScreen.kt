@@ -400,6 +400,8 @@ fun SearchScreen(
                                             icon = Icons.Default.Info,
                                             onClick = {
                                                 showBookInfoId = bookId
+                                                popoverAnchor = null
+                                                popoverBookId = null
                                             }
                                         )
                                     )
