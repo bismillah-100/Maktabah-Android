@@ -142,8 +142,11 @@ fun ImportBookSheet(
                 val fileName = uri.lastPathSegment ?: uri.toString()
                 val cleanFileName = fileName.substringAfterLast('/')
                 val extension = cleanFileName.substringAfterLast('.', "").lowercase()
+                val mimeType = context.contentResolver.getType(uri)
 
-                if (extension == "sqlite" || extension == "db" || extension == "sqlite3") {
+                if (extension == "sqlite" || extension == "db" || extension == "sqlite3" ||
+                    mimeType == "application/x-sqlite3" || mimeType == "application/vnd.sqlite3" || mimeType == "application/sqlite"
+                ) {
                     vm.setSelectedFile(uri, cleanFileName)
                 } else {
                     Toast.makeText(
