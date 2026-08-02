@@ -420,88 +420,46 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
         return result
     }
 
-    private var updateFlatItemsJob: kotlinx.coroutines.Job? = null
-    private fun updateFlatItems() {
-        updateFlatItemsJob?.cancel()
-        updateFlatItemsJob = viewModelScope.launch(Dispatchers.Default) {
-            val expanded = _expandedCategories.value
-            val viewModeVal = _viewMode.value
-            var roots =
-                if (viewModeVal == LibraryViewMode.AUTHOR) _authorCategories.value else _rootCategories.value
-            val query = _searchQuery.value
-            val cleanQuery = query.normalizeArabic()
-            val showOnlyDownloaded = _showOnlyDownloaded.value
-            val downloadedIds = _downloadedBookIds.value
-
-            if (viewModeVal == LibraryViewMode.AUTHOR) {
-                if (query.isNotEmpty()) {
-                    roots = filterAuthorHierarchy(roots, query)
-                }
-                if (showOnlyDownloaded) {
-                    roots = roots.mapNotNull { cat ->
-                        val downloadedBooks = cat.children.mapNotNull { child ->
-                            if (child is BooksData && downloadedIds.contains(child.id)) child else null
-                        }
-                        if (downloadedBooks.isNotEmpty()) {
-                            cat.copy(children = downloadedBooks.toMutableList())
-                        } else null
-                    }
-                }
-            }
-
-            val totalRootsCount = roots.size
-            val displayedCount = _displayedAuthorCount.value
-            var hasMore = false
-            var remainingCount = 0
-            if (viewModeVal == LibraryViewMode.AUTHOR) {
-                if (totalRootsCount > displayedCount) {
-                    hasMore = true
-                    remainingCount = totalRootsCount - displayedCount
-                    roots = roots.take(displayedCount)
-                }
-            }
-
-            val flattener = LibraryTreeFlattener(
-                viewModeVal = viewModeVal,
-                cleanQuery = cleanQuery,
-                query = query,
-                showOnlyDownloaded = showOnlyDownloaded,
-                downloadedIds = downloadedIds,
-                expanded = expanded,
-                categoryLimits = _categoryLimits.value
-            )
-            val result = flattener.flatten(roots).toMutableList()
-
-            if (viewModeVal == LibraryViewMode.AUTHOR && hasMore) {
-                result.add(FlatLibraryItem(LoadMoreAuthors(remainingCount), 0))
-            }
-
-            _flatVisibleItems.value = result
+    private fun filterAuthorRoots(
+        roots: List<CategoryData>,
+        query: String,
+        showOnlyDownloaded: Boolean,
+        downloadedIds: Set<Int>
+    ): List<CategoryData> {
+        var filtered = roots
+        if (query.isNotEmpty()) {
+            filtered = filterAuthorHierarchy(filtered, query)
         }
+        if (showOnlyDownloaded) {
+            filtered = filtered.mapNotNull { cat ->
+                val downloadedBooks = cat.children.mapNotNull { child ->
+                    if (child is BooksData && downloadedIds.contains(child.id)) child else null
+                }
+                if (downloadedBooks.isNotEmpty()) {
+                    cat.copy(children = downloadedBooks.toMutableList())
+                } else null
+            }
+        }
+        return filtered
     }
 
     private class LibraryTreeFlattener(
-        private val viewModeVal: LibraryViewMode,
-        private val cleanQuery: String,
-        private val query: String,
-        private val showOnlyDownloaded: Boolean,
-        private val downloadedIds: Set<Int>,
-        private val expanded: Set<Int>,
-        private val categoryLimits: Map<Int, Int>
+        val expanded: Set<Int>,
+        val viewModeVal: LibraryViewMode,
+        val query: String,
+        val cleanQuery: String,
+        val showOnlyDownloaded: Boolean,
+        val downloadedIds: Set<Int>,
+        val categoryLimits: Map<Int, Int>
     ) {
         val result = mutableListOf<FlatLibraryItem>()
-
-        fun flatten(roots: List<Any>): List<FlatLibraryItem> {
-            traverse(roots, 0, null)
-            return result
-        }
 
         private fun matchesText(text: String, cleanQuery: String): Boolean {
             if (cleanQuery.isEmpty()) return true
             return text.normalizeArabic().contains(cleanQuery, ignoreCase = true)
         }
 
-        private fun hasMatchingBooks(cats: List<Any>): Boolean {
+        fun hasMatchingBooks(cats: List<Any>): Boolean {
             for (c in cats) {
                 if (c is BooksData) {
                     val matchesQuery = matchesText(c.name, cleanQuery)
@@ -514,7 +472,7 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
             return false
         }
 
-        private fun checkHasDownloaded(cats: List<Any>): Boolean {
+        fun checkHasDownloaded(cats: List<Any>): Boolean {
             for (c in cats) {
                 if (c is BooksData && downloadedIds.contains(c.id)) return true
                 if (c is CategoryData && checkHasDownloaded(c.children)) return true
@@ -522,7 +480,7 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
             return false
         }
 
-        private fun traverse(categories: List<Any>, level: Int, parentCategoryId: Int?): Boolean {
+        fun traverse(categories: List<Any>, level: Int, parentCategoryId: Int?): Boolean {
             var hasVisibleContent = false
             var bookCount = 0
             var hiddenCount = 0
@@ -587,6 +545,56 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
             }
 
             return hasVisibleContent
+        }
+    }
+
+    private var updateFlatItemsJob: kotlinx.coroutines.Job? = null
+    private fun updateFlatItems() {
+        updateFlatItemsJob?.cancel()
+        updateFlatItemsJob = viewModelScope.launch(Dispatchers.Default) {
+            val expanded = _expandedCategories.value
+            val viewModeVal = _viewMode.value
+            var roots =
+                if (viewModeVal == LibraryViewMode.AUTHOR) _authorCategories.value else _rootCategories.value
+            val query = _searchQuery.value
+            val cleanQuery = query.normalizeArabic()
+            val showOnlyDownloaded = _showOnlyDownloaded.value
+            val downloadedIds = _downloadedBookIds.value
+            val categoryLimits = _categoryLimits.value
+
+            if (viewModeVal == LibraryViewMode.AUTHOR) {
+                roots = filterAuthorRoots(roots, query, showOnlyDownloaded, downloadedIds)
+            }
+
+            val flattener = LibraryTreeFlattener(
+                expanded = expanded,
+                viewModeVal = viewModeVal,
+                query = query,
+                cleanQuery = cleanQuery,
+                showOnlyDownloaded = showOnlyDownloaded,
+                downloadedIds = downloadedIds,
+                categoryLimits = categoryLimits
+            )
+
+            val totalRootsCount = roots.size
+            val displayedCount = _displayedAuthorCount.value
+            var hasMore = false
+            var remainingCount = 0
+            if (viewModeVal == LibraryViewMode.AUTHOR) {
+                if (totalRootsCount > displayedCount) {
+                    hasMore = true
+                    remainingCount = totalRootsCount - displayedCount
+                    roots = roots.take(displayedCount)
+                }
+            }
+
+            flattener.traverse(roots, 0, null)
+
+            if (viewModeVal == LibraryViewMode.AUTHOR && hasMore) {
+                flattener.result.add(FlatLibraryItem(LoadMoreAuthors(remainingCount), 0))
+            }
+
+            _flatVisibleItems.value = flattener.result
         }
     }
 
