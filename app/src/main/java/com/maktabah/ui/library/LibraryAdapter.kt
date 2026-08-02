@@ -261,6 +261,11 @@ class LibraryAdapter(
             itemView.setOnClickListener(null)
             itemView.setOnLongClickListener(null)
             typeIcon?.setOnClickListener(null)
+            typeIcon?.animate()?.cancel()
+            arrowIcon?.animate()?.cancel()
+            (arrowIcon?.getTag(R.id.tag_animating_rotation) as? android.animation.Animator)?.cancel()
+            arrowIcon?.setTag(R.id.tag_animating_rotation, null)
+            itemView.setTag(R.id.tag_selection_mode, null)
         }
 
         fun updateDividerForLast(isLast: Boolean) {
