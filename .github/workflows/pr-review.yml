@@ -25,6 +25,8 @@ jobs:
           rules_file: .github/jules-review-rules.md
           ignored_paths: "*.lock, .gradle/**, build/**"
           extra_instructions: |
+            [DO NOT]
+            - run any build such as ./gradlew
             [PROJECT CONTEXT]
             - Android app using Jetpack Compose, MVVM Architecture, and Coroutines.
             - SQLite is accessed natively via JNI (C++) using wrapper classes.
