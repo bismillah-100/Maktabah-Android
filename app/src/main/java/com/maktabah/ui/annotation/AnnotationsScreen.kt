@@ -384,6 +384,8 @@ fun AnnotationsScreen(
                         icon = Icons.Default.Info,
                         onClick = {
                             showBookInfoId = bookId
+                            popoverAnchor = null
+                            popoverBookId = null
                         }
                     )
                 )
@@ -416,6 +418,8 @@ fun AnnotationsScreen(
                         icon = Icons.Default.Edit,
                         onClick = {
                             editingAnnotation = ann
+                            popoverAnchor = null
+                            popoverAnnotation = null
                         }
                     ),
                     com.maktabah.ui.common.PopoverMenuAction(
@@ -430,6 +434,8 @@ fun AnnotationsScreen(
                                 }
                                 viewModel.forceReload(annotationManager)
                             }
+                            popoverAnchor = null
+                            popoverAnnotation = null
                         }
                     )
                 )
