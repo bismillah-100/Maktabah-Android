@@ -240,7 +240,6 @@ class LibraryAdapter(
     }
 
     inner class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        private val container: View = itemView
         private val itemContainer: View? = itemView.findViewById(R.id.itemContainer)
         private val nameText: TextView? = itemView.findViewById(R.id.nameText)
         private val typeIcon: ImageView? = itemView.findViewById(R.id.typeIcon)
@@ -249,7 +248,7 @@ class LibraryAdapter(
         private val divider: View? = itemView.findViewById(R.id.divider)
 
         init {
-            itemView.background = com.maktabah.utils.ItemHighlightDrawable { itemView.parent as? android.view.View }
+            itemView.background = com.maktabah.utils.ItemHighlightDrawable { itemView.parent as? View }
         }
 
         private fun getPrimaryColor(): Int = primaryColor
@@ -262,6 +261,11 @@ class LibraryAdapter(
             itemView.setOnClickListener(null)
             itemView.setOnLongClickListener(null)
             typeIcon?.setOnClickListener(null)
+            typeIcon?.animate()?.cancel()
+            arrowIcon?.animate()?.cancel()
+            (arrowIcon?.getTag(R.id.tag_animating_rotation) as? android.animation.Animator)?.cancel()
+            arrowIcon?.setTag(R.id.tag_animating_rotation, null)
+            itemView.setTag(R.id.tag_selection_mode, null)
         }
 
         fun updateDividerForLast(isLast: Boolean) {
@@ -334,6 +338,11 @@ class LibraryAdapter(
                 divider.layoutParams = dividerParams
             }
 
+            val wasSelectionMode = itemView.getTag(R.id.tag_selection_mode) as? Boolean
+            val selectionModeChanged =
+                wasSelectionMode != null && wasSelectionMode != isSelectionMode
+            itemView.setTag(R.id.tag_selection_mode, isSelectionMode)
+
             when (item) {
                 is CategoryData -> {
                     nameText?.text = item.name
@@ -392,12 +401,27 @@ class LibraryAdapter(
                         typeIcon?.scaleX = -1f // Match Compose scaleX = -1f for RTL/folder icon
                     }
 
+                    if (selectionModeChanged) {
+                        typeIcon?.animate()?.cancel()
+                        typeIcon?.alpha = 0f
+                        typeIcon?.translationX =
+                            if (isSelectionMode) -20f * density else 20f * density
+                        typeIcon?.animate()
+                            ?.alpha(1f)
+                            ?.translationX(0f)
+                            ?.setDuration(250)
+                            ?.start()
+                    } else {
+                        typeIcon?.alpha = 1f
+                        typeIcon?.translationX = 0f
+                    }
+
                     arrowIcon?.isClickable = false
 
                     itemView.setOnClickListener {
                         val isCurrentlyExpanded = expandedCategories.contains(item.id)
                         val targetRotation = if (isCurrentlyExpanded) 90f else 0f
-                        
+
                         val existingAnimator = arrowIcon?.getTag(R.id.tag_animating_rotation) as? ObjectAnimator
                         existingAnimator?.cancel()
 
@@ -446,6 +470,21 @@ class LibraryAdapter(
                         }
                         typeIcon?.setColorFilter(getSecondaryColor())
                         typeIcon?.scaleX = -1f
+                    }
+
+                    if (selectionModeChanged) {
+                        typeIcon?.animate()?.cancel()
+                        typeIcon?.alpha = 0f
+                        typeIcon?.translationX =
+                            if (isSelectionMode) -20f * density else 20f * density
+                        typeIcon?.animate()
+                            ?.alpha(1f)
+                            ?.translationX(0f)
+                            ?.setDuration(250)
+                            ?.start()
+                    } else {
+                        typeIcon?.alpha = 1f
+                        typeIcon?.translationX = 0f
                     }
 
                     itemView.setOnClickListener {

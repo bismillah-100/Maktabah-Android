@@ -18,6 +18,14 @@ class ItemHighlightDrawable(private val parentView: () -> View?) : Drawable() {
         ColorDrawable(Color.WHITE)
     )
 
+    private var currentHighlightColor: Int = Color.TRANSPARENT
+    fun setHighlightColor(color: Int) {
+        if (currentHighlightColor != color) {
+            currentHighlightColor = color
+            rippleDrawable.setColor(ColorStateList.valueOf(color))
+        }
+    }
+
     init {
         rippleDrawable.callback = object : Drawable.Callback {
             override fun invalidateDrawable(who: Drawable) {
@@ -181,7 +189,7 @@ class GroupedCardDecoration(
                 for (groupChild in currentGroupChildren) {
                     val bg = groupChild.background as? ItemHighlightDrawable
                     if (bg != null) {
-                        bg.rippleDrawable.setColor(ColorStateList.valueOf(highlightColor))
+                        bg.setHighlightColor(highlightColor)
                         val translatedTop = groupChild.top + groupChild.translationY
                         val translatedBottom = groupChild.bottom + groupChild.translationY
                         

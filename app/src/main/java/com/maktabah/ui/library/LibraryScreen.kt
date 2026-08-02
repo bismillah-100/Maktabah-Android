@@ -1,10 +1,5 @@
 package com.maktabah.ui.library
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -20,12 +15,12 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.ImportContacts
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -143,11 +138,7 @@ fun LibraryScreen(
                                 containerColor = Color.Transparent,
                             ),
                         actions = {
-                            AnimatedVisibility(
-                                visible = isSelectionMode && selectedBookIds.isNotEmpty(),
-                                enter = fadeIn() + slideInVertically { -it / 2 },
-                                exit = fadeOut() + slideOutVertically { -it / 2 }
-                            ) {
+                            if (isSelectionMode && selectedBookIds.isNotEmpty()) {
                                 val hasDownloadedSelected =
                                     selectedBookIds.any { downloadedBookIds.contains(it) }
                                 if (hasDownloadedSelected) {
@@ -171,11 +162,7 @@ fun LibraryScreen(
                                     }
                                 }
                             }
-                            AnimatedVisibility(
-                                visible = isSelectionMode,
-                                enter = fadeIn() + slideInVertically { -it / 2 },
-                                exit = fadeOut() + slideOutVertically { -it / 2 }
-                            ) {
+                            if (isSelectionMode) {
                                 IconButton(
                                     onClick = { viewModel.toggleSelectionMode(context) },
                                     enabled = !isBulkDownloading,
@@ -197,11 +184,7 @@ fun LibraryScreen(
                                     contentDescription = stringResource(R.string.library_action_filter_downloaded),
                                 )
                             }
-                            AnimatedVisibility(
-                                visible = !isSelectionMode,
-                                enter = fadeIn() + slideInVertically { -it / 2 },
-                                exit = fadeOut() + slideOutVertically { -it / 2 }
-                            ) {
+                            if (!isSelectionMode) {
                                 LibraryMoreOptionsMenu(
                                     viewMode = viewMode,
                                     onToggleSelectionMode = { viewModel.toggleSelectionMode(context) },
