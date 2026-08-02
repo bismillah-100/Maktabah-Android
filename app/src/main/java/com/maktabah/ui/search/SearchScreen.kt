@@ -89,7 +89,6 @@ import com.maktabah.models.SearchResult
 import com.maktabah.ui.common.DonationIconButton
 import com.maktabah.ui.common.GroupedRecyclerView
 import com.maktabah.ui.common.InsetGroupedItem
-import com.maktabah.ui.common.drawVerticalScrollbar
 import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.common.rememberGroupedListColors
 import com.maktabah.ui.library.LibraryViewModel
@@ -730,11 +729,6 @@ private fun SearchResultsOverlay(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .drawVerticalScrollbar(
-                    state = listState,
-                    topPadding = padding.calculateTopPadding(),
-                    bottomPadding = bottomPadding
-                )
                 .fadingEdge(listState, padding.calculateTopPadding()),
             contentPadding = PaddingValues(
                 top = padding.calculateTopPadding() + 8.dp,
