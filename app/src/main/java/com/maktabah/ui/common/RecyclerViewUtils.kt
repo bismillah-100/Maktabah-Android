@@ -226,12 +226,11 @@ fun GroupedRecyclerView(
             val decoration = view.getItemDecorationAt(0) as? GroupedCardDecoration
             decoration?.let {
                 val highlight = androidx.core.graphics.ColorUtils.setAlphaComponent(colors.onSurfaceColor, (255 * 0.1f).toInt())
-                if (it.surfaceColor != colors.surfaceColor || it.strokeColor != colors.onStrokeColor || it.highlightColor != highlight) {
-                    it.surfaceColor = colors.surfaceColor
-                    it.strokeColor = colors.onStrokeColor
-                    it.highlightColor = highlight
-                    view.invalidate()
-                }
+                var needsInvalidate = false
+                if (it.surfaceColor != colors.surfaceColor) { it.surfaceColor = colors.surfaceColor; needsInvalidate = true }
+                if (it.strokeColor != colors.onStrokeColor) { it.strokeColor = colors.onStrokeColor; needsInvalidate = true }
+                if (it.highlightColor != highlight) { it.highlightColor = highlight; needsInvalidate = true }
+                if (needsInvalidate) view.invalidate()
             }
 
             update(view)
