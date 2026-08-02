@@ -25,9 +25,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,7 +35,9 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import com.maktabah.ui.common.drawGenericVerticalScrollbar
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -95,15 +97,8 @@ fun IbarotReaderContentView(
     val scrollRange = remember { mutableFloatStateOf(0f) }
     val scrollExtent = remember { mutableFloatStateOf(0f) }
     var isScrollInProgress by remember { mutableStateOf(false) }
-    var scrollTrigger by remember { mutableIntStateOf(0) }
-
-    LaunchedEffect(scrollTrigger) {
-        if (scrollTrigger > 0) {
-            isScrollInProgress = true
-            delay(150)
-            isScrollInProgress = false
-        }
-    }
+    val scope = rememberCoroutineScope()
+    var scrollJob by remember { mutableStateOf<Job?>(null) }
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Box(
@@ -189,7 +184,14 @@ fun IbarotReaderContentView(
                         scrollOffset.floatValue = scrollY.toFloat()
                         scrollRange.floatValue = (v as NestedScrollView).getChildAt(0).height.toFloat()
                         scrollExtent.floatValue = v.height.toFloat()
-                        scrollTrigger++
+                        if (!isScrollInProgress) {
+                            isScrollInProgress = true
+                        }
+                        scrollJob?.cancel()
+                        scrollJob = scope.launch {
+                            delay(150)
+                            isScrollInProgress = false
+                        }
                     }
                 }
             val textView =
