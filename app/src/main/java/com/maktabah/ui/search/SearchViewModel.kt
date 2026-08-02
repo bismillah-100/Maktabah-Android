@@ -607,12 +607,13 @@ class SearchViewModel : ViewModel() {
             filterJob = viewModelScope.launch(Dispatchers.Default) {
                 delay(500) // UI Debounce
                 val cleanQuery = currentFilter.normalizeArabic()
-                val matchesMap = mutableMapOf<Int, Boolean>()
+                val normalizedNames = mutableMapOf<Int, String>()
                 val filtered = allResults.filter { result ->
                     ensureActive() // Cooperative cancellation
-                    matchesMap.getOrPut(result.bookId) {
-                        (booksMap[result.bookId]?.name ?: "").matchesQuery(cleanQuery)
+                    val normalizedName = normalizedNames.getOrPut(result.bookId) {
+                        booksMap[result.bookId]?.name?.normalizeArabic() ?: ""
                     }
+                    cleanQuery.isEmpty() || normalizedName.contains(cleanQuery, ignoreCase = true)
                 }
                 _filteredSearchResults.value = filtered
             }
