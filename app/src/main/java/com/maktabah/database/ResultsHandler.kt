@@ -617,7 +617,10 @@ class ResultsHandler(private val dbFile: File) {
                             }
                         }
 
-                        allIdsList.reversed().chunked(900).forEach { chunk ->
+                        val folderDepths = getFolderDepths(db, allDescendantIds)
+                        val sortedFolderIdsForDelete = allDescendantIds.sortedByDescending { folderDepths[it] ?: 0 }
+
+                        sortedFolderIdsForDelete.chunked(900).forEach { chunk ->
                             val placeholders = chunk.joinToString(",") { "?" }
                             db.prepare("DELETE FROM folders WHERE id IN ($placeholders);")?.use { stmt ->
                                 chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
@@ -950,6 +953,37 @@ class ResultsHandler(private val dbFile: File) {
             if (stmt.step() == SQLiteDB.SQLITE_ROW) id = stmt.columnLong(0)
         }
         return id
+    }
+
+    private fun getFolderDepths(db: SQLiteDB, folderIds: Collection<Long>): Map<Long, Int> {
+        if (folderIds.isEmpty()) return emptyMap()
+        val parentMap = mutableMapOf<Long, Long?>()
+        folderIds.chunked(900).forEach { chunk ->
+            val placeholders = chunk.joinToString(",") { "?" }
+            db.prepare("SELECT id, parent FROM folders WHERE id IN ($placeholders);")?.use { stmt ->
+                chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
+                while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                    val id = stmt.columnLong(0)
+                    val parent = if (stmt.columnType(1) != SQLiteDB.SQLITE_NULL) stmt.columnLong(1) else null
+                    parentMap[id] = parent
+                }
+            }
+        }
+
+        val depths = mutableMapOf<Long, Int>()
+        fun computeDepth(id: Long, visited: MutableSet<Long>): Int {
+            depths[id]?.let { return it }
+            if (!visited.add(id)) return 0
+            val parentId = parentMap[id]
+            val depth = if (parentId == null || parentId !in parentMap) 0 else 1 + computeDepth(parentId, visited)
+            depths[id] = depth
+            return depth
+        }
+
+        for (id in folderIds) {
+            computeDepth(id, mutableSetOf())
+        }
+        return depths
     }
 
     private fun resolveConflictAndUpdate(db: SQLiteDB, existingId: Long, folder: SyncFolder, newParent: Long?, isOrphan: Boolean) {

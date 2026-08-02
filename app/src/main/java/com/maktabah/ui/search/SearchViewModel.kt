@@ -525,12 +525,15 @@ class SearchViewModel : ViewModel() {
                             for ((bkId, bookItems) in itemsByBook) {
                                 val book = dataManager.booksById[bkId]
                                 val isMultilingual = book?.isMultiLanguage ?: false
+                                val currentName = book?.name ?: bookItems.firstOrNull()?.bookTitle ?: ""
+                                withContext(Dispatchers.Main) {
+                                    _currentBookName.value = currentName
+                                }
 
                                 try {
                                     db.prepare("SELECT nass, page, part FROM b$bkId WHERE id = ? LIMIT 1")?.use { stmt ->
                                         for (item in bookItems) {
                                             val contentId = item.bookId
-                                            _currentBookName.value = book?.name ?: item.bookTitle
 
                                             stmt.bindLong(1, contentId.toLong())
                                             if (stmt.step() == com.maktabah.database.SQLiteDB.SQLITE_ROW) {
@@ -542,8 +545,8 @@ class SearchViewModel : ViewModel() {
                                                     val nassString = com.maktabah.database.decompressBlob(nassBlob, zstdCtx)
                                                     val stripped = nassString.stripSpanTags()
 
-                                                    val normalized = stripped.convertToArabicDigits()
-                                                    val queryConverted = item.query.convertToArabicDigits()
+                                                    val normalized = stripped.normalizeArabic().convertToArabicDigits()
+                                                    val queryConverted = item.query.normalizeArabic().convertToArabicDigits()
 
                                                     val searchKeywords = if (queryConverted.isNotBlank()) listOf(queryConverted) else emptyList()
                                                     val snippet = normalized.snippetAround(searchKeywords, contextLength = 60)
