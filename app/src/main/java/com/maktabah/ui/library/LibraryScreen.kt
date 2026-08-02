@@ -1,5 +1,10 @@
 package com.maktabah.ui.library
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -138,7 +143,11 @@ fun LibraryScreen(
                                 containerColor = Color.Transparent,
                             ),
                         actions = {
-                            if (isSelectionMode && selectedBookIds.isNotEmpty()) {
+                            AnimatedVisibility(
+                                visible = isSelectionMode && selectedBookIds.isNotEmpty(),
+                                enter = fadeIn() + slideInVertically { -it / 2 },
+                                exit = fadeOut() + slideOutVertically { -it / 2 }
+                            ) {
                                 val hasDownloadedSelected =
                                     selectedBookIds.any { downloadedBookIds.contains(it) }
                                 if (hasDownloadedSelected) {
@@ -162,7 +171,11 @@ fun LibraryScreen(
                                     }
                                 }
                             }
-                            if (isSelectionMode) {
+                            AnimatedVisibility(
+                                visible = isSelectionMode,
+                                enter = fadeIn() + slideInVertically { -it / 2 },
+                                exit = fadeOut() + slideOutVertically { -it / 2 }
+                            ) {
                                 IconButton(
                                     onClick = { viewModel.toggleSelectionMode(context) },
                                     enabled = !isBulkDownloading,
@@ -184,7 +197,11 @@ fun LibraryScreen(
                                     contentDescription = stringResource(R.string.library_action_filter_downloaded),
                                 )
                             }
-                            if (!isSelectionMode) {
+                            AnimatedVisibility(
+                                visible = !isSelectionMode,
+                                enter = fadeIn() + slideInVertically { -it / 2 },
+                                exit = fadeOut() + slideOutVertically { -it / 2 }
+                            ) {
                                 LibraryMoreOptionsMenu(
                                     viewMode = viewMode,
                                     onToggleSelectionMode = { viewModel.toggleSelectionMode(context) },

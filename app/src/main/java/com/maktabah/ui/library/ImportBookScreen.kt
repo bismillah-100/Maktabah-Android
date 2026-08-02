@@ -140,7 +140,21 @@ fun ImportBookSheet(
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) {
                 val fileName = uri.lastPathSegment ?: uri.toString()
-                vm.setSelectedFile(uri, fileName.substringAfterLast('/'))
+                val cleanFileName = fileName.substringAfterLast('/')
+                val extension = cleanFileName.substringAfterLast('.', "").lowercase()
+                val mimeType = context.contentResolver.getType(uri)
+
+                if (extension == "sqlite" || extension == "db" || extension == "sqlite3" ||
+                    mimeType == "application/x-sqlite3" || mimeType == "application/vnd.sqlite3" || mimeType == "application/sqlite"
+                ) {
+                    vm.setSelectedFile(uri, cleanFileName)
+                } else {
+                    Toast.makeText(
+                        context,
+                        "Hanya file .sqlite, .db, atau .sqlite3 yang diperbolehkan",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
         }
 
@@ -343,7 +357,16 @@ fun ImportBookSheet(
                                     modifier = Modifier.weight(1f),
                                 )
                                 OutlinedButton(
-                                    onClick = { fileLauncher.launch(arrayOf("*/*")) },
+                                    onClick = {
+                                        fileLauncher.launch(
+                                            arrayOf(
+                                                "application/x-sqlite3",
+                                                "application/vnd.sqlite3",
+                                                "application/sqlite",
+                                                "application/octet-stream"
+                                            )
+                                        )
+                                    },
                                     shape = RoundedCornerShape(30.dp),
                                     border =
                                         BorderStroke(

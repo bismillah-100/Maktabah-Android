@@ -46,6 +46,8 @@ class AnnotationsAdapter(
     private val onAnnotationClick: (Int, Int?, Int?, Int?, String?) -> Unit,
     private val onToggleGroupSelection: (AnnotationGroup) -> Unit,
     private val onToggleAnnotationSelection: (Long) -> Unit,
+    private val onHeaderLongClick: ((AnnotationGroup, View) -> Unit)? = null,
+    private val onAnnotationLongClick: ((Annotation, View) -> Unit)? = null,
 ) : ListAdapter<AnnotationFlatItem, RecyclerView.ViewHolder>(DiffCallback()) {
 
     private lateinit var recyclerView: RecyclerView
@@ -249,6 +251,7 @@ class AnnotationsAdapter(
                 holder.bind(
                     item = item,
                     onAnnotationClick = onAnnotationClick,
+                    onAnnotationLongClick = onAnnotationLongClick,
                 )
             }
             is SpacerViewHolder -> { /* nothing */ }
@@ -270,6 +273,7 @@ class AnnotationsAdapter(
 
         fun unbind() {
             itemView.setOnClickListener(null)
+            itemView.setOnLongClickListener(null)
             typeIcon.setOnClickListener(null)
         }
 
@@ -349,6 +353,11 @@ class AnnotationsAdapter(
                 animator.start()
                 onToggle()
             }
+
+            itemView.setOnLongClickListener {
+                onHeaderLongClick?.invoke(item.group, it)
+                true
+            }
         }
     }
 
@@ -367,12 +376,14 @@ class AnnotationsAdapter(
 
         fun unbind() {
             itemView.setOnClickListener(null)
+            itemView.setOnLongClickListener(null)
             selectIcon?.setOnClickListener(null)
         }
 
         fun bind(
             item: AnnotationFlatItem.Item,
             onAnnotationClick: (Int, Int?, Int?, Int?, String?) -> Unit,
+            onAnnotationLongClick: ((Annotation, View) -> Unit)?,
         ) {
             val ann = item.ann
             val hexStr = if (ann.colorHex.startsWith("#")) ann.colorHex else "#${ann.colorHex}"
@@ -439,8 +450,13 @@ class AnnotationsAdapter(
             } else {
                 selectIcon?.visibility = View.GONE
                 itemView.setOnClickListener {
-                    onAnnotationClick(ann.bkId, ann.contentId, ann.rangeLocation, ann.rangeLength, null)
-                }
+                onAnnotationClick(ann.bkId, ann.contentId, ann.rangeLocation, ann.rangeLength, null)
+            }
+
+            itemView.setOnLongClickListener {
+                onAnnotationLongClick?.invoke(ann, it)
+                true
+            }
             }
 
             if (item.index == item.lastIndex) {

@@ -485,7 +485,7 @@ class CloudKitSyncManager {
             )
         }
         result.onSuccess { json ->
-            android.util.Log.d("CloudKitSync", "checkAccountChangeAndSync success: $json")
+            android.util.Log.d("CloudKitSync", "checkAccountChangeAndSync success")
             val userRecordName = json.optString("userRecordName")
             val nameObj = json.optJSONObject("name")
             val firstName = nameObj?.optString("first") ?: ""

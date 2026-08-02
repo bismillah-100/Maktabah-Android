@@ -37,6 +37,7 @@ import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
@@ -87,6 +88,7 @@ import com.maktabah.cloudKit.CloudKitSyncManager
 import com.maktabah.database.AnnotationManager
 import com.maktabah.models.ReadingEntry
 import com.maktabah.utils.normalizeArabic
+import com.maktabah.ui.common.drawVerticalScrollbar
 import com.maktabah.ui.common.DonationCard
 import com.maktabah.ui.common.DonationIconButton
 import com.maktabah.ui.common.InsetGroupedItem
@@ -130,6 +132,7 @@ fun HistoryScreen(
     }.collectAsState()
 
     var showAddFavoriteSheet by remember { mutableStateOf(false) }
+    var selectedBookInfoId by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
 
@@ -142,7 +145,7 @@ fun HistoryScreen(
             },
             topBar = {
                 HistoryTopBar(
-                    searchQuery = searchQuery.normalizeArabic(),
+                    searchQuery = searchQuery,
                     onSearchQueryChange = { historyViewModel.updateSearchQuery(it) },
                     isSyncing = isSyncing,
                     hasDonated = hasDonated,
@@ -185,6 +188,11 @@ fun HistoryScreen(
                     state = listState,
                     modifier = Modifier
                         .fillMaxSize()
+                        .drawVerticalScrollbar(
+                            state = listState,
+                            topPadding = padding.calculateTopPadding(),
+                            bottomPadding = bottomPadding
+                        )
                         .fadingEdge(listState, padding.calculateTopPadding()),
                     contentPadding = PaddingValues(
                         top = padding.calculateTopPadding() + 16.dp,
@@ -208,7 +216,9 @@ fun HistoryScreen(
                         onToggleFavorite = { id ->
                             val entry = historyViewModel.toggleFavorite(id)
                             cloudKitSyncManager.uploadHistory(context, listOf(entry))
-                        }
+                        },
+                        onShowBookInfo = { selectedBookInfoId = it },
+                        libraryViewModel = libraryViewModel
                     )
 
                     item(key = "history_favorites_spacer") {
@@ -232,7 +242,9 @@ fun HistoryScreen(
                         onRemoveFavorite = { id ->
                             val entry = historyViewModel.toggleFavorite(id)
                             cloudKitSyncManager.uploadHistory(context, listOf(entry))
-                        }
+                        },
+                        onShowBookInfo = { selectedBookInfoId = it },
+                        libraryViewModel = libraryViewModel
                     )
 
                     if (!hasDonated) {
@@ -253,6 +265,16 @@ fun HistoryScreen(
                     val entry = historyViewModel.toggleFavorite(bookId)
                     cloudKitSyncManager.uploadHistory(context, listOf(entry))
                 }
+            )
+        }
+
+        if (selectedBookInfoId != null) {
+            val bookName = libraryViewModel.dataManager.booksById[selectedBookInfoId]?.name ?: "Unknown"
+            com.maktabah.ui.reader.BookInfoSheet(
+                bookId = selectedBookInfoId!!,
+                defaultTitle = bookName,
+                libraryViewModel = libraryViewModel,
+                onDismissRequest = { selectedBookInfoId = null }
             )
         }
     }
@@ -313,6 +335,8 @@ private fun LazyListScope.historySection(
     onNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
     onRemoveHistory: (Int) -> Unit,
     onToggleFavorite: (Int) -> Unit,
+    onShowBookInfo: (Int) -> Unit,
+    libraryViewModel: LibraryViewModel,
 ) {
     item(key = "history_header") {
         SectionHeader(
@@ -413,6 +437,13 @@ private fun LazyListScope.historySection(
 															onClick = { onToggleFavorite(bookId) },
 														)
 													)
+                                                    add(
+                                                        PopoverMenuAction(
+                                                            label = stringResource(R.string.reader_menu_book_info),
+                                                            icon = Icons.Default.Info,
+                                                            onClick = { onShowBookInfo(bookId) },
+                                                        )
+                                                    )
 												},
 											)
                                         }
@@ -435,6 +466,8 @@ private fun LazyListScope.favoritesSection(
     bookById: (Int) -> com.maktabah.models.BooksData?,
     onNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
     onRemoveFavorite: (Int) -> Unit,
+    onShowBookInfo: (Int) -> Unit,
+    libraryViewModel: LibraryViewModel,
 ) {
     item(key = "favorites_header") {
         SectionHeader(
@@ -504,6 +537,13 @@ private fun LazyListScope.favoritesSection(
 										onClick = { onRemoveFavorite(bookId) },
 									)
 								)
+                                add(
+                                    PopoverMenuAction(
+                                        label = stringResource(R.string.reader_menu_book_info),
+                                        icon = Icons.Default.Info,
+                                        onClick = { onShowBookInfo(bookId) },
+                                    )
+                                )
 							},
 						)
                     }
@@ -616,6 +656,11 @@ private fun AddFavoriteSheet(
                         modifier = Modifier
                             .nestedScroll(nestedScrollConnection)
                             .fillMaxSize()
+                            .drawVerticalScrollbar(
+                                state = listState,
+                                topPadding = topPadding,
+                                bottomPadding = 32.dp
+                            )
                             .fadingEdge(listState, 48.dp),
                         state = listState,
                         contentPadding = PaddingValues(top = topPadding, bottom = 32.dp)

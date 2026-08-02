@@ -57,6 +57,7 @@ import com.maktabah.models.FolderNode
 import com.maktabah.models.ResultNode
 import com.maktabah.models.SavedResultsItem
 import com.maktabah.ui.common.InsetGroupedItem
+import com.maktabah.ui.common.drawVerticalScrollbar
 import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.search.ResultsViewModel
 import com.maktabah.ui.search.SearchTextField
@@ -177,7 +178,7 @@ fun SavedResultsScreen(
 
                 SearchTextField(
                     value = searchQuery,
-                    onValueChange = { searchQuery = it.normalizeArabic() },
+                    onValueChange = { searchQuery = it },
                     onClearClick = { searchQuery = "" },
                     placeholder = stringResource(R.string.saved_results_search_globally),
                     modifier = Modifier
@@ -303,6 +304,11 @@ private fun SavedResultsList(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .drawVerticalScrollbar(
+                    state = listState,
+                    topPadding = topPadding,
+                    bottomPadding = bottomPadding
+                )
                 .fadingEdge(listState, 110.dp),
             state = listState,
             contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding + 16.dp)

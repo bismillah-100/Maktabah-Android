@@ -21,13 +21,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import com.maktabah.ui.common.drawGenericVerticalScrollbar
+import kotlinx.coroutines.delay
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -83,7 +87,30 @@ fun IbarotReaderContentView(
     var topOverscroll by remember { mutableFloatStateOf(0f) }
     var botOverscroll by remember { mutableFloatStateOf(0f) }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    val scrollOffset = remember { mutableFloatStateOf(0f) }
+    val scrollRange = remember { mutableFloatStateOf(0f) }
+    val scrollExtent = remember { mutableFloatStateOf(0f) }
+    var isScrollInProgress by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isScrollInProgress) {
+        if (isScrollInProgress) {
+            delay(1500)
+            isScrollInProgress = false
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .drawGenericVerticalScrollbar(
+                isScrollInProgress = isScrollInProgress,
+                scrollOffsetProvider = { scrollOffset.floatValue },
+                scrollRangeProvider = { scrollRange.floatValue },
+                scrollExtentProvider = { scrollExtent.floatValue },
+                topPadding = paddingValues.calculateTopPadding(),
+                bottomPadding = paddingValues.calculateBottomPadding()
+            )
+    ) {
         AndroidView(
             modifier =
                 Modifier
@@ -144,11 +171,19 @@ fun IbarotReaderContentView(
                 }.apply {
                     isFillViewport = true
                     isVerticalFadingEdgeEnabled = false
+                    isVerticalScrollBarEnabled = false
                     clipToPadding = false
                     // Agar ScrollView bisa menerima fokus alih-alih langsung ke child
                     isFocusable = true
                     isFocusableInTouchMode = true
                     descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
+
+                    setOnScrollChangeListener { v, _, scrollY, _, _ ->
+                        scrollOffset.floatValue = scrollY.toFloat()
+                        scrollRange.floatValue = (v as NestedScrollView).getChildAt(0).height.toFloat()
+                        scrollExtent.floatValue = v.height.toFloat()
+                        isScrollInProgress = true
+                    }
                 }
             val textView =
                 IbarotTextView(context).apply {

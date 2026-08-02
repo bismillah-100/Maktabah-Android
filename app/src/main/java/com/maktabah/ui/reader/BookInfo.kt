@@ -28,6 +28,9 @@ import com.maktabah.R
 import com.maktabah.ui.library.LibraryViewModel
 import com.maktabah.ui.common.fadingEdge
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookInfoSheet(
@@ -36,7 +39,9 @@ fun BookInfoSheet(
     libraryViewModel: LibraryViewModel,
     onDismissRequest: () -> Unit,
 ) {
-    val book = libraryViewModel.dataManager.booksById[bookId]
+    val book by libraryViewModel.getBookFlow(bookId).collectAsState(
+        initial = libraryViewModel.dataManager.booksById[bookId]
+    )
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         containerColor = MaterialTheme.colorScheme.surface,

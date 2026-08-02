@@ -77,7 +77,7 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun updateSearchQuery(query: String) {
-        _searchQuery.value = query.normalizeArabic()
+        _searchQuery.value = query
     }
 
     @OptIn(kotlinx.coroutines.FlowPreview::class)
