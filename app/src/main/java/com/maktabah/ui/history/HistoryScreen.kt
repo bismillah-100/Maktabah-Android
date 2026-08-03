@@ -1,5 +1,13 @@
 package com.maktabah.ui.history
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -284,36 +292,110 @@ private fun HistoryTopBar(
     onAddFavoriteClick: () -> Unit,
     onSyncClick: () -> Unit
 ) {
+    var isSearchFocused by remember { mutableStateOf(false) }
+
+    val searchPaddingEnd by animateDpAsState(
+        targetValue = if (isSearchFocused) 16.dp else 12.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "searchPaddingEnd"
+    )
+
     TopAppBar(
-        navigationIcon = { if (!hasDonated) DonationIconButton() },
+        navigationIcon = {
+            AnimatedVisibility(
+                visible = !isSearchFocused,
+                enter = expandHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    expandFrom = Alignment.Start,
+                ) + fadeIn(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                ),
+                exit = shrinkHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    shrinkTowards = Alignment.Start,
+                ) + fadeOut(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                ),
+            ) {
+                if (!hasDonated) DonationIconButton()
+            }
+        },
         title = {
             SearchTextField(
                 value = searchQuery,
                 onValueChange = onSearchQueryChange,
                 placeholder = stringResource(R.string.history_search_placeholder),
-                modifier = Modifier.padding(end = 12.dp),
-                onClearClick = { onSearchQueryChange("") }
+                modifier = Modifier
+                    .padding(end = searchPaddingEnd)
+                    .fillMaxWidth(),
+                onClearClick = { onSearchQueryChange("") },
+                onFocusChanged = { isSearchFocused = it }
             )
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         actions = {
-            IconButton(onClick = onAddFavoriteClick) {
-                Icon(
-                    Icons.Default.Add,
-                    contentDescription = stringResource(R.string.history_action_add_favorite)
-                )
-            }
-            IconButton(onClick = onSyncClick, enabled = !isSyncing) {
-                if (isSyncing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                } else {
-                    Icon(
-                        Icons.Default.Refresh,
-                        contentDescription = stringResource(R.string.history_settings_cloudkit)
-                    )
+            AnimatedVisibility(
+                visible = !isSearchFocused,
+                enter = expandHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    expandFrom = Alignment.End,
+                ) + fadeIn(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                ),
+                exit = shrinkHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    shrinkTowards = Alignment.End,
+                ) + fadeOut(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                ),
+            ) {
+                Row {
+                    IconButton(onClick = onAddFavoriteClick) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = stringResource(R.string.history_action_add_favorite)
+                        )
+                    }
+                    IconButton(onClick = onSyncClick, enabled = !isSyncing) {
+                        if (isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = stringResource(R.string.history_settings_cloudkit)
+                            )
+                        }
+                    }
                 }
             }
         },
