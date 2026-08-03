@@ -73,8 +73,6 @@ fun SearchTextField(
 
     val isArabic = remember(value) { value.startsWithArabic() }
 
-    val layoutDirection = if (isArabic) LayoutDirection.Rtl else LayoutDirection.Ltr
-
     val borderColor =
         if (isError) {
             MaterialTheme.colorScheme.error
@@ -84,68 +82,67 @@ fun SearchTextField(
             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
         }
 
-    CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier =
-                modifier
-                    .fillMaxWidth()
-                    .height(40.dp)
-                    .border(width = 1.dp, color = borderColor, shape = CircleShape),
-            textStyle =
-                MaterialTheme.typography.bodyMedium.copy(
-                    color = MaterialTheme.colorScheme.onSurface,
-                ),
-            singleLine = true,
-            keyboardOptions = keyboardOptions,
-            cursorBrush =
-                SolidColor(
-                    if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                ),
-            interactionSource = interactionSource,
-            decorationBox = { innerTextField ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(start = 12.dp, end = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(40.dp)
+                .border(width = 1.dp, color = borderColor, shape = CircleShape),
+        textStyle =
+            MaterialTheme.typography.bodyMedium.copy(
+                color = MaterialTheme.colorScheme.onSurface,
+                textDirection = if (isArabic) androidx.compose.ui.text.style.TextDirection.Rtl else androidx.compose.ui.text.style.TextDirection.Ltr
+            ),
+        singleLine = true,
+        keyboardOptions = keyboardOptions,
+        cursorBrush =
+            SolidColor(
+                if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+            ),
+        interactionSource = interactionSource,
+        decorationBox = { innerTextField ->
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 12.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.CenterStart,
                 ) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .padding(horizontal = 8.dp),
-                        contentAlignment = Alignment.CenterStart,
-                    ) {
-                        if (value.isEmpty()) {
-                            Text(
-                                text = placeholder,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                            )
-                        }
-                        innerTextField()
+                    if (value.isEmpty()) {
+                        Text(
+                            text = placeholder,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                        )
                     }
+                    innerTextField()
+                }
 
-                    if (onClearClick != null && value.isNotEmpty()) {
-                        IconButton(
-                            onClick = onClearClick,
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Clear text",
-                                tint = MaterialTheme.colorScheme.onBackground,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
+                if (onClearClick != null && value.isNotEmpty()) {
+                    IconButton(
+                        onClick = onClearClick,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Clear text",
+                            tint = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
-            },
-        )
-    }
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
