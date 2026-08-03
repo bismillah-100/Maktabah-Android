@@ -41,6 +41,19 @@ fun String.normalizeArabic(removeDiacritics: Boolean = true): String {
 
 fun String.removingHarakat(): String = this.filter { !it.isArabicHarakat() }
 
+/**
+ * Checks whether the first non-whitespace character in this string is an Arabic character.
+ */
+fun String.startsWithArabic(): Boolean {
+    val firstChar = this.firstOrNull { !it.isWhitespace() } ?: return false
+    val code = firstChar.code
+    return code in 0x0600..0x06FF ||
+        code in 0x0750..0x077F ||
+        code in 0x08A0..0x08FF ||
+        code in 0xFB50..0xFDFF ||
+        code in 0xFE70..0xFEFF
+}
+
 fun String.convertToArabicDigits(): String {
     val builder = java.lang.StringBuilder(this.length)
     for (char in this) {

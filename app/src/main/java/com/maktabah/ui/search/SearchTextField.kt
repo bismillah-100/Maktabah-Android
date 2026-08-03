@@ -29,17 +29,23 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.maktabah.models.AnnotationSearchScope
+import com.maktabah.utils.startsWithArabic
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -51,17 +57,26 @@ fun SearchTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     isError: Boolean = false,
     onClearClick: (() -> Unit)? = null,
+    onFocusChanged: (Boolean) -> Unit = {},
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
     val focusManager = LocalFocusManager.current
     val isImeVisible = WindowInsets.isImeVisible
 
+    LaunchedEffect(isFocused) {
+        onFocusChanged(isFocused)
+    }
+
     LaunchedEffect(isImeVisible) {
         if (!isImeVisible && isFocused) {
             focusManager.clearFocus()
         }
     }
+
+    val isArabic = remember(value) { value.startsWithArabic() }
+
+    val layoutDirection = if (isArabic) LayoutDirection.Rtl else LayoutDirection.Ltr
 
     val borderColor =
         if (isError) {
@@ -72,66 +87,68 @@ fun SearchTextField(
             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
         }
 
-    BasicTextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(40.dp)
-                .border(width = 1.dp, color = borderColor, shape = CircleShape),
-        textStyle =
-            MaterialTheme.typography.bodyMedium.copy(
-                color = MaterialTheme.colorScheme.onSurface,
-            ),
-        singleLine = true,
-        keyboardOptions = keyboardOptions,
-        cursorBrush =
-            SolidColor(
-                if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-            ),
-        interactionSource = interactionSource,
-        decorationBox = { innerTextField ->
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(start = 12.dp, end = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .padding(horizontal = 8.dp),
-                    contentAlignment = Alignment.CenterStart,
+    CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .height(40.dp)
+                    .border(width = 1.dp, color = borderColor, shape = CircleShape),
+            textStyle =
+                MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                ),
+            singleLine = true,
+            keyboardOptions = keyboardOptions,
+            cursorBrush =
+                SolidColor(
+                    if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                ),
+            interactionSource = interactionSource,
+            decorationBox = { innerTextField ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(start = 12.dp, end = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (value.isEmpty()) {
-                        Text(
-                            text = placeholder,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                        )
-                    }
-                    innerTextField()
-                }
-
-                if (onClearClick != null && value.isNotEmpty()) {
-                    IconButton(
-                        onClick = onClearClick,
-                        modifier = Modifier.size(32.dp)
+                    Box(
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.CenterStart,
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Clear text",
-                            tint = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.size(18.dp)
-                        )
+                        if (value.isEmpty()) {
+                            Text(
+                                text = placeholder,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                            )
+                        }
+                        innerTextField()
+                    }
+
+                    if (onClearClick != null && value.isNotEmpty()) {
+                        IconButton(
+                            onClick = onClearClick,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Clear text",
+                                tint = MaterialTheme.colorScheme.onBackground,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
-            }
-        },
-    )
+            },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
