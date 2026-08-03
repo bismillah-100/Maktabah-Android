@@ -27,14 +27,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -46,6 +45,7 @@ import com.maktabah.models.FlashTarget
 import com.maktabah.models.SearchMode
 import com.maktabah.ui.common.InsetGroupedItem
 import com.maktabah.ui.common.fadingEdge
+import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import com.maktabah.ui.library.LibraryViewModel
 import com.maktabah.ui.search.QueryInputBar
 import com.maktabah.ui.search.SearchHelpDialog
@@ -62,7 +62,6 @@ fun BookSearchSheet(
     bookId: Int,
     libraryViewModel: LibraryViewModel,
     viewModel: ReaderViewModel,
-    tabId: String,
     onDismissRequest: () -> Unit,
 ) {
     val bookSearchViewModel = viewModel.bookSearchViewModel
@@ -132,7 +131,7 @@ fun BookSearchSheet(
 
             val searchKeywords = remember(lastSearchQuery, searchMode) {
                 val normalized = lastSearchQuery.normalizeArabic()
-                if (normalized.isBlank()) emptyList<String>()
+                if (normalized.isBlank()) emptyList()
                 else when (searchMode) {
                     SearchMode.PHRASE -> listOf(normalized)
                     else -> normalized.split(" ").filter { it.isNotBlank() }

@@ -3,47 +3,36 @@ package com.maktabah.ui.history
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
-import kotlinx.coroutines.delay
-import kotlin.time.Duration.Companion.milliseconds
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -51,8 +40,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -60,7 +47,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -75,40 +61,36 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.offset
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupPositionProvider
+import androidx.core.content.edit
 import com.maktabah.R
 import com.maktabah.cloudKit.CloudKitSyncManager
 import com.maktabah.database.AnnotationManager
 import com.maktabah.models.ReadingEntry
-import com.maktabah.utils.normalizeArabic
 import com.maktabah.ui.common.DonationCard
 import com.maktabah.ui.common.DonationIconButton
 import com.maktabah.ui.common.InsetGroupedItem
-import com.maktabah.ui.common.fadingEdge
-import com.maktabah.ui.common.PopoverArrowShape
 import com.maktabah.ui.common.PopoverMenuAction
 import com.maktabah.ui.common.TapCenteredPopover
+import com.maktabah.ui.common.fadingEdge
+import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import com.maktabah.ui.library.LibraryViewModel
 import com.maktabah.ui.search.SearchTextField
-import kotlin.math.roundToInt
+import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -203,9 +185,9 @@ fun HistoryScreen(
                 ) {
                     historySection(
                         isExpanded = historyExpanded,
-                        onToggleExpand = { 
+                        onToggleExpand = {
                             historyExpanded = !historyExpanded
-                            sharedPrefs.edit().putBoolean("historyExpanded", historyExpanded).apply()
+                            sharedPrefs.edit { putBoolean("historyExpanded", historyExpanded) }
                         },
                         historyItems = filteredHistory,
                         entriesByBookId = entriesByBookId,
@@ -219,8 +201,7 @@ fun HistoryScreen(
                             val entry = historyViewModel.toggleFavorite(id)
                             cloudKitSyncManager.uploadHistory(context, listOf(entry))
                         },
-                        onShowBookInfo = { selectedBookInfoId = it },
-                        libraryViewModel = libraryViewModel
+                        onShowBookInfo = { selectedBookInfoId = it }
                     )
 
                     item(key = "history_favorites_spacer") {
@@ -233,9 +214,9 @@ fun HistoryScreen(
 
                     favoritesSection(
                         isExpanded = favoritesExpanded,
-                        onToggleExpand = { 
+                        onToggleExpand = {
                             favoritesExpanded = !favoritesExpanded
-                            sharedPrefs.edit().putBoolean("favoritesExpanded", favoritesExpanded).apply()
+                            sharedPrefs.edit { putBoolean("favoritesExpanded", favoritesExpanded)}
                         },
                         favoriteItems = filteredFavorites,
                         entriesByBookId = entriesByBookId,
@@ -245,8 +226,7 @@ fun HistoryScreen(
                             val entry = historyViewModel.toggleFavorite(id)
                             cloudKitSyncManager.uploadHistory(context, listOf(entry))
                         },
-                        onShowBookInfo = { selectedBookInfoId = it },
-                        libraryViewModel = libraryViewModel
+                        onShowBookInfo = { selectedBookInfoId = it }
                     )
 
                     if (!hasDonated) {
@@ -412,7 +392,6 @@ private fun LazyListScope.historySection(
     onRemoveHistory: (Int) -> Unit,
     onToggleFavorite: (Int) -> Unit,
     onShowBookInfo: (Int) -> Unit,
-    libraryViewModel: LibraryViewModel,
 ) {
     item(key = "history_header") {
         SectionHeader(
@@ -543,7 +522,6 @@ private fun LazyListScope.favoritesSection(
     onNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
     onRemoveFavorite: (Int) -> Unit,
     onShowBookInfo: (Int) -> Unit,
-    libraryViewModel: LibraryViewModel,
 ) {
     item(key = "favorites_header") {
         SectionHeader(

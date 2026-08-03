@@ -65,14 +65,6 @@ class BookDownloadService : Service() {
                 updateStates { states -> states.filter { it.id != stateId } }
             }
         }
-
-        fun cancelDownload(context: Context, stateId: String) {
-            val intent = Intent(context, BookDownloadService::class.java).apply {
-                action = ACTION_CANCEL_DOWNLOAD
-                putExtra(EXTRA_STATE_ID, stateId)
-            }
-            context.startService(intent)
-        }
     }
 
     override fun onCreate() {
@@ -338,7 +330,7 @@ class BookDownloadService : Service() {
     }.build()
 
     private fun showCompletedNotification(title: String, message: String) {
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(message)
@@ -351,16 +343,14 @@ class BookDownloadService : Service() {
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                applicationContext.getString(R.string.download_notification_channel_name),
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = applicationContext.getString(R.string.download_notification_channel_desc)
-            }
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(channel)
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            applicationContext.getString(R.string.download_notification_channel_name),
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = applicationContext.getString(R.string.download_notification_channel_desc)
         }
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(channel)
     }
 }

@@ -1,21 +1,22 @@
 package com.maktabah.utils
 
+import android.content.res.ColorStateList
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.RippleDrawable
-import android.graphics.drawable.ColorDrawable
 import android.view.View
+import androidx.core.graphics.drawable.toDrawable
+import androidx.core.graphics.withClip
 import androidx.recyclerview.widget.RecyclerView
-import android.content.res.ColorStateList
 
 class ItemHighlightDrawable(private val parentView: () -> View?) : Drawable() {
     val rippleDrawable = RippleDrawable(
         ColorStateList.valueOf(Color.TRANSPARENT),
         null,
-        ColorDrawable(Color.WHITE)
+        Color.WHITE.toDrawable()
     )
 
     private var currentHighlightColor: Int = Color.TRANSPARENT
@@ -27,7 +28,7 @@ class ItemHighlightDrawable(private val parentView: () -> View?) : Drawable() {
     }
 
     init {
-        rippleDrawable.callback = object : Drawable.Callback {
+        rippleDrawable.callback = object : Callback {
             override fun invalidateDrawable(who: Drawable) {
                 parentView()?.invalidate()
             }
@@ -90,7 +91,7 @@ class GroupedCardDecoration(
     private val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val halfStroke = strokeWidth / 2f
     private val path = Path()
-    
+
     // Cached objects to avoid allocation in onDraw
     private val currentGroupChildren = mutableListOf<View>()
     private val sortedChildren = mutableListOf<View>()
@@ -120,14 +121,14 @@ class GroupedCardDecoration(
 
     private fun snap(v: Float) = kotlin.math.floor(v) + 0.5f
 
-    private fun getVisibleTop(child: android.view.View): Float {
+    private fun getVisibleTop(child: View): Float {
         if (child.translationY <= -9999f) {
             return child.tag as? Float ?: 0f
         }
         return child.top + child.translationY + (child.clipBounds?.top ?: 0)
     }
 
-    private fun getVisibleBottom(child: android.view.View): Float {
+    private fun getVisibleBottom(child: View): Float {
         if (child.translationY <= -9999f) {
             return child.tag as? Float ?: 0f
         }
@@ -183,31 +184,34 @@ class GroupedCardDecoration(
             c.drawPath(path, fillPaint)
 
             if (highlightColor != 0) {
-                c.save()
-                c.clipPath(path)
-                val baseAlpha = Color.alpha(highlightColor)
-                for (groupChild in currentGroupChildren) {
-                    val bg = groupChild.background as? ItemHighlightDrawable
-                    if (bg != null) {
-                        bg.setHighlightColor(highlightColor)
-                        val translatedTop = groupChild.top + groupChild.translationY
-                        val translatedBottom = groupChild.bottom + groupChild.translationY
-                        
-                        val clipBounds = groupChild.clipBounds
-                        val visibleTop = snap(translatedTop + (clipBounds?.top ?: 0))
-                        val visibleBottom = snap(if (clipBounds != null) translatedTop + clipBounds.bottom else translatedBottom)
+                c.withClip(path) {
+                    for (groupChild in currentGroupChildren) {
+                        val bg = groupChild.background as? ItemHighlightDrawable
+                        if (bg != null) {
+                            bg.setHighlightColor(highlightColor)
+                            val translatedTop = groupChild.top + groupChild.translationY
+                            val translatedBottom = groupChild.bottom + groupChild.translationY
 
-                        if (visibleTop < visibleBottom) {
-                            c.save()
-                            c.clipRect(left, visibleTop, right, visibleBottom)
-                            c.translate(left, snap(translatedTop))
-                            bg.rippleDrawable.setBounds(0, 0, (right - left).toInt(), (translatedBottom - translatedTop).toInt())
-                            bg.rippleDrawable.draw(c)
-                            c.restore()
+                            val clipBounds = groupChild.clipBounds
+                            val visibleTop = snap(translatedTop + (clipBounds?.top ?: 0))
+                            val visibleBottom =
+                                snap(if (clipBounds != null) translatedTop + clipBounds.bottom else translatedBottom)
+
+                            if (visibleTop < visibleBottom) {
+                                withClip(left, visibleTop, right, visibleBottom) {
+                                    translate(left, snap(translatedTop))
+                                    bg.rippleDrawable.setBounds(
+                                        0,
+                                        0,
+                                        (right - left).toInt(),
+                                        (translatedBottom - translatedTop).toInt()
+                                    )
+                                    bg.rippleDrawable.draw(this)
+                                }
+                            }
                         }
                     }
                 }
-                c.restore()
                 highlightPaint.color = highlightColor
             }
 
@@ -216,22 +220,20 @@ class GroupedCardDecoration(
                     c.drawPath(path, strokePaint)
                 } else {
                     val strokePath = Path()
-                    val rTop = topRadius
-                    val rBot = bottomRadius
 
-                    if (rTop > 0f && rBot == 0f) {
+                    if (topRadius > 0f && bottomRadius == 0f) {
                         strokePath.moveTo(left, bottom)
-                        strokePath.lineTo(left, top + rTop)
-                        strokePath.arcTo(left, top, left + 2 * rTop, top + 2 * rTop, 180f, 90f, false)
-                        strokePath.lineTo(right - rTop, top)
-                        strokePath.arcTo(right - 2 * rTop, top, right, top + 2 * rTop, 270f, 90f, false)
+                        strokePath.lineTo(left, top + topRadius)
+                        strokePath.arcTo(left, top, left + 2 * topRadius, top + 2 * topRadius, 180f, 90f, false)
+                        strokePath.lineTo(right - topRadius, top)
+                        strokePath.arcTo(right - 2 * topRadius, top, right, top + 2 * topRadius, 270f, 90f, false)
                         strokePath.lineTo(right, bottom)
-                    } else if (rTop == 0f && rBot > 0f) {
+                    } else if (topRadius == 0f && bottomRadius > 0f) {
                         strokePath.moveTo(left, top)
-                        strokePath.lineTo(left, bottom - rBot)
-                        strokePath.arcTo(left, bottom - 2 * rBot, left + 2 * rBot, bottom, 180f, -90f, false)
-                        strokePath.lineTo(right - rBot, bottom)
-                        strokePath.arcTo(right - 2 * rBot, bottom - 2 * rBot, right, bottom, 90f, -90f, false)
+                        strokePath.lineTo(left, bottom - bottomRadius)
+                        strokePath.arcTo(left, bottom - 2 * bottomRadius, left + 2 * bottomRadius, bottom, 180f, -90f, false)
+                        strokePath.lineTo(right - bottomRadius, bottom)
+                        strokePath.arcTo(right - 2 * bottomRadius, bottom - 2 * bottomRadius, right, bottom, 90f, -90f, false)
                         strokePath.lineTo(right, top)
                     } else {
                         strokePath.moveTo(left, top)

@@ -72,10 +72,10 @@ import androidx.core.view.WindowCompat
 import androidx.core.widget.NestedScrollView
 import com.maktabah.R
 import com.maktabah.database.AnnotationManager
-import com.maktabah.utils.ColorPreferences
 import com.maktabah.models.ActiveAnnotationState
 import com.maktabah.ui.history.HistoryViewModel
 import com.maktabah.ui.library.LibraryViewModel
+import com.maktabah.utils.ColorPreferences
 import com.maktabah.utils.convertToArabicDigits
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.seconds
@@ -590,7 +590,6 @@ fun ReaderScreen(
             bookId = bookId,
             libraryViewModel = libraryViewModel,
             viewModel = viewModel,
-            tabId = activeTabId ?: "",
             onDismissRequest = { showBookSearchSheet = false },
         )
     }

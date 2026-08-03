@@ -22,7 +22,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -32,19 +31,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
-import com.maktabah.ui.common.drawGenericVerticalScrollbar
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.ColorUtils
@@ -54,10 +49,15 @@ import com.maktabah.models.Annotation
 import com.maktabah.models.FlashTarget
 import com.maktabah.ui.common.AnnotationSpan
 import com.maktabah.ui.common.ArabicTextRenderer
+import com.maktabah.ui.common.drawGenericVerticalScrollbar
 import com.maktabah.utils.HONORIFIC_PHRASES
 import com.maktabah.utils.findArabicMatchingRanges
 import com.maktabah.utils.isArabicHarakat
 import com.maktabah.utils.normalizeArabic
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun IbarotReaderContentView(
@@ -191,7 +191,7 @@ fun IbarotReaderContentView(
                         }
                         scrollJobRef[0]?.cancel()
                         scrollJobRef[0] = scope.launch {
-                            delay(150)
+                            delay(350.milliseconds)
                             isScrollInProgress = false
                         }
                     }
@@ -407,12 +407,11 @@ fun IbarotReaderContentView(
                 if (isTop) topOverscroll = progress else botOverscroll = progress
             }
 
-            val flashTargetValue = flashTarget
-            if (flashTargetValue != null && (flashTargetValue.targetContentId == null || flashTargetValue.targetContentId == contentId)) {
+            if (flashTarget != null && (flashTarget.targetContentId == null || flashTarget.targetContentId == contentId)) {
                 var targetStart = -1
                 var targetEnd = -1
 
-                if (flashTargetValue.loc != null && flashTargetValue.len != null) {
+                if (flashTarget.loc != null && flashTarget.len != null) {
                     val spannable = textView.text as? Spanned
                     if (spannable != null) {
                         val spans =
@@ -423,19 +422,19 @@ fun IbarotReaderContentView(
                             )
                         val targetAnn =
                             spans.find {
-                                it.annotation.rangeLocation == flashTargetValue.loc &&
-                                    it.annotation.rangeLength == flashTargetValue.len
+                                it.annotation.rangeLocation == flashTarget.loc &&
+                                    it.annotation.rangeLength == flashTarget.len
                             }
                         if (targetAnn != null) {
                             targetStart = spannable.getSpanStart(targetAnn)
                             targetEnd = spannable.getSpanEnd(targetAnn)
                         }
                     }
-                } else if (flashTargetValue.query != null) {
+                } else if (flashTarget.query != null) {
                     val range = findQueryRange(
                         textView.text,
-                        flashTargetValue.query,
-                        onlyParagraphStart = flashTargetValue.isParagraphStart
+                        flashTarget.query,
+                        onlyParagraphStart = flashTarget.isParagraphStart
                     )
                     if (range != null) {
                         targetStart = range.first
@@ -446,7 +445,7 @@ fun IbarotReaderContentView(
                 if (targetStart != -1 && targetEnd != -1) {
                     textView.flashRange(targetStart, targetEnd)
                     viewModel.clearFlashTarget()
-                } else if (flashTargetValue.targetContentId == contentId) {
+                } else if (flashTarget.targetContentId == contentId) {
                     viewModel.clearFlashTarget()
                 }
             }
@@ -643,7 +642,7 @@ private fun findQueryRange(
             for (range in ranges) {
                 val idx = range.first
                 if (idx >= cleanIdx) continue
-                
+
                 val origStart = cleanToOrig[idx]
                 var isAtStart = false
                 var p = origStart - 1
@@ -662,14 +661,13 @@ private fun findQueryRange(
                 if (p < 0) isAtStart = true
 
                 if (isAtStart) {
-                    val start = origStart
                     val endIdx = range.last
                     val end = if (endIdx < cleanIdx) {
                         cleanToOrig[endIdx] + 1
                     } else {
                         renderedStr.length
                     }
-                    return start to end
+                    return origStart to end
                 }
             }
             return null

@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Port dari iOS ResultsViewModel.swift.
@@ -67,8 +68,6 @@ class ResultsViewModel : ViewModel() {
         }
     }
 
-    fun getHandler(): ResultsHandler? = resultsHandler
-
     fun pushFolder(folder: FolderNode) {
         val current = _folderStack.value.toMutableList()
         current.add(folder)
@@ -83,10 +82,6 @@ class ResultsViewModel : ViewModel() {
             return true
         }
         return false
-    }
-
-    fun clearFolderStack() {
-        _folderStack.value = emptyList()
     }
 
     // region Folders
@@ -258,7 +253,7 @@ class ResultsViewModel : ViewModel() {
         handler.deleteFolder(node.id)
 
         for (id in allIds) {
-            _folderResults.value = _folderResults.value - id
+            _folderResults.value -= id
             folderById.remove(id)
             parentById.remove(id)
         }
@@ -271,7 +266,7 @@ class ResultsViewModel : ViewModel() {
         // Remove node from tree
         removeNodeFromTree(node)
         _folderRoots.value = _folderRoots.value.toList()
-        
+
         appContext?.let { CloudKitResultSyncHelper.delete(it, emptyList()) }
     }
 
@@ -324,7 +319,7 @@ class ResultsViewModel : ViewModel() {
         _folderResults.value = current
 
         resultById.entries.removeAll { (_, r) -> r.parentId == parentFolderId && r.name == name }
-        
+
         appContext?.let { CloudKitResultSyncHelper.delete(it, emptyList()) }
     }
 
@@ -447,23 +442,6 @@ class ResultsViewModel : ViewModel() {
         }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
     }
 
-    fun folderPath(folderId: Long?): String {
-        var id = folderId ?: return "Root"
-        val parts = mutableListOf<String>()
-        while (true) {
-            val node = folderById[id] ?: break
-            parts.add(0, node.name)
-            val parent = parentById[id]
-            if (parent != null) id = parent else break
-        }
-        return parts.joinToString(" / ")
-    }
-
-    fun findFolder(id: Long): FolderNode? = folderById[id]
-
-    val allFolders: List<FolderNode>
-        get() = folderById.values.toList()
-
     // endregion
 
     // region Sync reload
@@ -573,10 +551,10 @@ object CloudKitResultSyncHelper {
     private fun triggerSync(context: android.content.Context) {
         syncJob?.cancel()
         syncJob = scope.launch {
-            kotlinx.coroutines.delay(3000)
+            kotlinx.coroutines.delay(3000.milliseconds)
             val result = com.maktabah.cloudKit.CloudKitSyncManager().syncResults(context)
             if (com.maktabah.BuildConfig.DEBUG) {
-                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                withContext(Dispatchers.Main) {
                     android.widget.Toast.makeText(context, "CloudKit Upload: $result", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }

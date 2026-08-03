@@ -33,13 +33,11 @@ import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Output
 import androidx.compose.material.icons.filled.ImportExport
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -75,6 +73,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.core.content.edit
 import androidx.core.graphics.toColorInt
 import androidx.core.graphics.withClip
 import com.maktabah.R
@@ -89,8 +88,8 @@ import com.maktabah.ui.common.GroupedRecyclerView
 import com.maktabah.ui.common.rememberGroupedListColors
 import com.maktabah.ui.history.HistoryViewModel
 import com.maktabah.ui.library.LibraryViewModel
-import com.maktabah.ui.search.SearchTextField
 import com.maktabah.ui.search.AnnotationSearchScopeSegmentedRow
+import com.maktabah.ui.search.SearchTextField
 import com.maktabah.utils.GroupedCardDecoration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -347,7 +346,7 @@ fun AnnotationsScreen(
                     onToggleAnnotationSelection = { viewModel.toggleAnnotationSelection(it) },
                     annotationManager = annotationManager,
                     onHeaderLongClick = { group, view ->
-                        if (group is com.maktabah.models.AnnotationGroup.BookGroup) {
+                        if (group is AnnotationGroup.BookGroup) {
                             val location = IntArray(2)
                             view.getLocationInWindow(location)
                             popoverAnchor = androidx.compose.ui.unit.IntRect(
@@ -370,7 +369,6 @@ fun AnnotationsScreen(
                         )
                         popoverAnnotation = ann
                     },
-                    libraryViewModel = libraryViewModel,
                 )
             }
         }
@@ -899,7 +897,6 @@ private fun AnnotationsList(
     annotationManager: AnnotationManager,
     onHeaderLongClick: (AnnotationGroup, android.view.View) -> Unit,
     onAnnotationLongClick: (com.maktabah.models.Annotation, android.view.View) -> Unit,
-    libraryViewModel: LibraryViewModel,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -1161,10 +1158,10 @@ private fun AnnotationsList(
                         val pos = lm.findFirstVisibleItemPosition()
                         val view = lm.findViewByPosition(pos)
                         val offset = (view?.top ?: 0) - rv.paddingTop
-                        sharedPrefs.edit()
-                            .putInt("scroll_pos", pos)
-                            .putInt("scroll_offset", offset)
-                            .apply()
+                        sharedPrefs.edit {
+                            putInt("scroll_pos", pos)
+                                .putInt("scroll_offset", offset)
+                        }
                     }
                 }
             },

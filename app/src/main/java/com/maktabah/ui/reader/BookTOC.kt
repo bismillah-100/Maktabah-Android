@@ -12,12 +12,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -39,7 +37,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
@@ -50,6 +47,7 @@ import com.maktabah.models.TOCNode
 import com.maktabah.models.VisibleTOCNode
 import com.maktabah.ui.common.InsetGroupedItem
 import com.maktabah.ui.common.fadingEdge
+import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import com.maktabah.ui.search.SearchTextField
 import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.Dispatchers

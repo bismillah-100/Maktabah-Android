@@ -412,7 +412,7 @@ fun buildHighlightedText(
 
             val ranges = text.findArabicMatchingRanges(searchKeywords)
             for (range in ranges) {
-                if (range.first in 0 until text.length && range.last < text.length && range.first <= range.last) {
+                if (range.first in text.indices && range.last < text.length && range.first <= range.last) {
                     addStyle(
                         style = SpanStyle(background = highlightColor),
                         start = range.first,

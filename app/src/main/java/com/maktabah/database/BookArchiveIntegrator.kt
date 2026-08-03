@@ -4,13 +4,12 @@ package com.maktabah.database
 
 import android.content.Context
 import android.util.Log
-import com.github.luben.zstd.Zstd
 import com.maktabah.models.IntegratePhase
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.removingHarakat
 import com.maktabah.utils.stemArabicLight10
-import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import java.io.File
 
@@ -76,7 +75,7 @@ object BookArchiveIntegrator {
             var sourceTableId: String? = null
             db.prepare("SELECT name FROM sourceDB.sqlite_master WHERE type='table' AND name LIKE 'b%' AND name NOT LIKE '%_fts' LIMIT 1;")?.use { stmt ->
                 if (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                    coroutineContext.ensureActive()
+                    currentCoroutineContext().ensureActive()
                     val name = stmt.columnText(0)
                     if (name != null && name.startsWith("b")) {
                         sourceTableId = name.substring(1)
@@ -100,7 +99,7 @@ object BookArchiveIntegrator {
             val columns = mutableListOf<TableColumnInfo>()
             db.prepare("PRAGMA sourceDB.table_info('$sourceTableName');")?.use { stmt ->
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                    coroutineContext.ensureActive()
+                    currentCoroutineContext().ensureActive()
                     val name = stmt.columnText(1) ?: continue
                     val type = stmt.columnText(2) ?: "TEXT"
                     val isPk = stmt.columnInt(5) == 1
@@ -136,7 +135,7 @@ object BookArchiveIntegrator {
                     Log.d(TAG, "nass column index: $nassIndex")
 
                     while (selectStmt.step() == SQLiteDB.SQLITE_ROW) {
-                        coroutineContext.ensureActive()
+                        currentCoroutineContext().ensureActive()
                         insertStmt.reset()
                         insertStmt.clearBindings()
 
@@ -191,7 +190,7 @@ object BookArchiveIntegrator {
             val tocColumns = mutableListOf<TableColumnInfo>()
             db.prepare("PRAGMA sourceDB.table_info('$sourceTocTableName');")?.use { stmt ->
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                    coroutineContext.ensureActive()
+                    currentCoroutineContext().ensureActive()
                     val name = stmt.columnText(1) ?: continue
                     val type = stmt.columnText(2) ?: "TEXT"
                     val isPk = stmt.columnInt(5) == 1
@@ -215,7 +214,7 @@ object BookArchiveIntegrator {
                 db.prepare(insertTocSql)?.use { insertTocStmt ->
                     db.prepare("SELECT * FROM sourceDB.\"$sourceTocTableName\";")?.use { selectTocStmt ->
                         while (selectTocStmt.step() == SQLiteDB.SQLITE_ROW) {
-                            coroutineContext.ensureActive()
+                            currentCoroutineContext().ensureActive()
                             insertTocStmt.reset()
                             insertTocStmt.clearBindings()
                             for (i in tocColumns.indices) {
@@ -278,7 +277,7 @@ object BookArchiveIntegrator {
                     val ctx = ZstdContextPool.getDecompressCtx()
                     try {
                         while (ftsSelectStmt.step() == SQLiteDB.SQLITE_ROW) {
-                            coroutineContext.ensureActive()
+                            currentCoroutineContext().ensureActive()
                             val id = ftsSelectStmt.columnLong(0)
                             val nassText = decompressBlob(ftsSelectStmt.columnBlobDirect(1), ctx)
                             if (nassText.isNotEmpty()) {
