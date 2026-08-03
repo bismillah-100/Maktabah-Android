@@ -2,6 +2,9 @@
 activityCompose = "1.13.0"
 appcompat = "1.7.1"
 browser = "1.10.0"
+compose = "1.11.4"
+composeMaterial3 = "1.4.0"
+composeMaterial = "1.7.8"
 constraintlayout = "2.2.2"
 coreKtx = "1.19.0"
 firebaseBom = "34.17.0"
@@ -32,14 +35,14 @@ multiplatform-markdown-renderer-m3 = { group = "com.mikepenz", name = "multiplat
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 zstd-jni = { group = "com.github.luben", name = "zstd-jni", version.ref = "zstdJni" }
 
-# Compose Libraries (Versions managed by Compose BOM in build.gradle.kts)
-androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
-androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
-androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
-androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
-androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
-androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
-androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
+# Compose Libraries
+androidx-compose-ui = { group = "androidx.compose.ui", name = "ui", version.ref = "compose" }
+androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics", version.ref = "compose" }
+androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling", version.ref = "compose" }
+androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview", version.ref = "compose" }
+androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest", version.ref = "compose" }
+androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "composeMaterial3" }
+androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "composeMaterial" }
 
 [plugins]
 # Plugins are currently managed in the root build.gradle.kts or as libraries in app/build.gradle.kts

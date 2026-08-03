@@ -51,6 +51,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,7 +62,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -82,7 +82,6 @@ import com.maktabah.ui.common.InsetGroupedItem
 import com.maktabah.ui.common.PopoverMenuAction
 import com.maktabah.ui.common.TapCenteredPopover
 import com.maktabah.ui.common.fadingEdge
-import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import com.maktabah.ui.library.LibraryViewModel
 import com.maktabah.ui.search.SearchTextField
 import com.maktabah.utils.normalizeArabic
@@ -648,7 +647,27 @@ private fun AddFavoriteSheet(
     onToggleFavorite: (Int) -> Unit
 ) {
     val listState = rememberLazyListState()
-    val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
+        skipPartiallyExpanded = true
+    )
+    val isAtTop by remember {
+        androidx.compose.runtime.derivedStateOf {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        }
+    }
+    var sheetGesturesEnabled by remember {
+        mutableStateOf(isAtTop)
+    }
+    LaunchedEffect(isAtTop) {
+        if (!isAtTop) {
+            sheetGesturesEnabled = false
+        }
+    }
+    LaunchedEffect(listState.isScrollInProgress, isAtTop) {
+        if (isAtTop && !listState.isScrollInProgress) {
+            sheetGesturesEnabled = true
+        }
+    }
     var searchFavQuery by remember { mutableStateOf("") }
     var debouncedQuery by remember { mutableStateOf(searchFavQuery) }
 
@@ -673,13 +692,10 @@ private fun AddFavoriteSheet(
         }
     }
 
-    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
-        skipPartiallyExpanded = true
-    )
-
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        sheetGesturesEnabled = sheetGesturesEnabled,
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = { WindowInsets(0.dp) },
     ) {
@@ -708,7 +724,6 @@ private fun AddFavoriteSheet(
                 ) {
                     LazyColumn(
                         modifier = Modifier
-                            .nestedScroll(nestedScrollConnection)
                             .fillMaxSize()
                             .fadingEdge(listState, 48.dp),
                         state = listState,

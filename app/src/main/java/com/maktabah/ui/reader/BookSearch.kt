@@ -30,7 +30,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -45,7 +44,6 @@ import com.maktabah.models.FlashTarget
 import com.maktabah.models.SearchMode
 import com.maktabah.ui.common.InsetGroupedItem
 import com.maktabah.ui.common.fadingEdge
-import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import com.maktabah.ui.library.LibraryViewModel
 import com.maktabah.ui.search.QueryInputBar
 import com.maktabah.ui.search.SearchHelpDialog
@@ -93,28 +91,47 @@ fun BookSearchSheet(
         skipPartiallyExpanded = true
     )
 
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState(
+        initialFirstVisibleItemIndex = viewModel.bookSearchListIndex.intValue,
+        initialFirstVisibleItemScrollOffset = viewModel.bookSearchListOffset.intValue
+    )
+
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.collect { (index, offset) ->
+            viewModel.bookSearchListIndex.intValue = index
+            viewModel.bookSearchListOffset.intValue = offset
+        }
+    }
+
+    val isAtTop by remember {
+        androidx.compose.runtime.derivedStateOf {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        }
+    }
+    var sheetGesturesEnabled by remember {
+        mutableStateOf(isAtTop)
+    }
+    LaunchedEffect(isAtTop) {
+        if (!isAtTop) {
+            sheetGesturesEnabled = false
+        }
+    }
+    LaunchedEffect(listState.isScrollInProgress, isAtTop) {
+        if (isAtTop && !listState.isScrollInProgress) {
+            sheetGesturesEnabled = true
+        }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
+        sheetGesturesEnabled = sheetGesturesEnabled,
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = { WindowInsets(0.dp) },
     ) {
         val focusManager = LocalFocusManager.current
-        val listState = androidx.compose.foundation.lazy.rememberLazyListState(
-            initialFirstVisibleItemIndex = viewModel.bookSearchListIndex.intValue,
-            initialFirstVisibleItemScrollOffset = viewModel.bookSearchListOffset.intValue
-        )
-
-        LaunchedEffect(listState) {
-            snapshotFlow {
-                listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
-            }.collect { (index, offset) ->
-                viewModel.bookSearchListIndex.intValue = index
-                viewModel.bookSearchListOffset.intValue = offset
-            }
-        }
-
-        val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -143,7 +160,6 @@ fun BookSearchSheet(
             ) {
                 androidx.compose.foundation.lazy.LazyColumn(
                     modifier = Modifier
-                        .nestedScroll(nestedScrollConnection)
                         .fillMaxSize()
                         .fadingEdge(listState, topPadding),
                     state = listState,

@@ -36,7 +36,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
@@ -47,7 +46,6 @@ import com.maktabah.models.TOCNode
 import com.maktabah.models.VisibleTOCNode
 import com.maktabah.ui.common.InsetGroupedItem
 import com.maktabah.ui.common.fadingEdge
-import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import com.maktabah.ui.search.SearchTextField
 import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.Dispatchers
@@ -80,7 +78,6 @@ fun BookTOCSheet(
         }
     }
 
-    val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
     var searchQuery by viewModel.tocSearchQuery
 
     // State untuk query yang sudah di-debounce
@@ -253,10 +250,29 @@ fun BookTOCSheet(
     val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
         skipPartiallyExpanded = true
     )
+    val isAtTop by remember {
+        androidx.compose.runtime.derivedStateOf {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        }
+    }
+    var sheetGesturesEnabled by remember {
+        mutableStateOf(isAtTop)
+    }
+    LaunchedEffect(isAtTop) {
+        if (!isAtTop) {
+            sheetGesturesEnabled = false
+        }
+    }
+    LaunchedEffect(listState.isScrollInProgress, isAtTop) {
+        if (isAtTop && !listState.isScrollInProgress) {
+            sheetGesturesEnabled = true
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
+        sheetGesturesEnabled = sheetGesturesEnabled,
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = { WindowInsets(0.dp) },
     ) {
@@ -279,7 +295,6 @@ fun BookTOCSheet(
                 } else {
                     LazyColumn(
                         modifier = Modifier
-                            .nestedScroll(nestedScrollConnection)
                             .fillMaxSize()
                             .fadingEdge(listState, topPadding),
                         state = listState,
