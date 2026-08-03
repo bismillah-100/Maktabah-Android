@@ -15,7 +15,6 @@ class SettingsViewModel : ViewModel() {
     val hasToken: StateFlow<Boolean> = _hasToken.asStateFlow()
 
     private val _userName = MutableStateFlow<String?>(null)
-    val userName: StateFlow<String?> = _userName.asStateFlow()
 
     private val _hideTabsOnScroll = MutableStateFlow(true)
     val hideTabsOnScroll: StateFlow<Boolean> = _hideTabsOnScroll.asStateFlow()

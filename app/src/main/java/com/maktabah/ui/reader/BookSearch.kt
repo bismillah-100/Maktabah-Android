@@ -27,14 +27,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -62,7 +60,6 @@ fun BookSearchSheet(
     bookId: Int,
     libraryViewModel: LibraryViewModel,
     viewModel: ReaderViewModel,
-    tabId: String,
     onDismissRequest: () -> Unit,
 ) {
     val bookSearchViewModel = viewModel.bookSearchViewModel
@@ -94,28 +91,47 @@ fun BookSearchSheet(
         skipPartiallyExpanded = true
     )
 
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState(
+        initialFirstVisibleItemIndex = viewModel.bookSearchListIndex.intValue,
+        initialFirstVisibleItemScrollOffset = viewModel.bookSearchListOffset.intValue
+    )
+
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.collect { (index, offset) ->
+            viewModel.bookSearchListIndex.intValue = index
+            viewModel.bookSearchListOffset.intValue = offset
+        }
+    }
+
+    val isAtTop by remember {
+        androidx.compose.runtime.derivedStateOf {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        }
+    }
+    var sheetGesturesEnabled by remember {
+        mutableStateOf(isAtTop)
+    }
+    LaunchedEffect(isAtTop) {
+        if (!isAtTop) {
+            sheetGesturesEnabled = false
+        }
+    }
+    LaunchedEffect(listState.isScrollInProgress, isAtTop) {
+        if (isAtTop && !listState.isScrollInProgress) {
+            sheetGesturesEnabled = true
+        }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
+        sheetGesturesEnabled = sheetGesturesEnabled,
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = { WindowInsets(0.dp) },
     ) {
         val focusManager = LocalFocusManager.current
-        val listState = androidx.compose.foundation.lazy.rememberLazyListState(
-            initialFirstVisibleItemIndex = viewModel.bookSearchListIndex.intValue,
-            initialFirstVisibleItemScrollOffset = viewModel.bookSearchListOffset.intValue
-        )
-
-        LaunchedEffect(listState) {
-            snapshotFlow {
-                listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
-            }.collect { (index, offset) ->
-                viewModel.bookSearchListIndex.intValue = index
-                viewModel.bookSearchListOffset.intValue = offset
-            }
-        }
-
-        val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -132,7 +148,7 @@ fun BookSearchSheet(
 
             val searchKeywords = remember(lastSearchQuery, searchMode) {
                 val normalized = lastSearchQuery.normalizeArabic()
-                if (normalized.isBlank()) emptyList<String>()
+                if (normalized.isBlank()) emptyList()
                 else when (searchMode) {
                     SearchMode.PHRASE -> listOf(normalized)
                     else -> normalized.split(" ").filter { it.isNotBlank() }
@@ -144,7 +160,6 @@ fun BookSearchSheet(
             ) {
                 androidx.compose.foundation.lazy.LazyColumn(
                     modifier = Modifier
-                        .nestedScroll(nestedScrollConnection)
                         .fillMaxSize()
                         .fadingEdge(listState, topPadding),
                     state = listState,

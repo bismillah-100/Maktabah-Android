@@ -2,23 +2,22 @@ package com.maktabah.ui.history
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.maktabah.database.HistoryDatabaseManager
+import com.maktabah.manager.LibraryDataManager
 import com.maktabah.models.ReadingEntry
-import kotlinx.coroutines.CoroutineScope
+import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
-import androidx.lifecycle.viewModelScope
-import com.maktabah.manager.LibraryDataManager
-import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -41,7 +40,6 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
     val entriesByBookId: StateFlow<Map<Int, ReadingEntry>> = _entriesByBookId.asStateFlow()
 
     private val _historyOrder = MutableStateFlow<List<Int>>(emptyList())
-    val historyOrder: StateFlow<List<Int>> = _historyOrder.asStateFlow()
 
     private val maxHistoryCount = 50
 
@@ -294,9 +292,8 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
         val currentOrder = _historyOrder.value
         if (newOrder != currentOrder || didChange) {
             val finalEntries = entries.toMap()
-            val finalOrder = newOrder
             _entriesByBookId.value = finalEntries
-            _historyOrder.value = finalOrder
+            _historyOrder.value = newOrder
 
             // Hitung deleted IDs untuk batch DB write
             val deletedBookIds = recordIdsToDelete.mapNotNull { ckId ->
@@ -305,7 +302,7 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
                 .filter { finalEntries[it]?.let { e -> !e.isFavorite } ?: true }
 
             viewModelScope.launch(Dispatchers.IO) {
-                dbManager.applyCloudKitBatch(upserted, deletedBookIds.distinct(), finalOrder)
+                dbManager.applyCloudKitBatch(upserted, deletedBookIds.distinct(), newOrder)
             }
             notifyRefresh()
         }

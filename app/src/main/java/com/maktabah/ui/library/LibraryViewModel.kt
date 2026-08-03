@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.time.Duration.Companion.milliseconds
 
 class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
 
@@ -104,7 +105,7 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
         loadDownloadIndex(context)
     }
 
-    fun getBookFlow(bookId: Int): kotlinx.coroutines.flow.Flow<com.maktabah.models.BooksData?> {
+    fun getBookFlow(bookId: Int): kotlinx.coroutines.flow.Flow<BooksData?> {
         return _isDataLoaded.map { dataManager.booksById[bookId] }
     }
 
@@ -199,7 +200,7 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             if (query.isNotEmpty()) {
-                delay(500)
+                delay(500.milliseconds)
             }
 
             if (query.isNotEmpty()) {

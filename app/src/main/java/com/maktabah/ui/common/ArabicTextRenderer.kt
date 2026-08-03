@@ -2,27 +2,25 @@ package com.maktabah.ui.common
 
 import android.graphics.Paint
 import android.graphics.Typeface
-import android.text.TextPaint
+import android.text.Layout
 import android.text.SpannableStringBuilder
+import android.text.TextPaint
+import android.text.style.AlignmentSpan
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.MetricAffectingSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.UnderlineSpan
-import android.text.style.AlignmentSpan
-import android.text.Layout
-import java.text.Bidi
+import android.util.LruCache
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.toColorInt
 import com.maktabah.models.Annotation
 import com.maktabah.utils.HonorificReplacementResult
 import com.maktabah.utils.convertToArabicDigits
 import com.maktabah.utils.findArabicMatchingRanges
-import com.maktabah.utils.isArabicHarakat
-import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.removingHarakat
 import com.maktabah.utils.replacingHonorificPhrasesWithEvents
-import android.util.LruCache
+import java.text.Bidi
 
 class AnnotationSpan(val annotation: Annotation)
 
@@ -223,7 +221,7 @@ object ArabicTextRenderer {
 
         val footnoteRanges = mutableListOf<IntRange>()
         val matches = separatorRegex.findAll(text).toList()
-        
+
         matches.forEach { match ->
             val underscoreGroup = match.groups[1]
             if (underscoreGroup != null) {
@@ -232,7 +230,7 @@ object ArabicTextRenderer {
                 colored.add(match.range)
             }
         }
-        
+
         if (matches.isNotEmpty()) {
             val lastMatch = matches.last()
             val afterSep = lastMatch.range.last + 1
@@ -480,7 +478,7 @@ object ArabicTextRenderer {
             while (pStart < str.length) {
                 var pEnd = str.indexOf('\n', pStart)
                 if (pEnd == -1) pEnd = str.length
-                
+
                 if (pStart < pEnd) {
                     val paragraph = str.substring(pStart, pEnd)
                     val bidi = Bidi(paragraph, Bidi.DIRECTION_DEFAULT_RIGHT_TO_LEFT)
@@ -493,7 +491,7 @@ object ArabicTextRenderer {
                         )
                     }
                 }
-                
+
                 pStart = pEnd + 1
             }
         }

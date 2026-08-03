@@ -59,9 +59,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.maktabah.R
 import com.maktabah.models.SearchMode
-import com.maktabah.utils.convertToArabicDigits
 import com.maktabah.utils.findArabicMatchingRanges
-import com.maktabah.utils.normalizeArabic
+import com.maktabah.utils.startsWithArabic
 
 @Composable
 fun QueryInputBar(
@@ -73,6 +72,10 @@ fun QueryInputBar(
     modifier: Modifier = Modifier,
     onFocusChanged: ((Boolean) -> Unit)? = null,
 ) {
+    val isArabic = remember(query) { query.startsWithArabic() }
+    val layoutDirection = if (isArabic) LayoutDirection.Rtl else LayoutDirection.Ltr
+    val textAlign = if (isArabic) TextAlign.Right else TextAlign.Left
+
     Surface(
         modifier =
             modifier
@@ -94,41 +97,42 @@ fun QueryInputBar(
                     .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Spacer(modifier = Modifier.width(12.dp))
 
-            // Query TextField (RTL for Arabic text)
-            TextField(
-                value = query,
-                onValueChange = onQueryChange,
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .onFocusChanged { focusState ->
-                            onFocusChanged?.invoke(focusState.isFocused)
-                        },
-                placeholder = {
-                    Text(
-                        text = placeholder,
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Right,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                    )
-                },
-                singleLine = true,
-                colors =
-                    TextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        disabledIndicatorColor = Color.Transparent,
-                    ),
-                textStyle =
-                    LocalTextStyle.current.copy(
-                        textAlign = TextAlign.Right,
-                        textDirection = TextDirection.ContentOrRtl,
-                    ),
-            )
+            // Query TextField (Dynamic RTL/LTR based on text)
+            CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
+                TextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .onFocusChanged { focusState ->
+                                onFocusChanged?.invoke(focusState.isFocused)
+                            },
+                    placeholder = {
+                        Text(
+                            text = placeholder,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = textAlign,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                        )
+                    },
+                    singleLine = true,
+                    colors =
+                        TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent,
+                        ),
+                    textStyle =
+                        LocalTextStyle.current.copy(
+                            textAlign = textAlign,
+                            textDirection = TextDirection.ContentOrRtl,
+                        ),
+                )
+            }
 
             // Clear button
             if (query.isNotEmpty()) {
@@ -408,7 +412,7 @@ fun buildHighlightedText(
 
             val ranges = text.findArabicMatchingRanges(searchKeywords)
             for (range in ranges) {
-                if (range.first in 0 until text.length && range.last < text.length && range.first <= range.last) {
+                if (range.first in text.indices && range.last < text.length && range.first <= range.last) {
                     addStyle(
                         style = SpanStyle(background = highlightColor),
                         start = range.first,

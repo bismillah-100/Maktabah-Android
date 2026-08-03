@@ -60,10 +60,10 @@ constructor(
     var isMultiLanguage: Boolean = false
         set(value) {
             field = value
-            if (value) {
-                textDirection = TEXT_DIRECTION_FIRST_STRONG
+            textDirection = if (value) {
+                TEXT_DIRECTION_FIRST_STRONG
             } else {
-                textDirection = TEXT_DIRECTION_RTL
+                TEXT_DIRECTION_RTL
             }
         }
 
@@ -98,7 +98,7 @@ constructor(
         event: MotionEvent
     ) {
         if (isInternalCancel) return
-        
+
         val canScrollUp = scrollView.canScrollVertically(-1)
         val canScrollDown = scrollView.canScrollVertically(1)
 
@@ -118,7 +118,7 @@ constructor(
                     canTriggerTopOverscroll = !canScrollUp
                     canTriggerBottomOverscroll = !canScrollDown
                 }
-                
+
                 val deltaY = event.y - touchStartY
 
                 if (deltaY > 0 && canScrollUp) {

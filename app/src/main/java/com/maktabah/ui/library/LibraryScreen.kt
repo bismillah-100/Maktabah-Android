@@ -1,6 +1,15 @@
 package com.maktabah.ui.library
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -91,6 +100,17 @@ fun LibraryScreen(
     val viewMode by viewModel.viewMode.collectAsState()
     val expandedCategories by viewModel.expandedCategories.collectAsState()
     val focusManager = LocalFocusManager.current
+    var isSearchFocused by remember { mutableStateOf(false) }
+
+    val searchPaddingEnd by animateDpAsState(
+        targetValue = if (isSearchFocused) 16.dp else 12.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "searchPaddingEnd"
+    )
+
     var showImportSheet by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
 
@@ -115,8 +135,36 @@ fun LibraryScreen(
                 ) {
                     TopAppBar(
                         navigationIcon = {
-                            if (!hasDonated) {
-                                DonationIconButton()
+                            AnimatedVisibility(
+                                visible = !isSearchFocused,
+                                enter = expandHorizontally(
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMediumLow,
+                                    ),
+                                    expandFrom = Alignment.Start,
+                                ) + fadeIn(
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMediumLow,
+                                    ),
+                                ),
+                                exit = shrinkHorizontally(
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMediumLow,
+                                    ),
+                                    shrinkTowards = Alignment.Start,
+                                ) + fadeOut(
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMediumLow,
+                                    ),
+                                ),
+                            ) {
+                                if (!hasDonated) {
+                                    DonationIconButton()
+                                }
                             }
                         },
                         title = {
@@ -129,8 +177,11 @@ fun LibraryScreen(
                                     } else {
                                         stringResource(R.string.library_search_authors_placeholder)
                                     },
-                                modifier = Modifier.padding(end = 12.dp),
-                                onClearClick = { viewModel.updateSearchQuery("") }
+                                modifier = Modifier
+                                    .padding(end = searchPaddingEnd)
+                                    .fillMaxWidth(),
+                                onClearClick = { viewModel.updateSearchQuery("") },
+                                onFocusChanged = { isSearchFocused = it }
                             )
                         },
                         colors =
@@ -138,60 +189,97 @@ fun LibraryScreen(
                                 containerColor = Color.Transparent,
                             ),
                         actions = {
-                            if (isSelectionMode && selectedBookIds.isNotEmpty()) {
-                                val hasDownloadedSelected =
-                                    selectedBookIds.any { downloadedBookIds.contains(it) }
-                                if (hasDownloadedSelected) {
-                                    IconButton(
-                                        onClick = {
-                                            viewModel.deleteSelectedBooks(context, tabManager) { msg ->
-                                                android.widget.Toast
-                                                    .makeText(
+                            AnimatedVisibility(
+                                visible = !isSearchFocused,
+                                enter = expandHorizontally(
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMediumLow,
+                                    ),
+                                    expandFrom = Alignment.End,
+                                ) + fadeIn(
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMediumLow,
+                                    ),
+                                ),
+                                exit = shrinkHorizontally(
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMediumLow,
+                                    ),
+                                    shrinkTowards = Alignment.End,
+                                ) + fadeOut(
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMediumLow,
+                                    ),
+                                ),
+                            ) {
+                                Row {
+                                    if (isSelectionMode && selectedBookIds.isNotEmpty()) {
+                                        val hasDownloadedSelected =
+                                            selectedBookIds.any { downloadedBookIds.contains(it) }
+                                        if (hasDownloadedSelected) {
+                                            IconButton(
+                                                onClick = {
+                                                    viewModel.deleteSelectedBooks(
                                                         context,
-                                                        msg,
-                                                        android.widget.Toast.LENGTH_SHORT,
-                                                    ).show()
+                                                        tabManager
+                                                    ) { msg ->
+                                                        android.widget.Toast
+                                                            .makeText(
+                                                                context,
+                                                                msg,
+                                                                android.widget.Toast.LENGTH_SHORT,
+                                                            ).show()
+                                                    }
+                                                },
+                                                enabled = !isBulkDownloading,
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Delete,
+                                                    contentDescription = stringResource(R.string.library_action_delete_selected),
+                                                )
                                             }
-                                        },
-                                        enabled = !isBulkDownloading,
-                                    ) {
+                                        }
+                                    }
+                                    if (isSelectionMode) {
+                                        IconButton(
+                                            onClick = { viewModel.toggleSelectionMode(context) },
+                                            enabled = !isBulkDownloading,
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = stringResource(R.string.library_action_selection_mode),
+                                            )
+                                        }
+                                    }
+                                    IconButton(onClick = { viewModel.toggleShowOnlyDownloaded() }) {
                                         Icon(
-                                            Icons.Default.Delete,
-                                            contentDescription = stringResource(R.string.library_action_delete_selected),
+                                            imageVector =
+                                            if (showOnlyDownloaded) {
+                                                Icons.Filled.CloudDone
+                                            } else {
+                                                Icons.Outlined.CloudDone
+                                            },
+                                            contentDescription = stringResource(R.string.library_action_filter_downloaded),
+                                        )
+                                    }
+                                    if (!isSelectionMode) {
+                                        LibraryMoreOptionsMenu(
+                                            viewMode = viewMode,
+                                            onToggleSelectionMode = {
+                                                viewModel.toggleSelectionMode(
+                                                    context
+                                                )
+                                            },
+                                            onSetViewMode = { viewModel.setViewMode(it) },
+                                            onImportClick = { showImportSheet = true },
+                                            onSettingsClick = { showSettings = true },
                                         )
                                     }
                                 }
-                            }
-                            if (isSelectionMode) {
-                                IconButton(
-                                    onClick = { viewModel.toggleSelectionMode(context) },
-                                    enabled = !isBulkDownloading,
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = stringResource(R.string.library_action_selection_mode),
-                                    )
-                                }
-                            }
-                            IconButton(onClick = { viewModel.toggleShowOnlyDownloaded() }) {
-                                Icon(
-                                    imageVector =
-                                        if (showOnlyDownloaded) {
-                                            Icons.Filled.CloudDone
-                                        } else {
-                                            Icons.Outlined.CloudDone
-                                        },
-                                    contentDescription = stringResource(R.string.library_action_filter_downloaded),
-                                )
-                            }
-                            if (!isSelectionMode) {
-                                LibraryMoreOptionsMenu(
-                                    viewMode = viewMode,
-                                    onToggleSelectionMode = { viewModel.toggleSelectionMode(context) },
-                                    onSetViewMode = { viewModel.setViewMode(it) },
-                                    onImportClick = { showImportSheet = true },
-                                    onSettingsClick = { showSettings = true },
-                                )
                             }
                         },
                     )

@@ -253,14 +253,6 @@ class ResultsHandler(private val dbFile: File) {
         }
     }
 
-    fun getAllDescendantIds(folderId: Long): List<Long> {
-        var result = emptyList<Long>()
-        openDb { db ->
-            result = getAllDescendantIds(db, folderId)
-        }
-        return result
-    }
-
     fun getAllDescendantIds(db: SQLiteDB, folderId: Long): List<Long> {
         val ids = mutableListOf(folderId)
         fun recurse(parentId: Long) {
@@ -454,19 +446,6 @@ class ResultsHandler(private val dbFile: File) {
         return result
     }
 
-    fun fetchResultSyncData(resultId: Long): SyncResult? {
-        var result: SyncResult? = null
-        openDb { db ->
-            db.prepare("SELECT * FROM results WHERE id = ? LIMIT 1")?.use { stmt ->
-                stmt.bindLong(1, resultId)
-                if (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                    result = readSyncResult(stmt)
-                }
-            }
-        }
-        return result
-    }
-
     fun fetchResultsSyncDataByFolder(folderId: Long?, name: String): List<SyncResult> {
         val list = mutableListOf<SyncResult>()
         openDb { db ->
@@ -539,31 +518,6 @@ class ResultsHandler(private val dbFile: File) {
                     stmt.step()
                 }
         }
-    }
-
-    fun removePendingSync(ckRecordIds: List<String>) {
-        if (ckRecordIds.isEmpty()) return
-        openDb { db ->
-            val placeholders = ckRecordIds.joinToString(",") { "?" }
-            db.prepare("DELETE FROM sync_pending WHERE ck_record_id IN ($placeholders);")?.use { stmt ->
-                ckRecordIds.forEachIndexed { i, id -> stmt.bindText(i + 1, id) }
-                stmt.step()
-            }
-        }
-    }
-
-    fun fetchPendingSync(operation: String): List<String> {
-        val ids = mutableListOf<String>()
-        openDb { db ->
-            db.prepare("SELECT ck_record_id FROM sync_pending WHERE operation = ? ORDER BY queued_at ASC;")
-                ?.use { stmt ->
-                    stmt.bindText(1, operation)
-                    while (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                        stmt.columnText(0)?.let { ids.add(it) }
-                    }
-                }
-        }
-        return ids
     }
 
     fun nukeDatabase() {

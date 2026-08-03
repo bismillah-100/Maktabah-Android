@@ -19,13 +19,4 @@ object BookArchiveSingleFlight {
             action()
         }
     }
-
-    /**
-     * Use this if you want to ensure only one integration happens across all archives.
-     */
-    suspend fun <T> runGlobal(action: suspend () -> T): T {
-        return globalLock.withLock {
-            action()
-        }
-    }
 }

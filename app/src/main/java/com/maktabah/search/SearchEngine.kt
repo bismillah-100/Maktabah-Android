@@ -1,9 +1,8 @@
 package com.maktabah.search
 
 import android.util.Log
-import com.github.luben.zstd.Zstd
-import com.maktabah.database.ZstdContextPool
 import com.maktabah.database.SQLiteDB
+import com.maktabah.database.ZstdContextPool
 import com.maktabah.database.decompressBlob
 import com.maktabah.models.BookContent
 import com.maktabah.models.SearchMode
@@ -101,7 +100,7 @@ class SearchEngine {
                     while (stmt.step() == SQLiteDB.SQLITE_ROW) {
                         coroutineContext.ensureActive()
                         val id = stmt.columnInt(0)
-                        var nassText = ""
+                        var nassText: String
 
                         if (nassType == -1) {
                             nassType = stmt.columnType(1)
