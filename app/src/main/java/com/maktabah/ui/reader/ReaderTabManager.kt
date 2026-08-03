@@ -96,7 +96,6 @@ class ReaderTabManager : ViewModel() {
         _tabs.value.firstOrNull { it.id == tabId }?.savedScrollY ?: 0
 
     override fun onCleared() {
-        super.onCleared()
         // Clean up all ViewModels when the manager is destroyed
         _tabs.value.forEach { it.viewModel.onClose() }
     }

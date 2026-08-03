@@ -2,17 +2,20 @@ package com.maktabah.ui.search
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,15 +30,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Bookmarks
@@ -51,7 +51,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -64,8 +63,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -73,7 +70,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -425,7 +421,6 @@ fun SearchScreen(
                             viewModel.setShowSavedResults(false)
                             viewModel.loadSavedResults(items, context, libraryViewModel.dataManager)
                         },
-                        onRefresh = { resultsViewModel.reloadFromSync() },
                         onDismiss = { viewModel.setShowSavedResults(false) },
                         bottomPadding = bottomPadding,
                         backHandlerEnabled = pagerState.currentPage == 1
@@ -513,10 +508,49 @@ private fun SearchFilterTopBar(
     hasDonated: Boolean,
     onOpenSavedResults: () -> Unit
 ) {
+    var isSearchFocused by remember { mutableStateOf(false) }
+
+    val searchPaddingEnd by animateDpAsState(
+        targetValue = if (isSearchFocused) 16.dp else 12.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "searchPaddingEnd"
+    )
+
     TopAppBar(
         navigationIcon = {
-            if (!hasDonated) {
-                DonationIconButton()
+            AnimatedVisibility(
+                visible = !isSearchFocused,
+                enter = expandHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    expandFrom = Alignment.Start,
+                ) + fadeIn(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                ),
+                exit = shrinkHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    shrinkTowards = Alignment.Start,
+                ) + fadeOut(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                ),
+            ) {
+                if (!hasDonated) {
+                    DonationIconButton()
+                }
             }
         },
         title = {
@@ -524,23 +558,56 @@ private fun SearchFilterTopBar(
                 value = searchQuery,
                 onValueChange = onQueryChange,
                 placeholder = stringResource(R.string.library_search_books_placeholder),
-                modifier = Modifier.padding(end = 12.dp),
-                onClearClick = { onQueryChange("") }
+                modifier = Modifier
+                    .padding(end = searchPaddingEnd)
+                    .fillMaxWidth(),
+                onClearClick = { onQueryChange("") },
+                onFocusChanged = { isSearchFocused = it }
             )
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         actions = {
-            IconButton(onClick = onClearSelection) {
-                Icon(
-                    Icons.Default.Block,
-                    contentDescription = stringResource(R.string.search_action_deselect_all)
-                )
-            }
-            IconButton(onClick = onOpenSavedResults) {
-                Icon(
-                    Icons.Default.Bookmarks,
-                    contentDescription = stringResource(R.string.saved_results_title)
-                )
+            AnimatedVisibility(
+                visible = !isSearchFocused,
+                enter = expandHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    expandFrom = Alignment.End,
+                ) + fadeIn(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                ),
+                exit = shrinkHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    shrinkTowards = Alignment.End,
+                ) + fadeOut(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                ),
+            ) {
+                Row {
+                    IconButton(onClick = onClearSelection) {
+                        Icon(
+                            Icons.Default.Block,
+                            contentDescription = stringResource(R.string.search_action_deselect_all)
+                        )
+                    }
+                    IconButton(onClick = onOpenSavedResults) {
+                        Icon(
+                            Icons.Default.Bookmarks,
+                            contentDescription = stringResource(R.string.saved_results_title)
+                        )
+                    }
+                }
             }
         },
     )
@@ -645,69 +712,111 @@ private fun SearchResultsOverlay(
     onOpenSavedResults: () -> Unit,
     onSaveResults: () -> Unit
 ) {
+    var isSearchFocused by remember { mutableStateOf(false) }
+
+    val searchPaddingEnd by animateDpAsState(
+        targetValue = if (isSearchFocused) 16.dp else 14.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "searchPaddingEnd"
+    )
+
     Scaffold(
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    IconButton(onClick = onClearResults) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = stringResource(R.string.search_result_close)
-                        )
+                    AnimatedVisibility(
+                        visible = !isSearchFocused,
+                        enter = expandHorizontally(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow,
+                            ),
+                            expandFrom = Alignment.Start,
+                        ) + fadeIn(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow,
+                            ),
+                        ),
+                        exit = shrinkHorizontally(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow,
+                            ),
+                            shrinkTowards = Alignment.Start,
+                        ) + fadeOut(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow,
+                            ),
+                        ),
+                    ) {
+                        IconButton(onClick = onClearResults) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = stringResource(R.string.search_result_close)
+                            )
+                        }
                     }
                 },
                 title = {
-                    val focusRequester = remember { FocusRequester() }
-                    BasicTextField(
+                    SearchTextField(
                         value = bookFilter,
                         onValueChange = onBookFilterChange,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                        placeholder = stringResource(R.string.search_filter_placeholder),
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(focusRequester)
-                            .padding(end = 14.dp)
-                            .height(40.dp)
-                            .border(width = 1.dp, color = Color.Gray, shape = CircleShape),
-                        singleLine = true,
-                        decorationBox = { innerTextField ->
-                            TextFieldDefaults.DecorationBox(
-                                value = bookFilter,
-                                innerTextField = innerTextField,
-                                enabled = true,
-                                singleLine = true,
-                                visualTransformation = VisualTransformation.None,
-                                interactionSource = remember { MutableInteractionSource() },
-                                placeholder = { Text(stringResource(R.string.search_filter_placeholder)) },
-                                trailingIcon = {
-                                    if (bookFilter.isNotEmpty()) {
-                                        IconButton(onClick = { onBookFilterChange("") }) {
-                                            Icon(
-                                                Icons.Default.Close,
-                                                modifier = Modifier.size(32.dp),
-                                                contentDescription = stringResource(R.string.search_filter_clear)
-                                            )
-                                        }
-                                    }
-                                },
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
-                                container = {}
-                            )
-                        }
+                            .padding(end = searchPaddingEnd)
+                            .fillMaxWidth(),
+                        onClearClick = { onBookFilterChange("") },
+                        onFocusChanged = { isSearchFocused = it }
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 actions = {
-                    IconButton(onClick = onOpenSavedResults) {
-                        Icon(
-                            Icons.Default.Bookmarks,
-                            contentDescription = stringResource(R.string.saved_results_title)
-                        )
-                    }
-                    IconButton(onClick = onSaveResults) {
-                        Icon(
-                            Icons.Default.Save,
-                            contentDescription = stringResource(R.string.save_results_title)
-                        )
+                    AnimatedVisibility(
+                        visible = !isSearchFocused,
+                        enter = expandHorizontally(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow,
+                            ),
+                            expandFrom = Alignment.End,
+                        ) + fadeIn(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow,
+                            ),
+                        ),
+                        exit = shrinkHorizontally(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow,
+                            ),
+                            shrinkTowards = Alignment.End,
+                        ) + fadeOut(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow,
+                            ),
+                        ),
+                    ) {
+                        Row {
+                            IconButton(onClick = onOpenSavedResults) {
+                                Icon(
+                                    Icons.Default.Bookmarks,
+                                    contentDescription = stringResource(R.string.saved_results_title)
+                                )
+                            }
+                            IconButton(onClick = onSaveResults) {
+                                Icon(
+                                    Icons.Default.Save,
+                                    contentDescription = stringResource(R.string.save_results_title)
+                                )
+                            }
+                        }
                     }
                 }
             )
@@ -718,7 +827,7 @@ private fun SearchResultsOverlay(
 
         val searchKeywords = remember(query, searchMode) {
             val normalized = query.normalizeArabic()
-            if (normalized.isBlank()) emptyList<String>()
+            if (normalized.isBlank()) emptyList()
             else when (searchMode) {
                 SearchMode.PHRASE -> listOf(normalized)
                 else -> normalized.split(" ").filter { it.isNotBlank() }

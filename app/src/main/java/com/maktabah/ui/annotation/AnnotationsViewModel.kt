@@ -1,5 +1,6 @@
 package com.maktabah.ui.annotation
 
+import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.maktabah.database.AnnotationManager
@@ -89,20 +90,15 @@ class AnnotationsViewModel : ViewModel() {
         _selectedAnnotationIds.value = current
     }
 
-    fun clearSelection() {
-        _selectedAnnotationIds.value = emptySet()
-        _isSelectionMode.value = false
-    }
-
     fun toggleGroupExpanded(key: String) {
         val current = _expandedGroups.value.toMutableMap()
         val isExpanded = current[key] ?: false
         current[key] = !isExpanded
         _expandedGroups.value = current
-        
+
         if (::sharedPrefs.isInitialized) {
             val expandedKeys = current.filterValues { it }.keys
-            sharedPrefs.edit().putStringSet("expandedGroups", expandedKeys).apply()
+            sharedPrefs.edit { putStringSet("expandedGroups", expandedKeys) }
         }
     }
 

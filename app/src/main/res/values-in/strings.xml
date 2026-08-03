@@ -269,4 +269,13 @@
     <string name="saved_results_move_title">Pindahkan ke…</string>
     <string name="saved_results_search_globally">Cari secara global</string>
     <string name="saved_results_delete">Hapus</string>
+    <string name="update_dialog_title_available">Update Tersedia</string>
+    <string name="update_dialog_title_downloading">Mengunduh Update</string>
+    <string name="update_dialog_title_installing">Menyiapkan Instalasi</string>
+    <string name="update_dialog_title_error">Gagal Update</string>
+    <string name="update_dialog_message_available">Versi %1$s sudah tersedia. Apakah Anda ingin memperbarui aplikasi?</string>
+    <string name="update_dialog_message_downloading">Sedang mengunduh… %1$d%%</string>
+    <string name="update_dialog_confirm_download">Download &amp; Install</string>
+    <string name="update_dialog_confirm_ok">OK</string>
+    <string name="update_dialog_dismiss_later">Nanti Saja</string>
 </resources>

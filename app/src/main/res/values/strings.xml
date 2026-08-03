@@ -271,4 +271,13 @@
     <string name="saved_results_move_title">Move to…</string>
     <string name="saved_results_search_globally">Search globally</string>
     <string name="saved_results_delete">Delete</string>
+    <string name="update_dialog_title_available">Update Available</string>
+    <string name="update_dialog_title_downloading">Downloading Update</string>
+    <string name="update_dialog_title_installing">Preparing Installation</string>
+    <string name="update_dialog_title_error">Update Failed</string>
+    <string name="update_dialog_message_available">Version %1$s is available. Do you want to update the application?</string>
+    <string name="update_dialog_message_downloading">Downloading… %1$d%%</string>
+    <string name="update_dialog_confirm_download">Download &amp; Install</string>
+    <string name="update_dialog_confirm_ok">OK</string>
+    <string name="update_dialog_dismiss_later">Later</string>
 </resources>

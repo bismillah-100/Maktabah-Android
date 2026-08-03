@@ -5,10 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -44,10 +41,10 @@ fun UpdateDialog(viewModel: UpdateViewModel) {
             title = {
                 Text(
                     text = when (state) {
-                        is UpdateUIState.UpdateAvailable -> "Update Tersedia"
-                        is UpdateUIState.Downloading -> "Mengunduh Update"
-                        is UpdateUIState.Installing -> "Menyiapkan Instalasi"
-                        is UpdateUIState.Error -> "Gagal Update"
+                        is UpdateUIState.UpdateAvailable -> stringResource(R.string.update_dialog_title_available)
+                        is UpdateUIState.Downloading -> stringResource(R.string.update_dialog_title_downloading)
+                        is UpdateUIState.Installing -> stringResource(R.string.update_dialog_title_installing)
+                        is UpdateUIState.Error -> stringResource(R.string.update_dialog_title_error)
                     }
                 )
             },
@@ -56,7 +53,10 @@ fun UpdateDialog(viewModel: UpdateViewModel) {
                 Column {
                     when (state) {
                         is UpdateUIState.UpdateAvailable -> {
-                            Text("Versi ${state.release.tagName} sudah tersedia. Apakah Anda ingin memperbarui aplikasi?")
+                            Text(stringResource(
+                                R.string.update_dialog_message_available,
+                                state.release.tagName)
+                            )
                             if (state.release.body.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Box(
@@ -66,8 +66,8 @@ fun UpdateDialog(viewModel: UpdateViewModel) {
                                         .verticalScroll(rememberScrollState())
                                 ) {
                                     Markdown(
-                                        content = state.release.body,
-                                        padding = markdownPadding(block = 4.dp, list = 1.dp),
+                                        state.release.body.trimIndent(),
+                                        padding = markdownPadding(block = 2.dp, list = 2.dp),
                                         typography = markdownTypography(
                                             h1 = MaterialTheme.typography.titleLarge,
                                             h2 = MaterialTheme.typography.titleMedium,
@@ -75,13 +75,17 @@ fun UpdateDialog(viewModel: UpdateViewModel) {
                                             h4 = MaterialTheme.typography.bodyLarge,
                                             h5 = MaterialTheme.typography.bodyMedium,
                                             h6 = MaterialTheme.typography.bodySmall,
+                                            paragraph = MaterialTheme.typography.bodyMedium,
                                         )
                                     )
                                 }
                             }
                         }
                         is UpdateUIState.Downloading -> {
-                            Text("Sedang mengunduh... ${state.progress}%")
+                            Text(stringResource(
+                                R.string.update_dialog_message_downloading,
+                                state.progress)
+                            )
                             Spacer(modifier = Modifier.height(8.dp))
                             LinearProgressIndicator(
                                 progress = { state.progress / 100f },
@@ -102,18 +106,18 @@ fun UpdateDialog(viewModel: UpdateViewModel) {
             confirmButton = {
                 if (state is UpdateUIState.UpdateAvailable) {
                     Button(onClick = { viewModel.downloadAndInstall(state.release) }) {
-                        Text("Download & Install")
+                        Text(stringResource(R.string.update_dialog_confirm_download))
                     }
                 } else if (state is UpdateUIState.Error) {
                     Button(onClick = { viewModel.dismiss() }) {
-                        Text("OK")
+                        Text(stringResource(R.string.update_dialog_confirm_ok))
                     }
                 }
             },
             dismissButton = {
                 if (state is UpdateUIState.UpdateAvailable) {
                     TextButton(onClick = { viewModel.dismiss() }) {
-                        Text("Nanti Saja")
+                        Text(stringResource(R.string.update_dialog_dismiss_later))
                     }
                 }
             }
