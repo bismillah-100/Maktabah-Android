@@ -7,7 +7,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -45,13 +51,6 @@ import com.maktabah.R
 import com.maktabah.models.ReaderTab
 import com.maktabah.ui.common.SwipeDeleteBackground
 import com.maktabah.ui.common.isSwipeTargetReached
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
 
 /**
  * Sheet daftar semua tab — mengacu iOSReaderTabsPopoverView.swift.
@@ -70,20 +69,40 @@ fun ReaderTabsListSheet(
         skipPartiallyExpanded = true
     )
 
+    val initialIndex = remember {
+        val idx = tabs.indexOfFirst { it.id == activeTabId }
+        if (idx != -1) idx else 0
+    }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState(
+        initialFirstVisibleItemIndex = initialIndex
+    )
+    val isAtTop by remember {
+        androidx.compose.runtime.derivedStateOf {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        }
+    }
+    var sheetGesturesEnabled by remember {
+        mutableStateOf(isAtTop)
+    }
+    LaunchedEffect(isAtTop) {
+        if (!isAtTop) {
+            sheetGesturesEnabled = false
+        }
+    }
+    LaunchedEffect(listState.isScrollInProgress, isAtTop) {
+        if (isAtTop && !listState.isScrollInProgress) {
+            sheetGesturesEnabled = true
+        }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        sheetGesturesEnabled = sheetGesturesEnabled,
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = { WindowInsets(0.dp) },
     ) {
-        val initialIndex = remember {
-            val idx = tabs.indexOfFirst { it.id == activeTabId }
-            if (idx != -1) idx else 0
-        }
-        val listState = androidx.compose.foundation.lazy.rememberLazyListState(
-            initialFirstVisibleItemIndex = initialIndex
-        )
-        val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
+        val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
 
         Box(
             modifier = Modifier
@@ -97,13 +116,12 @@ fun ReaderTabsListSheet(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
-                        .nestedScroll(nestedScrollConnection)
                         .fillMaxSize()
                         .padding(bottom = 32.dp),
                     contentPadding = PaddingValues(
-                        start = 16.dp, 
-                        end = 16.dp, 
-                        top = 8.dp, 
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 8.dp,
                         bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 16.dp
                     ),
                     verticalArrangement = Arrangement.spacedBy(6.dp),

@@ -1,41 +1,38 @@
 package com.maktabah.ui.history
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import com.maktabah.ui.common.rememberBottomSheetNestedScrollConnection
-import kotlinx.coroutines.delay
-import kotlin.time.Duration.Companion.milliseconds
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -43,8 +40,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,11 +47,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -72,35 +67,29 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.offset
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupPositionProvider
+import androidx.core.content.edit
 import com.maktabah.R
 import com.maktabah.cloudKit.CloudKitSyncManager
 import com.maktabah.database.AnnotationManager
 import com.maktabah.models.ReadingEntry
-import com.maktabah.utils.normalizeArabic
 import com.maktabah.ui.common.DonationCard
 import com.maktabah.ui.common.DonationIconButton
 import com.maktabah.ui.common.InsetGroupedItem
-import com.maktabah.ui.common.fadingEdge
-import com.maktabah.ui.common.PopoverArrowShape
 import com.maktabah.ui.common.PopoverMenuAction
 import com.maktabah.ui.common.TapCenteredPopover
+import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.library.LibraryViewModel
 import com.maktabah.ui.search.SearchTextField
-import kotlin.math.roundToInt
+import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -195,9 +184,9 @@ fun HistoryScreen(
                 ) {
                     historySection(
                         isExpanded = historyExpanded,
-                        onToggleExpand = { 
+                        onToggleExpand = {
                             historyExpanded = !historyExpanded
-                            sharedPrefs.edit().putBoolean("historyExpanded", historyExpanded).apply()
+                            sharedPrefs.edit { putBoolean("historyExpanded", historyExpanded) }
                         },
                         historyItems = filteredHistory,
                         entriesByBookId = entriesByBookId,
@@ -211,8 +200,7 @@ fun HistoryScreen(
                             val entry = historyViewModel.toggleFavorite(id)
                             cloudKitSyncManager.uploadHistory(context, listOf(entry))
                         },
-                        onShowBookInfo = { selectedBookInfoId = it },
-                        libraryViewModel = libraryViewModel
+                        onShowBookInfo = { selectedBookInfoId = it }
                     )
 
                     item(key = "history_favorites_spacer") {
@@ -225,9 +213,9 @@ fun HistoryScreen(
 
                     favoritesSection(
                         isExpanded = favoritesExpanded,
-                        onToggleExpand = { 
+                        onToggleExpand = {
                             favoritesExpanded = !favoritesExpanded
-                            sharedPrefs.edit().putBoolean("favoritesExpanded", favoritesExpanded).apply()
+                            sharedPrefs.edit { putBoolean("favoritesExpanded", favoritesExpanded)}
                         },
                         favoriteItems = filteredFavorites,
                         entriesByBookId = entriesByBookId,
@@ -237,8 +225,7 @@ fun HistoryScreen(
                             val entry = historyViewModel.toggleFavorite(id)
                             cloudKitSyncManager.uploadHistory(context, listOf(entry))
                         },
-                        onShowBookInfo = { selectedBookInfoId = it },
-                        libraryViewModel = libraryViewModel
+                        onShowBookInfo = { selectedBookInfoId = it }
                     )
 
                     if (!hasDonated) {
@@ -284,36 +271,110 @@ private fun HistoryTopBar(
     onAddFavoriteClick: () -> Unit,
     onSyncClick: () -> Unit
 ) {
+    var isSearchFocused by remember { mutableStateOf(false) }
+
+    val searchPaddingEnd by animateDpAsState(
+        targetValue = if (isSearchFocused) 16.dp else 12.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "searchPaddingEnd"
+    )
+
     TopAppBar(
-        navigationIcon = { if (!hasDonated) DonationIconButton() },
+        navigationIcon = {
+            AnimatedVisibility(
+                visible = !isSearchFocused,
+                enter = expandHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    expandFrom = Alignment.Start,
+                ) + fadeIn(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                ),
+                exit = shrinkHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    shrinkTowards = Alignment.Start,
+                ) + fadeOut(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                ),
+            ) {
+                if (!hasDonated) DonationIconButton()
+            }
+        },
         title = {
             SearchTextField(
                 value = searchQuery,
                 onValueChange = onSearchQueryChange,
                 placeholder = stringResource(R.string.history_search_placeholder),
-                modifier = Modifier.padding(end = 12.dp),
-                onClearClick = { onSearchQueryChange("") }
+                modifier = Modifier
+                    .padding(end = searchPaddingEnd)
+                    .fillMaxWidth(),
+                onClearClick = { onSearchQueryChange("") },
+                onFocusChanged = { isSearchFocused = it }
             )
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         actions = {
-            IconButton(onClick = onAddFavoriteClick) {
-                Icon(
-                    Icons.Default.Add,
-                    contentDescription = stringResource(R.string.history_action_add_favorite)
-                )
-            }
-            IconButton(onClick = onSyncClick, enabled = !isSyncing) {
-                if (isSyncing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                } else {
-                    Icon(
-                        Icons.Default.Refresh,
-                        contentDescription = stringResource(R.string.history_settings_cloudkit)
-                    )
+            AnimatedVisibility(
+                visible = !isSearchFocused,
+                enter = expandHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    expandFrom = Alignment.End,
+                ) + fadeIn(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                ),
+                exit = shrinkHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    shrinkTowards = Alignment.End,
+                ) + fadeOut(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                ),
+            ) {
+                Row {
+                    IconButton(onClick = onAddFavoriteClick) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = stringResource(R.string.history_action_add_favorite)
+                        )
+                    }
+                    IconButton(onClick = onSyncClick, enabled = !isSyncing) {
+                        if (isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = stringResource(R.string.history_settings_cloudkit)
+                            )
+                        }
+                    }
                 }
             }
         },
@@ -330,7 +391,6 @@ private fun LazyListScope.historySection(
     onRemoveHistory: (Int) -> Unit,
     onToggleFavorite: (Int) -> Unit,
     onShowBookInfo: (Int) -> Unit,
-    libraryViewModel: LibraryViewModel,
 ) {
     item(key = "history_header") {
         SectionHeader(
@@ -461,7 +521,6 @@ private fun LazyListScope.favoritesSection(
     onNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
     onRemoveFavorite: (Int) -> Unit,
     onShowBookInfo: (Int) -> Unit,
-    libraryViewModel: LibraryViewModel,
 ) {
     item(key = "favorites_header") {
         SectionHeader(
@@ -588,7 +647,27 @@ private fun AddFavoriteSheet(
     onToggleFavorite: (Int) -> Unit
 ) {
     val listState = rememberLazyListState()
-    val nestedScrollConnection = rememberBottomSheetNestedScrollConnection(listState)
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
+        skipPartiallyExpanded = true
+    )
+    val isAtTop by remember {
+        androidx.compose.runtime.derivedStateOf {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        }
+    }
+    var sheetGesturesEnabled by remember {
+        mutableStateOf(isAtTop)
+    }
+    LaunchedEffect(isAtTop) {
+        if (!isAtTop) {
+            sheetGesturesEnabled = false
+        }
+    }
+    LaunchedEffect(listState.isScrollInProgress, isAtTop) {
+        if (isAtTop && !listState.isScrollInProgress) {
+            sheetGesturesEnabled = true
+        }
+    }
     var searchFavQuery by remember { mutableStateOf("") }
     var debouncedQuery by remember { mutableStateOf(searchFavQuery) }
 
@@ -613,13 +692,10 @@ private fun AddFavoriteSheet(
         }
     }
 
-    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
-        skipPartiallyExpanded = true
-    )
-
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        sheetGesturesEnabled = sheetGesturesEnabled,
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = { WindowInsets(0.dp) },
     ) {
@@ -648,7 +724,6 @@ private fun AddFavoriteSheet(
                 ) {
                     LazyColumn(
                         modifier = Modifier
-                            .nestedScroll(nestedScrollConnection)
                             .fillMaxSize()
                             .fadingEdge(listState, 48.dp),
                         state = listState,

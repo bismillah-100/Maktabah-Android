@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.maktabah.R
 import com.maktabah.manager.LibraryDataManager
 import com.maktabah.models.BooksData
 import com.maktabah.models.CategoryData
@@ -13,7 +14,6 @@ import com.maktabah.models.SavedResultsItem
 import com.maktabah.models.SearchMode
 import com.maktabah.models.SearchResult
 import com.maktabah.search.SearchEngine
-import com.maktabah.R
 import com.maktabah.utils.convertToArabicDigits
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.snippetAround
@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.time.Duration.Companion.milliseconds
 
 class SearchViewModel : ViewModel() {
     private val searchEngine = SearchEngine()
@@ -190,7 +191,7 @@ class SearchViewModel : ViewModel() {
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             if (query.isNotEmpty()) {
-                delay(500)
+                delay(500.milliseconds)
             }
 
             if (query.isNotEmpty()) {
@@ -272,10 +273,6 @@ class SearchViewModel : ViewModel() {
 
     fun clearSelection() {
         _selectedBookIds.value = emptySet()
-    }
-
-    fun selectAllDownloaded() {
-        _selectedBookIds.value = _downloadedBookIds.value
     }
 
     fun setShowSavedResults(show: Boolean) {
@@ -397,7 +394,7 @@ class SearchViewModel : ViewModel() {
         mode: SearchMode,
         dataManager: LibraryDataManager
     ) {
-        val selectedIds = if (_selectedBookIds.value.isEmpty()) _downloadedBookIds.value else _selectedBookIds.value
+        val selectedIds = _selectedBookIds.value.ifEmpty { _downloadedBookIds.value }
         if (query.isBlank() || selectedIds.isEmpty()) {
             _searchResults.value = emptyList()
             return
@@ -501,7 +498,7 @@ class SearchViewModel : ViewModel() {
             _isSearching.value = true
             _searchResults.value = emptyList()
             _completedBooks.value = 0
-            
+
             val groupedByArchive = items.groupBy { it.archive }
             _totalBooks.value = groupedByArchive.size
             _currentBookProgress.value = null
@@ -524,7 +521,6 @@ class SearchViewModel : ViewModel() {
                             val itemsByBook = groupItems.groupBy { it.tableName.toIntOrNull() }.mapNotNull { (k, v) -> k?.let { it to v } }
                             for ((bkId, bookItems) in itemsByBook) {
                                 val book = dataManager.booksById[bkId]
-                                val isMultilingual = book?.isMultiLanguage ?: false
                                 val currentName = book?.name ?: bookItems.firstOrNull()?.bookTitle ?: ""
                                 withContext(Dispatchers.Main) {
                                     _currentBookName.value = currentName
@@ -607,14 +603,14 @@ class SearchViewModel : ViewModel() {
         val currentFilter = _bookFilter.value
         val allResults = _searchResults.value
         val booksMap = dataManager.booksById // Capture thread-safe reference
-        
+
         filterJob?.cancel()
-        
+
         if (currentFilter.isEmpty()) {
             _filteredSearchResults.value = allResults
         } else {
             filterJob = viewModelScope.launch(Dispatchers.Default) {
-                delay(500) // UI Debounce
+                delay(500.milliseconds) // UI Debounce
                 val cleanQuery = currentFilter.normalizeArabic()
                 if (cleanQuery.isEmpty()) {
                     _filteredSearchResults.value = allResults

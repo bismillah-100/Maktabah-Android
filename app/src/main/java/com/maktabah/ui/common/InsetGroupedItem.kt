@@ -64,7 +64,6 @@ fun InsetGroupedItem(
     contentPadding: PaddingValues = PaddingValues(16.dp),
     outerPadding: PaddingValues = PaddingValues(horizontal = 16.dp),
     dividerStartPadding: Dp = 16.dp,
-    dividerEndPadding: Dp = 16.dp,
     fillMaxWidth: Boolean = true,
     content: @Composable () -> Unit,
 ) {

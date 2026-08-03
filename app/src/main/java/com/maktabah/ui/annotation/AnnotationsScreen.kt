@@ -5,6 +5,14 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -25,13 +33,11 @@ import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Output
 import androidx.compose.material.icons.filled.ImportExport
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -67,6 +73,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.core.content.edit
 import androidx.core.graphics.toColorInt
 import androidx.core.graphics.withClip
 import com.maktabah.R
@@ -81,8 +88,8 @@ import com.maktabah.ui.common.GroupedRecyclerView
 import com.maktabah.ui.common.rememberGroupedListColors
 import com.maktabah.ui.history.HistoryViewModel
 import com.maktabah.ui.library.LibraryViewModel
-import com.maktabah.ui.search.SearchTextField
 import com.maktabah.ui.search.AnnotationSearchScopeSegmentedRow
+import com.maktabah.ui.search.SearchTextField
 import com.maktabah.utils.GroupedCardDecoration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -339,7 +346,7 @@ fun AnnotationsScreen(
                     onToggleAnnotationSelection = { viewModel.toggleAnnotationSelection(it) },
                     annotationManager = annotationManager,
                     onHeaderLongClick = { group, view ->
-                        if (group is com.maktabah.models.AnnotationGroup.BookGroup) {
+                        if (group is AnnotationGroup.BookGroup) {
                             val location = IntArray(2)
                             view.getLocationInWindow(location)
                             popoverAnchor = androidx.compose.ui.unit.IntRect(
@@ -362,7 +369,6 @@ fun AnnotationsScreen(
                         )
                         popoverAnnotation = ann
                     },
-                    libraryViewModel = libraryViewModel,
                 )
             }
         }
@@ -483,6 +489,17 @@ private fun AnnotationsTopBar(
     onImportJsonRequested: () -> Unit,
 ) {
     var isSyncing by remember { mutableStateOf(false) }
+    var isSearchFocused by remember { mutableStateOf(false) }
+
+    val searchPaddingEnd by animateDpAsState(
+        targetValue = if (isSearchFocused) 16.dp else 12.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "searchPaddingEnd"
+    )
+
     var showMainMenu by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showSelectionExportMenu by remember { mutableStateOf(false) }
@@ -500,249 +517,336 @@ private fun AnnotationsTopBar(
                     onValueChange = onSearchQueryChange,
                     placeholder = stringResource(R.string.reader_annotations_search_placeholder),
                     onClearClick = { onSearchQueryChange("") },
-                    modifier = Modifier.padding(end = 12.dp)
+                    modifier = Modifier
+                        .padding(end = searchPaddingEnd)
+                        .fillMaxWidth(),
+                    onFocusChanged = { isSearchFocused = it }
                 )
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             navigationIcon = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (bookIdFilter != null && onBack != null) {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.reader_action_back),
-                            )
+                AnimatedVisibility(
+                    visible = !isSearchFocused,
+                    enter = expandHorizontally(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                        expandFrom = Alignment.Start,
+                    ) + fadeIn(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                    exit = shrinkHorizontally(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                        shrinkTowards = Alignment.Start,
+                    ) + fadeOut(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (bookIdFilter != null && onBack != null) {
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(R.string.reader_action_back),
+                                )
+                            }
                         }
-                    }
-                    if (!hasDonated) {
-                        DonationIconButton()
+                        if (!hasDonated) {
+                            DonationIconButton()
+                        }
                     }
                 }
             },
             actions = {
-                if (isSelectionMode) {
-                    if (selectedAnnotationIds.isNotEmpty()) {
-                        Box {
-                            IconButton(onClick = { showSelectionExportMenu = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.Share,
-                                    contentDescription = stringResource(R.string.annotations_menu_export_rtf),
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = showSelectionExportMenu,
-                                onDismissRequest = { showSelectionExportMenu = false },
-                                containerColor = MaterialTheme.colorScheme.surface,
-                            ) {
-                                AnnotationMenuItem(
-                                    text = stringResource(R.string.annotations_menu_export_rtf),
-                                    icon = Icons.Default.Share,
-                                    onClick = {
-                                        showSelectionExportMenu = false
-                                        RtfAnnotationExporter.exportAndShareRtf(
-                                            context = context,
-                                            groups = groupedAnnotations,
-                                            dataManager = dataManager,
-                                            selectedAnnotationIds = selectedAnnotationIds
-                                        )
-                                    },
-                                )
-                                AnnotationMenuItem(
-                                    text = stringResource(R.string.annotations_menu_export_json),
-                                    icon = Icons.AutoMirrored.Filled.CallMade,
-                                    onClick = {
-                                        showSelectionExportMenu = false
-                                        onExportJsonRequested(true)
-                                    },
-                                )
-                            }
-                        }
-                    }
-                    IconButton(onClick = onToggleSelectionMode) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = stringResource(R.string.batal),
-                        )
-                    }
-                } else {
-                    // Sorting dropdown menu (left of MoreHoriz)
-                    Box {
-                        IconButton(onClick = { showSortMenu = true }) {
-                            Icon(
-                                imageVector = Icons.Default.ImportExport,
-                                contentDescription = stringResource(R.string.annotations_sort_options),
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = showSortMenu,
-                            onDismissRequest = { showSortMenu = false },
-                            containerColor = MaterialTheme.colorScheme.surface,
-                        ) {
-                            Text(
-                                text = stringResource(R.string.annotations_group_by),
-                                style = MaterialTheme.typography.labelLarge,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.annotations_menu_book)) },
-                                onClick = {
-                                    onGroupingModeChange(AnnotationGroupingMode.BOOK)
-                                    showSortMenu = false
-                                },
-                                leadingIcon = {
-                                    if (groupingMode == AnnotationGroupingMode.BOOK) Icon(
-                                        Icons.Default.Check,
-                                        null
-                                    )
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.annotations_menu_tag)) },
-                                onClick = {
-                                    onGroupingModeChange(AnnotationGroupingMode.TAG)
-                                    showSortMenu = false
-                                },
-                                leadingIcon = {
-                                    if (groupingMode == AnnotationGroupingMode.TAG) Icon(
-                                        Icons.Default.Check,
-                                        null
-                                    )
-                                },
-                            )
-
-                            HorizontalDivider()
-                            Text(
-                                text = stringResource(R.string.annotations_sort_by),
-                                style = MaterialTheme.typography.labelLarge,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            AnnotationSortItem(
-                                AnnotationSortField.CREATED_AT,
-                                R.string.annotations_menu_date,
-                                sortField,
-                                onSortFieldChange
-                            ) { showSortMenu = false }
-                            AnnotationSortItem(
-                                AnnotationSortField.CONTEXT,
-                                R.string.annotations_menu_context,
-                                sortField,
-                                onSortFieldChange
-                            ) { showSortMenu = false }
-                            AnnotationSortItem(
-                                AnnotationSortField.PAGE,
-                                R.string.annotations_menu_page,
-                                sortField,
-                                onSortFieldChange
-                            ) { showSortMenu = false }
-                            AnnotationSortItem(
-                                AnnotationSortField.PART,
-                                R.string.annotations_menu_part,
-                                sortField,
-                                onSortFieldChange
-                            ) { showSortMenu = false }
-
-                            HorizontalDivider()
-                            Text(
-                                text = stringResource(R.string.annotations_order),
-                                style = MaterialTheme.typography.labelLarge,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.annotations_menu_asc)) },
-                                onClick = { onSortAscendingChange(true); showSortMenu = false },
-                                leadingIcon = { if (sortAscending) Icon(Icons.Default.Check, null) },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.annotations_menu_desc)) },
-                                onClick = { onSortAscendingChange(false); showSortMenu = false },
-                                leadingIcon = { if (!sortAscending) Icon(Icons.Default.Check, null) },
-                            )
-                        }
-                    }
-
-                    // Main options dropdown menu (trailing edge)
-                    Box {
-                        IconButton(onClick = { showMainMenu = true }) {
-                            Icon(
-                                imageVector = Icons.Default.MoreHoriz,
-                                contentDescription = stringResource(R.string.reader_action_menu_options),
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = showMainMenu,
-                            onDismissRequest = { showMainMenu = false },
-                            containerColor = MaterialTheme.colorScheme.surface,
-                        ) {
-                            AnnotationMenuItem(
-                                text = stringResource(R.string.annotations_menu_select),
-                                icon = Icons.Default.CheckCircleOutline,
-                                onClick = {
-                                    showMainMenu = false
-                                    onToggleSelectionMode()
-                                },
-                            )
-                            AnnotationMenuItemCustomIcon(
-                                text = stringResource(R.string.annotations_menu_reload),
-                                icon = {
-                                    if (isSyncing) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(24.dp),
-                                            color = MaterialTheme.colorScheme.primary,
-                                        )
-                                    } else {
+                AnimatedVisibility(
+                    visible = !isSearchFocused,
+                    enter = expandHorizontally(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                        expandFrom = Alignment.End,
+                    ) + fadeIn(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                    exit = shrinkHorizontally(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                        shrinkTowards = Alignment.End,
+                    ) + fadeOut(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isSelectionMode) {
+                            if (selectedAnnotationIds.isNotEmpty()) {
+                                Box {
+                                    IconButton(onClick = { showSelectionExportMenu = true }) {
                                         Icon(
-                                            imageVector = Icons.Default.Refresh,
-                                            contentDescription = stringResource(R.string.annotations_menu_reload),
+                                            imageVector = Icons.Default.Share,
+                                            contentDescription = stringResource(R.string.annotations_menu_export_rtf),
                                         )
                                     }
-                                },
-                                onClick = {
-                                    showMainMenu = false
-                                    isSyncing = true
-                                    onSyncRequested()
-                                    isSyncing = false
-                                },
-                            )
-                            HorizontalDivider()
-                            AnnotationMenuItem(
-                                text = stringResource(R.string.annotations_menu_export_rtf),
-                                icon = Icons.Default.Share,
-                                onClick = {
-                                    showMainMenu = false
-                                    val success = RtfAnnotationExporter.exportAndShareRtf(
-                                        context = context,
-                                        groups = groupedAnnotations,
-                                        dataManager = dataManager,
-                                    )
-                                    if (!success) {
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(R.string.annotations_export_failed),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
+                                    DropdownMenu(
+                                        expanded = showSelectionExportMenu,
+                                        onDismissRequest = { showSelectionExportMenu = false },
+                                        containerColor = MaterialTheme.colorScheme.surface,
+                                    ) {
+                                        AnnotationMenuItem(
+                                            text = stringResource(R.string.annotations_menu_export_rtf),
+                                            icon = Icons.Default.Share,
+                                            onClick = {
+                                                showSelectionExportMenu = false
+                                                RtfAnnotationExporter.exportAndShareRtf(
+                                                    context = context,
+                                                    groups = groupedAnnotations,
+                                                    dataManager = dataManager,
+                                                    selectedAnnotationIds = selectedAnnotationIds
+                                                )
+                                            },
+                                        )
+                                        AnnotationMenuItem(
+                                            text = stringResource(R.string.annotations_menu_export_json),
+                                            icon = Icons.AutoMirrored.Filled.CallMade,
+                                            onClick = {
+                                                showSelectionExportMenu = false
+                                                onExportJsonRequested(true)
+                                            },
+                                        )
                                     }
-                                },
-                            )
-							AnnotationMenuItem(
-								text = stringResource(R.string.annotations_menu_export_json),
-								icon = Icons.AutoMirrored.Filled.CallMade,
-								onClick = {
-									showMainMenu = false
-									onExportJsonRequested(false)
-								},
-							)
-							HorizontalDivider()
-							AnnotationMenuItem(
-								text = stringResource(R.string.annotations_menu_import_json),
-								icon = Icons.AutoMirrored.Filled.CallReceived,
-								onClick = {
-									showMainMenu = false
-									onImportJsonRequested()
-								},
-							)
+                                }
+                            }
+                            IconButton(onClick = onToggleSelectionMode) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = stringResource(R.string.batal),
+                                )
+                            }
+                        } else {
+                            // Sorting dropdown menu (left of MoreHoriz)
+                            Box {
+                                IconButton(onClick = { showSortMenu = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.ImportExport,
+                                        contentDescription = stringResource(R.string.annotations_sort_options),
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showSortMenu,
+                                    onDismissRequest = { showSortMenu = false },
+                                    containerColor = MaterialTheme.colorScheme.surface,
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.annotations_group_by),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        modifier = Modifier.padding(
+                                            horizontal = 16.dp,
+                                            vertical = 8.dp
+                                        ),
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.annotations_menu_book)) },
+                                        onClick = {
+                                            onGroupingModeChange(AnnotationGroupingMode.BOOK)
+                                            showSortMenu = false
+                                        },
+                                        leadingIcon = {
+                                            if (groupingMode == AnnotationGroupingMode.BOOK) Icon(
+                                                Icons.Default.Check,
+                                                null
+                                            )
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.annotations_menu_tag)) },
+                                        onClick = {
+                                            onGroupingModeChange(AnnotationGroupingMode.TAG)
+                                            showSortMenu = false
+                                        },
+                                        leadingIcon = {
+                                            if (groupingMode == AnnotationGroupingMode.TAG) Icon(
+                                                Icons.Default.Check,
+                                                null
+                                            )
+                                        },
+                                    )
+
+                                    HorizontalDivider()
+                                    Text(
+                                        text = stringResource(R.string.annotations_sort_by),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        modifier = Modifier.padding(
+                                            horizontal = 16.dp,
+                                            vertical = 8.dp
+                                        ),
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                    AnnotationSortItem(
+                                        AnnotationSortField.CREATED_AT,
+                                        R.string.annotations_menu_date,
+                                        sortField,
+                                        onSortFieldChange
+                                    ) { showSortMenu = false }
+                                    AnnotationSortItem(
+                                        AnnotationSortField.CONTEXT,
+                                        R.string.annotations_menu_context,
+                                        sortField,
+                                        onSortFieldChange
+                                    ) { showSortMenu = false }
+                                    AnnotationSortItem(
+                                        AnnotationSortField.PAGE,
+                                        R.string.annotations_menu_page,
+                                        sortField,
+                                        onSortFieldChange
+                                    ) { showSortMenu = false }
+                                    AnnotationSortItem(
+                                        AnnotationSortField.PART,
+                                        R.string.annotations_menu_part,
+                                        sortField,
+                                        onSortFieldChange
+                                    ) { showSortMenu = false }
+
+                                    HorizontalDivider()
+                                    Text(
+                                        text = stringResource(R.string.annotations_order),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        modifier = Modifier.padding(
+                                            horizontal = 16.dp,
+                                            vertical = 8.dp
+                                        ),
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.annotations_menu_asc)) },
+                                        onClick = {
+                                            onSortAscendingChange(true); showSortMenu =
+                                            false
+                                        },
+                                        leadingIcon = {
+                                            if (sortAscending) Icon(
+                                                Icons.Default.Check,
+                                                null
+                                            )
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.annotations_menu_desc)) },
+                                        onClick = {
+                                            onSortAscendingChange(false); showSortMenu =
+                                            false
+                                        },
+                                        leadingIcon = {
+                                            if (!sortAscending) Icon(
+                                                Icons.Default.Check,
+                                                null
+                                            )
+                                        },
+                                    )
+                                }
+                            }
+
+                            // Main options dropdown menu (trailing edge)
+                            Box {
+                                IconButton(onClick = { showMainMenu = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreHoriz,
+                                        contentDescription = stringResource(R.string.reader_action_menu_options),
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showMainMenu,
+                                    onDismissRequest = { showMainMenu = false },
+                                    containerColor = MaterialTheme.colorScheme.surface,
+                                ) {
+                                    AnnotationMenuItem(
+                                        text = stringResource(R.string.annotations_menu_select),
+                                        icon = Icons.Default.CheckCircleOutline,
+                                        onClick = {
+                                            showMainMenu = false
+                                            onToggleSelectionMode()
+                                        },
+                                    )
+                                    AnnotationMenuItemCustomIcon(
+                                        text = stringResource(R.string.annotations_menu_reload),
+                                        icon = {
+                                            if (isSyncing) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(24.dp),
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                )
+                                            } else {
+                                                Icon(
+                                                    imageVector = Icons.Default.Refresh,
+                                                    contentDescription = stringResource(R.string.annotations_menu_reload),
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            showMainMenu = false
+                                            isSyncing = true
+                                            onSyncRequested()
+                                            isSyncing = false
+                                        },
+                                    )
+                                    HorizontalDivider()
+                                    AnnotationMenuItem(
+                                        text = stringResource(R.string.annotations_menu_export_rtf),
+                                        icon = Icons.Default.Share,
+                                        onClick = {
+                                            showMainMenu = false
+                                            val success =
+                                                RtfAnnotationExporter.exportAndShareRtf(
+                                                    context = context,
+                                                    groups = groupedAnnotations,
+                                                    dataManager = dataManager,
+                                                )
+                                            if (!success) {
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.annotations_export_failed),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        },
+                                    )
+                                    AnnotationMenuItem(
+                                        text = stringResource(R.string.annotations_menu_export_json),
+                                        icon = Icons.AutoMirrored.Filled.CallMade,
+                                        onClick = {
+                                            showMainMenu = false
+                                            onExportJsonRequested(false)
+                                        },
+                                    )
+                                    HorizontalDivider()
+                                    AnnotationMenuItem(
+                                        text = stringResource(R.string.annotations_menu_import_json),
+                                        icon = Icons.AutoMirrored.Filled.CallReceived,
+                                        onClick = {
+                                            showMainMenu = false
+                                            onImportJsonRequested()
+                                        },
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -793,7 +897,6 @@ private fun AnnotationsList(
     annotationManager: AnnotationManager,
     onHeaderLongClick: (AnnotationGroup, android.view.View) -> Unit,
     onAnnotationLongClick: (com.maktabah.models.Annotation, android.view.View) -> Unit,
-    libraryViewModel: LibraryViewModel,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -1055,10 +1158,10 @@ private fun AnnotationsList(
                         val pos = lm.findFirstVisibleItemPosition()
                         val view = lm.findViewByPosition(pos)
                         val offset = (view?.top ?: 0) - rv.paddingTop
-                        sharedPrefs.edit()
-                            .putInt("scroll_pos", pos)
-                            .putInt("scroll_offset", offset)
-                            .apply()
+                        sharedPrefs.edit {
+                            putInt("scroll_pos", pos)
+                                .putInt("scroll_offset", offset)
+                        }
                     }
                 }
             },

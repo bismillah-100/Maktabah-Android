@@ -3,6 +3,7 @@ package com.maktabah.cloudKit
 import android.content.Context
 import androidx.core.content.edit
 import com.maktabah.database.AnnotationManager
+import com.maktabah.database.HistoryDatabaseManager
 import com.maktabah.database.ResultsHandler
 import com.maktabah.models.Annotation
 import com.maktabah.models.ReadingEntry
@@ -14,16 +15,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.ensureActive
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
-import com.maktabah.database.HistoryDatabaseManager
+import kotlin.time.Duration.Companion.milliseconds
 
 class CloudKitSyncManager {
     private val syncMutex = Mutex()
@@ -57,7 +58,7 @@ class CloudKitSyncManager {
                 }
                 historyDebounceJob?.cancel()
                 historyDebounceJob = historyUploadScope.launch {
-                    delay(2_000)
+                    delay(2_000.milliseconds)
                     flushHistoryBuffer(appContext)
                 }
             }
@@ -96,35 +97,37 @@ class CloudKitSyncManager {
      * Retry upload/delete entries yang masih di sync_pending dari sesi sebelumnya.
      * Dipanggil saat app resume (ON_RESUME lifecycle event) sebelum fetchChanges.
      */
-    suspend fun retryPendingSyncs(context: Context, historyViewModel: com.maktabah.ui.history.HistoryViewModel) {
-        val db = HistoryDatabaseManager.instance ?: return
-        val pendingUploads = db.fetchPendingSync("upload")
-        val pendingDeletes = db.fetchPendingSync("delete")
-        if (pendingUploads.isEmpty() && pendingDeletes.isEmpty()) return
+    suspend fun retryPendingSyncs(context: Context, historyViewModel: HistoryViewModel) {
+        withContext(Dispatchers.IO) {
+            val db = HistoryDatabaseManager.instance ?: return@withContext
+            val pendingUploads = db.fetchPendingSync("upload")
+            val pendingDeletes = db.fetchPendingSync("delete")
+            if (pendingUploads.isEmpty() && pendingDeletes.isEmpty()) return@withContext
 
-        val allEntries = historyViewModel.entriesByBookId.value
-        val entriesToRetry = mutableListOf<ReadingEntry>()
+            val allEntries = historyViewModel.entriesByBookId.value
+            val entriesToRetry = mutableListOf<ReadingEntry>()
 
-        // Cari entries yang masih pending upload di memory ViewModel
-        for (ckId in pendingUploads) {
-            val entry = allEntries.values.find { (it.ckRecordId ?: it.bookId.toString()) == ckId }
-            if (entry != null) entriesToRetry.add(entry)
+            // Cari entries yang masih pending upload di memory ViewModel
+            for (ckId in pendingUploads) {
+                val entry = allEntries.values.find { (it.ckRecordId ?: it.bookId.toString()) == ckId }
+                if (entry != null) entriesToRetry.add(entry)
+            }
+            // Buat dummy delete entries untuk ckIds yang perlu dihapus
+            for (ckId in pendingDeletes) {
+                entriesToRetry.add(ReadingEntry(
+                    bookId = ckId.toIntOrNull() ?: continue,
+                    ckRecordId = ckId,
+                    lastOpenedAt = null,
+                    isFavorite = false
+                ))
+            }
+            if (entriesToRetry.isEmpty()) {
+                // Tidak ada di memory — data sudah tidak relevan, bersihkan pending
+                db.removePendingSync(pendingUploads + pendingDeletes)
+                return@withContext
+            }
+            uploadHistory(context, entriesToRetry)
         }
-        // Buat dummy delete entries untuk ckIds yang perlu dihapus
-        for (ckId in pendingDeletes) {
-            entriesToRetry.add(ReadingEntry(
-                bookId = ckId.toIntOrNull() ?: continue,
-                ckRecordId = ckId,
-                lastOpenedAt = null,
-                isFavorite = false
-            ))
-        }
-        if (entriesToRetry.isEmpty()) {
-            // Tidak ada di memory — data sudah tidak relevan, bersihkan pending
-            db.removePendingSync(pendingUploads + pendingDeletes)
-            return
-        }
-        uploadHistory(context, entriesToRetry)
     }
 
     private fun buildReadingEntryRecord(entry: ReadingEntry, recordId: String): JSONObject =
@@ -260,63 +263,77 @@ class CloudKitSyncManager {
                     } else if (recordType == "ReadingEntry") {
                         val bookIdObj = fields.optJSONObject("bookId")
                         val bookId = if (bookIdObj != null) {
-                            val v = bookIdObj.opt("value")
-                            if (v == null || v == JSONObject.NULL) 0
-                            else if (v is Number) v.toInt()
-                            else v.toString().toIntOrNull() ?: 0
+                            when (val v = bookIdObj.opt("value")) {
+                                null -> 0
+                                JSONObject.NULL -> 0
+                                is Number -> v.toInt()
+                                else -> v.toString().toIntOrNull() ?: 0
+                            }
                         } else 0
                         if (bookId == 0) return@fetchChanges
 
                         val lastContentIdObj = fields.optJSONObject("lastContentId")
                         val lastContentId = if (lastContentIdObj != null) {
-                            val v = lastContentIdObj.opt("value")
-                            if (v == null || v == JSONObject.NULL) null
-                            else if (v is Number) v.toInt()
-                            else v.toString().toIntOrNull()
+                            when (val v = lastContentIdObj.opt("value")) {
+                                null -> null
+                                JSONObject.NULL -> null
+                                is Number -> v.toInt()
+                                else -> v.toString().toIntOrNull()
+                            }
                         } else null
 
                         val lastOpenedAtObj = fields.optJSONObject("lastOpenedAt")
                         val lastOpenedAtVal = if (lastOpenedAtObj != null) {
-                            val v = lastOpenedAtObj.opt("value")
-                            if (v == null || v == JSONObject.NULL) null
-                            else if (v is Number) v.toLong()
-                            else v.toString().toLongOrNull()
+                            when (val v = lastOpenedAtObj.opt("value")) {
+                                null -> null
+                                JSONObject.NULL -> null
+                                is Number -> v.toLong()
+                                else -> v.toString().toLongOrNull()
+                            }
                         } else null
                         val lastOpenedAt = if (lastOpenedAtVal != null && lastOpenedAtVal in 1L..9999999999L) lastOpenedAtVal * 1000L else lastOpenedAtVal
 
                         val favoritedAtObj = fields.optJSONObject("favoritedAt")
                         val favoritedAtVal = if (favoritedAtObj != null) {
-                            val v = favoritedAtObj.opt("value")
-                            if (v == null || v == JSONObject.NULL) null
-                            else if (v is Number) v.toLong()
-                            else v.toString().toLongOrNull()
+                            when (val v = favoritedAtObj.opt("value")) {
+                                null -> null
+                                JSONObject.NULL -> null
+                                is Number -> v.toLong()
+                                else -> v.toString().toLongOrNull()
+                            }
                         } else null
                         val favoritedAt = if (favoritedAtVal != null && favoritedAtVal in 1L..9999999999L) favoritedAtVal * 1000L else favoritedAtVal
 
                         val positionUpdatedAtObj = fields.optJSONObject("positionUpdatedAt")
                         val positionUpdatedAtVal = if (positionUpdatedAtObj != null) {
-                            val v = positionUpdatedAtObj.opt("value")
-                            if (v == null || v == JSONObject.NULL) null
-                            else if (v is Number) v.toLong()
-                            else v.toString().toLongOrNull()
+                            when (val v = positionUpdatedAtObj.opt("value")) {
+                                null -> null
+                                JSONObject.NULL -> null
+                                is Number -> v.toLong()
+                                else -> v.toString().toLongOrNull()
+                            }
                         } else null
                         val positionUpdatedAt = if (positionUpdatedAtVal != null && positionUpdatedAtVal in 1L..9999999999L) positionUpdatedAtVal * 1000L else positionUpdatedAtVal
 
                         val isFavoriteObj = fields.optJSONObject("isFavorite")
                         val isFavorite = if (isFavoriteObj != null) {
-                            val v = isFavoriteObj.opt("value")
-                            if (v == null || v == JSONObject.NULL) false
-                            else if (v is Boolean) v
-                            else if (v is Number) v.toInt() == 1
-                            else v.toString().toIntOrNull() == 1
+                            when (val v = isFavoriteObj.opt("value")) {
+                                null -> false
+                                JSONObject.NULL -> false
+                                is Boolean -> v
+                                is Number -> v.toInt() == 1
+                                else -> v.toString().toIntOrNull() == 1
+                            }
                         } else false
 
                         val lastModifiedObj = fields.optJSONObject("lastModified")
                         val lastModifiedVal = if (lastModifiedObj != null) {
-                            val v = lastModifiedObj.opt("value")
-                            if (v == null || v == JSONObject.NULL) 0L
-                            else if (v is Number) v.toLong()
-                            else v.toString().toLongOrNull() ?: 0L
+                            when (val v = lastModifiedObj.opt("value")) {
+                                null -> 0L
+                                JSONObject.NULL -> 0L
+                                is Number -> v.toLong()
+                                else -> v.toString().toLongOrNull() ?: 0L
+                            }
                         } else 0L
                         val lastModified = if (lastModifiedVal in 1L..9999999999L) lastModifiedVal * 1000L else lastModifiedVal
 
@@ -366,9 +383,9 @@ class CloudKitSyncManager {
 
                     return@withContext it.second
                 },
-                onFailure = { 
+                onFailure = {
                     if (it.message == "No Web Auth Token") return@withContext null
-                    return@withContext "Exception: ${it.message}" 
+                    return@withContext "Exception: ${it.message}"
                 }
             )
         } }
@@ -529,7 +546,7 @@ class CloudKitSyncManager {
 
     // region Search Results Sync
 
-    suspend fun syncResults(context: Context): String? = syncMutex.withLock {
+    suspend fun syncResults(context: Context): String = syncMutex.withLock {
         withContext(Dispatchers.IO) {
             val handler = getResultsHandler(context)
             val folders = handler.fetchAllSyncFolders()
@@ -586,14 +603,6 @@ class CloudKitSyncManager {
             val result = CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, JSONArray())
             if (result.isSuccess) "Success" else "Failed: ${result.exceptionOrNull()?.message}"
         }
-    }
-
-    suspend fun deleteResultRecords(context: Context, ckRecordIds: List<String>): String? = withContext(Dispatchers.IO) {
-        if (ckRecordIds.isEmpty()) return@withContext null
-        val recordIDsToDelete = JSONArray()
-        ckRecordIds.forEach { recordIDsToDelete.put(it) }
-        val result = CloudKitCoreManager.shared.modifyRecords(context, JSONArray(), recordIDsToDelete)
-        if (result.isSuccess) "Success" else "Failed: ${result.exceptionOrNull()?.message}"
     }
 
     private fun getResultsHandler(context: Context): ResultsHandler {

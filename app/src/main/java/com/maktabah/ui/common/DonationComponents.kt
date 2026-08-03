@@ -45,7 +45,6 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import androidx.core.net.toUri
-import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.Firebase
 import com.google.firebase.messaging.messaging
 import com.maktabah.R

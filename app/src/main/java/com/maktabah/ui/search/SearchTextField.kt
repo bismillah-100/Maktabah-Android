@@ -29,17 +29,20 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.maktabah.models.AnnotationSearchScope
+import com.maktabah.utils.startsWithArabic
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -51,17 +54,24 @@ fun SearchTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     isError: Boolean = false,
     onClearClick: (() -> Unit)? = null,
+    onFocusChanged: (Boolean) -> Unit = {},
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
     val focusManager = LocalFocusManager.current
     val isImeVisible = WindowInsets.isImeVisible
 
+    LaunchedEffect(isFocused) {
+        onFocusChanged(isFocused)
+    }
+
     LaunchedEffect(isImeVisible) {
         if (!isImeVisible && isFocused) {
             focusManager.clearFocus()
         }
     }
+
+    val isArabic = remember(value) { value.startsWithArabic() }
 
     val borderColor =
         if (isError) {
@@ -83,6 +93,7 @@ fun SearchTextField(
         textStyle =
             MaterialTheme.typography.bodyMedium.copy(
                 color = MaterialTheme.colorScheme.onSurface,
+                textDirection = if (isArabic) androidx.compose.ui.text.style.TextDirection.Rtl else androidx.compose.ui.text.style.TextDirection.Ltr
             ),
         singleLine = true,
         keyboardOptions = keyboardOptions,
@@ -130,7 +141,7 @@ fun SearchTextField(
                     }
                 }
             }
-        },
+        }
     )
 }
 

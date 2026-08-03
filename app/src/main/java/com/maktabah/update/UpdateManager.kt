@@ -3,6 +3,7 @@ package com.maktabah.update
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
+import androidx.core.content.edit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -21,19 +22,19 @@ class UpdateManager(private val context: Context, private val client: OkHttpClie
 
     fun markUpdateSkipped() {
         val prefs = context.getSharedPreferences("main_prefs", Context.MODE_PRIVATE)
-        prefs.edit().putLong("last_update_skip_time", System.currentTimeMillis()).apply()
+        prefs.edit { putLong("last_update_skip_time", System.currentTimeMillis()) }
     }
 
     fun isUpdateAvailable(tagName: String): Boolean {
         return try {
             val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
             val currentVersion = packageInfo.versionName ?: "0.0.0"
-            
+
             // Sederhananya compare string. Idealnya pakai semver comparison.
             // Tag biasanya berbentuk "v1.0.1" atau "1.0.1"
             val cleanTagName = tagName.removePrefix("v")
             val cleanCurrentVersion = currentVersion.removePrefix("v")
-            
+
             compareVersions(cleanTagName, cleanCurrentVersion) > 0
         } catch (e: Exception) {
             false
@@ -43,7 +44,7 @@ class UpdateManager(private val context: Context, private val client: OkHttpClie
     private fun compareVersions(v1: String, v2: String): Int {
         val parts1 = v1.split(".").mapNotNull { it.toIntOrNull() }
         val parts2 = v2.split(".").mapNotNull { it.toIntOrNull() }
-        
+
         val length = maxOf(parts1.size, parts2.size)
         for (i in 0 until length) {
             val p1 = if (i < parts1.size) parts1[i] else 0

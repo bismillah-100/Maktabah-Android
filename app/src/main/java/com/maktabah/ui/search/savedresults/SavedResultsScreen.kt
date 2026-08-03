@@ -60,7 +60,6 @@ import com.maktabah.ui.common.InsetGroupedItem
 import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.search.ResultsViewModel
 import com.maktabah.ui.search.SearchTextField
-import com.maktabah.utils.normalizeArabic
 
 sealed class MoveTarget {
     data class Folder(val node: FolderNode) : MoveTarget()
@@ -78,7 +77,6 @@ sealed class RenameTarget {
 fun SavedResultsScreen(
     resultsViewModel: ResultsViewModel,
     onSelectResult: (List<SavedResultsItem>) -> Unit,
-    onRefresh: () -> Unit,
     onDismiss: () -> Unit,
     bottomPadding: androidx.compose.ui.unit.Dp = 0.dp,
     backHandlerEnabled: Boolean = true
@@ -358,7 +356,6 @@ private fun FolderItem(
         onClick = onClick,
         onLongClick = { expanded = true },
         dividerStartPadding = 48.dp,
-        dividerEndPadding = 0.dp,
         contentPadding = PaddingValues(start = 16.dp, end = 0.dp, top = 8.dp, bottom = 8.dp)
     ) {
         Row(
@@ -432,7 +429,6 @@ private fun ResultItem(
         onClick = onClick,
         onLongClick = { expanded = true },
         dividerStartPadding = 48.dp,
-        dividerEndPadding = 0.dp,
         contentPadding = PaddingValues(start = 16.dp, end = 0.dp, top = 8.dp, bottom = 8.dp)
     ) {
         Row(

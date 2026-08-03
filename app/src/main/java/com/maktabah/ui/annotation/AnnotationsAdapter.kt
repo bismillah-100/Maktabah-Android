@@ -268,7 +268,7 @@ class AnnotationsAdapter(
         private val divider: View = itemView.findViewById(R.id.divider)
 
         init {
-            itemView.background = com.maktabah.utils.ItemHighlightDrawable { itemView.parent as? android.view.View }
+            itemView.background = com.maktabah.utils.ItemHighlightDrawable { itemView.parent as? View }
         }
 
         fun unbind() {
@@ -371,7 +371,7 @@ class AnnotationsAdapter(
         private val divider: View = itemView.findViewById(R.id.divider)
 
         init {
-            itemView.background = com.maktabah.utils.ItemHighlightDrawable { itemView.parent as? android.view.View }
+            itemView.background = com.maktabah.utils.ItemHighlightDrawable { itemView.parent as? View }
         }
 
         fun unbind() {

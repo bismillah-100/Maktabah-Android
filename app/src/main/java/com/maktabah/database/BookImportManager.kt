@@ -7,7 +7,6 @@ import com.maktabah.models.BooksData
 import com.maktabah.models.CategoryData
 import com.maktabah.models.ImportBookMetadata
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.ensureActive
 import java.io.File
 
 object BookImportManager {
