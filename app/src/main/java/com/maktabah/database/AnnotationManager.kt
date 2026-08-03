@@ -288,14 +288,15 @@ class AnnotationManager(
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
             db.prepare("BEGIN TRANSACTION")?.use { it.step() }
             try {
-                db.prepare("DELETE FROM deleted_records WHERE ckRecordId = ?")?.use { stmt ->
-                    for (id in ids) {
-                        yield()
-                        stmt.bindText(1, id)
+                ids.chunked(900).forEach { chunk ->
+                    val placeholders = chunk.joinToString(",") { "?" }
+                    db.prepare("DELETE FROM deleted_records WHERE ckRecordId IN ($placeholders)")?.use { stmt ->
+                        chunk.forEachIndexed { index, id ->
+                            stmt.bindText(index + 1, id)
+                        }
                         stmt.step()
-                        stmt.reset()
-                        stmt.clearBindings()
                     }
+                    yield()
                 }
                 db.prepare("COMMIT")?.use { it.step() }
             } catch (e: CancellationException) {
@@ -346,14 +347,15 @@ class AnnotationManager(
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
             db.prepare("BEGIN TRANSACTION")?.use { it.step() }
             try {
-                db.prepare("DELETE FROM pending_uploads WHERE ckRecordId = ?")?.use { stmt ->
-                    for (id in ckRecordIds) {
-                        yield()
-                        stmt.bindText(1, id)
+                ckRecordIds.chunked(900).forEach { chunk ->
+                    val placeholders = chunk.joinToString(",") { "?" }
+                    db.prepare("DELETE FROM pending_uploads WHERE ckRecordId IN ($placeholders)")?.use { stmt ->
+                        chunk.forEachIndexed { index, id ->
+                            stmt.bindText(index + 1, id)
+                        }
                         stmt.step()
-                        stmt.reset()
-                        stmt.clearBindings()
                     }
+                    yield()
                 }
                 db.prepare("COMMIT")?.use { it.step() }
             } catch (e: CancellationException) {
@@ -396,7 +398,7 @@ class AnnotationManager(
                 }
                 val recordId = ann.ckRecordId ?: java.util.UUID.randomUUID().toString()
                 val annToSave = ann.copy(ckRecordId = recordId)
-                val newId = insertOrUpdate(annToSave, fromSync = false)
+                val newId = executeInsertOrUpdate(db, annToSave, fromSync = false)
                 if (newId > 0L) {
                     count++
                 }
