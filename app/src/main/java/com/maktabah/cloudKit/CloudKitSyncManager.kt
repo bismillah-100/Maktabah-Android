@@ -606,7 +606,7 @@ class CloudKitSyncManager {
     }
 
     private fun getResultsHandler(context: Context): ResultsHandler {
-        return ResultsHandler(File(context.filesDir, "SearchResults.sqlite"))
+        return ResultsHandler.getInstance(context)
     }
 
     // endregion

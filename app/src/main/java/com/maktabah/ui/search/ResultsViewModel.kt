@@ -51,7 +51,7 @@ class ResultsViewModel : ViewModel() {
         this.appContext = context.applicationContext
         this.dataManager = dataManager
         val dbFile = File(context.filesDir, "SearchResults.sqlite")
-        resultsHandler = ResultsHandler(dbFile)
+        resultsHandler = ResultsHandler.getInstance(context)
         viewModelScope.launch {
             getFolders()
             loadAllResults()

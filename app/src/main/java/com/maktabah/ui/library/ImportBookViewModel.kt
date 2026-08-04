@@ -353,7 +353,7 @@ class ImportBookViewModel(application: Application) : AndroidViewModel(applicati
         annotationManager.migrateBookId(oldId, newId)
 
         // Update bkId pada Saved Results
-        val resultsHandler = ResultsHandler(File(context.filesDir, "SearchResults.sqlite"))
+        val resultsHandler = ResultsHandler.getInstance(context)
         resultsHandler.migrateBookId(oldId, newId)
 
         return Result.success(Unit)

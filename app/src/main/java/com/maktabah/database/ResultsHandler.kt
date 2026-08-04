@@ -1321,4 +1321,15 @@ class ResultsHandler(private val dbFile: File) {
         val bkId: Int,
         val expectedFolder: Long?
     )
+
+    companion object {
+        @Volatile
+        private var instance: ResultsHandler? = null
+
+        fun getInstance(context: android.content.Context): ResultsHandler {
+            return instance ?: synchronized(this) {
+                instance ?: ResultsHandler(File(context.filesDir, "SearchResults.sqlite")).also { instance = it }
+            }
+        }
+    }
 }
