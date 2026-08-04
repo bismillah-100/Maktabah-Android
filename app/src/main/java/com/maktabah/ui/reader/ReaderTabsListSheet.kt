@@ -8,11 +8,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -50,7 +48,14 @@ import androidx.compose.ui.unit.dp
 import com.maktabah.R
 import com.maktabah.models.ReaderTab
 import com.maktabah.ui.common.SwipeDeleteBackground
+import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.common.isSwipeTargetReached
+import com.maktabah.ui.search.SearchTextField
+import com.maktabah.utils.normalizeArabic
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Sheet daftar semua tab — mengacu iOSReaderTabsPopoverView.swift.
@@ -65,6 +70,31 @@ fun ReaderTabsListSheet(
     onClose: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var searchQuery by remember { mutableStateOf("") }
+    var debouncedQuery by remember { mutableStateOf("") }
+
+    LaunchedEffect(searchQuery) {
+        if (searchQuery.isNotBlank()) {
+            delay(200.milliseconds)
+        }
+        debouncedQuery = searchQuery
+    }
+
+    var filteredTabs by remember { mutableStateOf(tabs) }
+
+    LaunchedEffect(tabs, debouncedQuery) {
+        if (debouncedQuery.isBlank()) {
+            filteredTabs = tabs
+        } else {
+            val normalizedQuery = debouncedQuery.normalizeArabic()
+            filteredTabs = withContext(Dispatchers.Default) {
+                tabs.filter {
+                    it.bookName.normalizeArabic().contains(normalizedQuery, ignoreCase = true)
+                }
+            }
+        }
+    }
+
     val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
         skipPartiallyExpanded = true
     )
@@ -76,22 +106,13 @@ fun ReaderTabsListSheet(
     val listState = androidx.compose.foundation.lazy.rememberLazyListState(
         initialFirstVisibleItemIndex = initialIndex
     )
-    val isAtTop by remember {
-        androidx.compose.runtime.derivedStateOf {
-            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
-        }
-    }
     var sheetGesturesEnabled by remember {
-        mutableStateOf(isAtTop)
+        mutableStateOf(listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0)
     }
-    LaunchedEffect(isAtTop) {
-        if (!isAtTop) {
-            sheetGesturesEnabled = false
-        }
-    }
-    LaunchedEffect(listState.isScrollInProgress, isAtTop) {
-        if (isAtTop && !listState.isScrollInProgress) {
-            sheetGesturesEnabled = true
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (!listState.isScrollInProgress) {
+            sheetGesturesEnabled =
+                listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
         }
     }
 
@@ -102,119 +123,151 @@ fun ReaderTabsListSheet(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = { WindowInsets(0.dp) },
     ) {
-        val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
-
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.85f)
         ) {
-            CompositionLocalProvider(
-                LocalLayoutDirection provides
-                    LayoutDirection.Rtl
-            ) {
-                LazyColumn(
-                    state = listState,
+            val topPadding = 54.dp
+
+            if (filteredTabs.isEmpty()) {
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(bottom = 32.dp),
-                    contentPadding = PaddingValues(
-                        start = 16.dp,
-                        end = 16.dp,
-                        top = 8.dp,
-                        bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 16.dp
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                        .padding(top = topPadding),
+                    contentAlignment = Alignment.Center
                 ) {
-                    items(tabs, key = { it.id }) { tab ->
-                    val isActive = tab.id == activeTabId
-                    var itemWidth by remember { mutableIntStateOf(0) }
-                    var dismissStateRef by remember { mutableStateOf<SwipeToDismissBoxState?>(null) }
-                    val dismissState =
-                        rememberSwipeToDismissBoxState(
-                            positionalThreshold = { it * 0.5f },
-                            confirmValueChange = { value ->
-                                if (value == SwipeToDismissBoxValue.EndToStart) {
-                                    dismissStateRef?.isSwipeTargetReached(itemWidth) == true
-                                } else {
-                                    true
-                                }
-                            },
-                        )
-                    dismissStateRef = dismissState
-
-                    androidx.compose.runtime.LaunchedEffect(dismissState.targetValue, itemWidth) {
-                        androidx.compose.runtime.snapshotFlow {
-                            val offset = try { dismissState.requireOffset() } catch (_: Exception) { 0f }
-                            dismissState.targetValue to offset
-                        }.collect { (target, offset) ->
-                            if (target == SwipeToDismissBoxValue.EndToStart && itemWidth > 0 && kotlin.math.abs(offset) >= itemWidth * 0.95f) {
-                                onClose(tab.id)
-                            }
-                        }
-                    }
-
-                    SwipeToDismissBox(
-                        modifier = Modifier.onSizeChanged { itemWidth = it.width }.animateItem(),
-                        state = dismissState,
-                        enableDismissFromStartToEnd = false,
-                        enableDismissFromEndToStart = true,
-                        backgroundContent = {
-                            SwipeDeleteBackground(
-                                dismissState = dismissState,
-                                icon = Icons.Default.Close,
-                                shape = RoundedCornerShape(30.dp),
-                                contentDescription = stringResource(R.string.reader_tabs_close)
-                            )
-                        },
+                    Text(
+                        stringResource(R.string.reader_toc_no_results),
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            } else {
+                CompositionLocalProvider(
+                    LocalLayoutDirection provides LayoutDirection.Rtl
+                ) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .fadingEdge(listState, topPadding),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = topPadding,
+                            bottom = 32.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(30.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shadowElevation = 1.dp,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    onSwitch(tab.id)
-                                    onDismiss()
-                                },
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                            ) {
-                                if (isActive) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(6.dp)
-                                            .background(
-                                                color = Color(
-                                                    0xFF34C759
-                                                ),
-                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(
-                                                    50
-                                                ),
-                                            ),
-                                    )
-                                    Spacer(modifier = Modifier.size(8.dp))
-                                }
-                                Text(
-                                    text = tab.bookName,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal,
-                                    color = if (isActive)
-                                        MaterialTheme.colorScheme.primary
-                                    else
-                                        MaterialTheme.colorScheme.onSurface,
+                        items(filteredTabs, key = { it.id }) { tab ->
+                            val isActive = tab.id == activeTabId
+                            var itemWidth by remember { mutableIntStateOf(0) }
+                            var dismissStateRef by remember {
+                                mutableStateOf<SwipeToDismissBoxState?>(
+                                    null
                                 )
+                            }
+                            val dismissState =
+                                rememberSwipeToDismissBoxState(
+                                    positionalThreshold = { it * 0.5f },
+                                    confirmValueChange = { value ->
+                                        if (value == SwipeToDismissBoxValue.EndToStart) {
+                                            dismissStateRef?.isSwipeTargetReached(itemWidth) == true
+                                        } else {
+                                            true
+                                        }
+                                    },
+                                )
+                            dismissStateRef = dismissState
+
+                            LaunchedEffect(dismissState.targetValue, itemWidth) {
+                                androidx.compose.runtime.snapshotFlow {
+                                    val offset = try {
+                                        dismissState.requireOffset()
+                                    } catch (_: Exception) {
+                                        0f
+                                    }
+                                    dismissState.targetValue to offset
+                                }.collect { (target, offset) ->
+                                    if (target == SwipeToDismissBoxValue.EndToStart && itemWidth > 0 && kotlin.math.abs(
+                                            offset
+                                        ) >= itemWidth * 0.95f
+                                    ) {
+                                        onClose(tab.id)
+                                    }
+                                }
+                            }
+
+                            SwipeToDismissBox(
+                                modifier = Modifier
+                                    .onSizeChanged { itemWidth = it.width }
+                                    .animateItem(),
+                                state = dismissState,
+                                enableDismissFromStartToEnd = false,
+                                enableDismissFromEndToStart = true,
+                                backgroundContent = {
+                                    SwipeDeleteBackground(
+                                        dismissState = dismissState,
+                                        icon = Icons.Default.Close,
+                                        shape = RoundedCornerShape(30.dp),
+                                        contentDescription = stringResource(R.string.reader_tabs_close)
+                                    )
+                                },
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(30.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shadowElevation = 0.5.dp,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            onSwitch(tab.id)
+                                            onDismiss()
+                                        },
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                                    ) {
+                                        if (isActive) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .background(
+                                                        color = Color(0xFF34C759),
+                                                        shape = RoundedCornerShape(50),
+                                                    ),
+                                            )
+                                            Spacer(modifier = Modifier.size(8.dp))
+                                        }
+                                        Text(
+                                            text = tab.bookName,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal,
+                                            color = if (isActive)
+                                                MaterialTheme.colorScheme.primary
+                                            else
+                                                MaterialTheme.colorScheme.onSurface,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
+
+            Box(modifier = Modifier.padding(start = 16.dp, end = 16.dp)) {
+                SearchTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = stringResource(R.string.search_placeholder),
+                    onClearClick = { searchQuery = "" }
+                )
+            }
         }
     }
-}}
+}
