@@ -38,13 +38,10 @@ fun Modifier.insetGroupedBorder(
 ) = this.drawWithContent {
     drawContent()
 
-    val rawWidthPx = borderWidth.toPx()
-    val isHairline = borderWidth == Dp.Hairline || rawWidthPx == 0f
-
     // We tested this and use 0f to ensure stroke is
 	// sharp and bright. No bold border.
-    val strokeWidthPx = if (isHairline) 0f else rawWidthPx
-    val halfStroke = if (isHairline) 0f else rawWidthPx / 2f
+    val strokeWidthPx = borderWidth.toPx()
+    val halfStroke = strokeWidthPx / 2f
 
     val w = size.width
     val h = size.height
