@@ -31,6 +31,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 
+private val SQLITE_FILE_REGEX = Regex("\\d+\\.sqlite")
+
 class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
 
     private val _downloadedBookIds = MutableStateFlow<Set<Int>>(emptySet())
@@ -142,7 +144,7 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
             val ids = withContext(Dispatchers.IO) {
                 val downloadedIds = mutableSetOf<Int>()
                 val files = context.filesDir.listFiles { _, name ->
-                    name.endsWith(".sqlite") && name.matches(Regex("\\d+\\.sqlite"))
+                    name.endsWith(".sqlite") && name.matches(SQLITE_FILE_REGEX)
                 }
                 files?.forEach { file ->
                     try {

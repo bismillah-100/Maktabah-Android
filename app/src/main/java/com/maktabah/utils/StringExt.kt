@@ -4,6 +4,7 @@ val arabicDigits = listOf("٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", 
 
 private val SPAN_REGEX = Regex("<[^>]*>")
 private val WHITESPACE_REGEX = Regex("\\s+")
+private val PUNCT_REGEX = Regex("[\\s\\p{Punct}]+")
 
 fun Char.isArabicHarakat(): Boolean {
     val v = this.code
@@ -465,7 +466,7 @@ fun String.findArabicMatchingRanges(keywords: List<String>): List<IntRange> {
         val trimmed = keyword.trim()
         if (trimmed.isEmpty()) continue
 
-        val rawTokens = trimmed.split(Regex("[\\s\\p{Punct}]+")).filter { it.isNotEmpty() }
+        val rawTokens = trimmed.split(PUNCT_REGEX).filter { it.isNotEmpty() }
         class QueryWord(val norm: String, val core: String)
 
         val queryWords = rawTokens.mapNotNull { token ->

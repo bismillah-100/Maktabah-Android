@@ -275,12 +275,13 @@ class HistoryDatabaseManager(private val dbFile: File) {
         openRW().use { db ->
             db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
             try {
-                db.prepare("DELETE FROM reading_entries WHERE book_id = ?;")?.use { stmt ->
-                    for (bookId in deleteBookIds) {
-                        stmt.bindInt(1, bookId)
+                deleteBookIds.chunked(900).forEach { chunk ->
+                    val placeholders = chunk.joinToString(",") { "?" }
+                    db.prepare("DELETE FROM reading_entries WHERE book_id IN ($placeholders);")?.use { stmt ->
+                        chunk.forEachIndexed { index, id ->
+                            stmt.bindInt(index + 1, id)
+                        }
                         stmt.step()
-                        stmt.reset()
-                        stmt.clearBindings()
                     }
                 }
                 db.prepare(

@@ -31,6 +31,8 @@ import com.maktabah.ui.common.fadingEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 
+private val NEWLINE_REGEX = Regex("(?:\r?\n|\\\\n)")
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookInfoSheet(
@@ -150,7 +152,7 @@ private fun ParagraphText(
     modifier: Modifier = Modifier,
 ) {
     val paragraphs = androidx.compose.runtime.remember(text) {
-        text.split(Regex("(?:\r?\n|\\\\n)"))
+        text.split(NEWLINE_REGEX)
             .map { it.trim() }
             .filter { it.isNotEmpty() }
     }
