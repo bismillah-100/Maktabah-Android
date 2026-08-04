@@ -144,7 +144,8 @@ class ResultsHandler(private val dbFile: File) {
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
                     val id = stmt.columnLong(0)
                     val name = stmt.columnText(1) ?: ""
-                    val parent = if (stmt.columnType(2) != SQLiteDB.SQLITE_NULL) stmt.columnLong(2) else null
+                    val parent =
+                        if (stmt.columnType(2) != SQLiteDB.SQLITE_NULL) stmt.columnLong(2) else null
                     nodes[id] = FolderNode(id, name)
                     parentMap[id] = parent
                 }
@@ -210,28 +211,31 @@ class ResultsHandler(private val dbFile: File) {
 
             allIds.chunked(900).forEach { chunk ->
                 val placeholders = chunk.joinToString(",") { "?" }
-                db.prepare("SELECT ckRecordId FROM folders WHERE id IN ($placeholders);")?.use { stmt ->
-                    chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
-                    while (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                        stmt.columnText(0)?.let { ckIdsToDelete.add(it) }
+                db.prepare("SELECT ckRecordId FROM folders WHERE id IN ($placeholders);")
+                    ?.use { stmt ->
+                        chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
+                        while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                            stmt.columnText(0)?.let { ckIdsToDelete.add(it) }
+                        }
                     }
-                }
-                db.prepare("SELECT ckRecordId FROM results WHERE folder_id IN ($placeholders);")?.use { stmt ->
-                    chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
-                    while (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                        stmt.columnText(0)?.let { ckIdsToDelete.add(it) }
+                db.prepare("SELECT ckRecordId FROM results WHERE folder_id IN ($placeholders);")
+                    ?.use { stmt ->
+                        chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
+                        while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                            stmt.columnText(0)?.let { ckIdsToDelete.add(it) }
+                        }
                     }
-                }
             }
 
             db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
             try {
                 allIds.chunked(900).forEach { chunk ->
                     val placeholders = chunk.joinToString(",") { "?" }
-                    db.prepare("DELETE FROM results WHERE folder_id IN ($placeholders);")?.use { stmt ->
-                        chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
-                        stmt.step()
-                    }
+                    db.prepare("DELETE FROM results WHERE folder_id IN ($placeholders);")
+                        ?.use { stmt ->
+                            chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
+                            stmt.step()
+                        }
                 }
 
                 allIds.reversed().chunked(900).forEach { chunk ->
@@ -276,7 +280,14 @@ class ResultsHandler(private val dbFile: File) {
 
     // region Result CRUD
 
-    fun insertResult(archive: Int, bkId: Int, contentId: String, folderId: Long?, query: String, name: String) {
+    fun insertResult(
+        archive: Int,
+        bkId: Int,
+        contentId: String,
+        folderId: Long?,
+        query: String,
+        name: String
+    ) {
         val ckId = UUID.randomUUID().toString()
         val now = System.currentTimeMillis() / 1000L
         openDb { db ->
@@ -320,7 +331,9 @@ class ResultsHandler(private val dbFile: File) {
                     results.add(
                         RawResult(
                             id = stmt.columnLong(0),
-                            folderId = if (stmt.columnType(1) != SQLiteDB.SQLITE_NULL) stmt.columnLong(1) else null,
+                            folderId = if (stmt.columnType(1) != SQLiteDB.SQLITE_NULL) stmt.columnLong(
+                                1
+                            ) else null,
                             name = stmt.columnText(2) ?: "",
                             query = stmt.columnText(3) ?: "",
                             archive = stmt.columnInt(4),
@@ -415,12 +428,13 @@ class ResultsHandler(private val dbFile: File) {
                     stmt.columnText(0)?.let { ckIds.add(it) }
                 }
             }
-            db.prepare("UPDATE results SET bkId = ?, lastModified = ? WHERE bkId = ?;")?.use { stmt ->
-                stmt.bindInt(1, newId)
-                stmt.bindLong(2, now)
-                stmt.bindInt(3, oldId)
-                stmt.step()
-            }
+            db.prepare("UPDATE results SET bkId = ?, lastModified = ? WHERE bkId = ?;")
+                ?.use { stmt ->
+                    stmt.bindInt(1, newId)
+                    stmt.bindLong(2, now)
+                    stmt.bindInt(3, oldId)
+                    stmt.step()
+                }
         }
         for (ckId in ckIds) addPendingSync(ckId, "upload")
     }
@@ -519,7 +533,8 @@ class ResultsHandler(private val dbFile: File) {
                 db.prepare("SELECT COUNT(*) FROM sync_pending WHERE ck_record_id = ? AND operation = 'delete';")
                     ?.use { stmt ->
                         stmt.bindText(1, ckRecordId)
-                        if (stmt.step() == SQLiteDB.SQLITE_ROW && stmt.columnLong(0) > 0) hasDelete = true
+                        if (stmt.step() == SQLiteDB.SQLITE_ROW && stmt.columnLong(0) > 0) hasDelete =
+                            true
                     }
                 if (hasDelete) return@openDb
             } else if (operation == "delete") {
@@ -558,7 +573,10 @@ class ResultsHandler(private val dbFile: File) {
 
     // region CloudKit Apply (Sync Pull)
 
-    fun applyCloudKitFolderChanges(foldersToSave: List<SyncFolder>, recordIdsToDelete: List<String>): Boolean {
+    fun applyCloudKitFolderChanges(
+        foldersToSave: List<SyncFolder>,
+        recordIdsToDelete: List<String>
+    ): Boolean {
         try {
             openDb { db ->
                 db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
@@ -568,12 +586,18 @@ class ResultsHandler(private val dbFile: File) {
                         val allLocalIds = mutableListOf<Long>()
                         recordIdsToDelete.chunked(900).forEach { chunk ->
                             val placeholders = chunk.joinToString(",") { "?" }
-                            db.prepare("SELECT id FROM folders WHERE ckRecordId IN ($placeholders);")?.use { stmt ->
-                                chunk.forEachIndexed { index, ckId -> stmt.bindText(index + 1, ckId) }
-                                while (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                                    allLocalIds.add(stmt.columnLong(0))
+                            db.prepare("SELECT id FROM folders WHERE ckRecordId IN ($placeholders);")
+                                ?.use { stmt ->
+                                    chunk.forEachIndexed { index, ckId ->
+                                        stmt.bindText(
+                                            index + 1,
+                                            ckId
+                                        )
+                                    }
+                                    while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                                        allLocalIds.add(stmt.columnLong(0))
+                                    }
                                 }
-                            }
                         }
 
                         val allDescendantIds = mutableSetOf<Long>()
@@ -585,21 +609,34 @@ class ResultsHandler(private val dbFile: File) {
 
                         allIdsList.chunked(900).forEach { chunk ->
                             val placeholders = chunk.joinToString(",") { "?" }
-                            db.prepare("DELETE FROM results WHERE folder_id IN ($placeholders);")?.use { stmt ->
-                                chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
-                                stmt.step()
-                            }
+                            db.prepare("DELETE FROM results WHERE folder_id IN ($placeholders);")
+                                ?.use { stmt ->
+                                    chunk.forEachIndexed { index, id ->
+                                        stmt.bindLong(
+                                            index + 1,
+                                            id
+                                        )
+                                    }
+                                    stmt.step()
+                                }
                         }
 
                         val folderDepths = getFolderDepths(db, allDescendantIds)
-                        val sortedFolderIdsForDelete = allDescendantIds.sortedByDescending { folderDepths[it] ?: 0 }
+                        val sortedFolderIdsForDelete =
+                            allDescendantIds.sortedByDescending { folderDepths[it] ?: 0 }
 
                         sortedFolderIdsForDelete.chunked(900).forEach { chunk ->
                             val placeholders = chunk.joinToString(",") { "?" }
-                            db.prepare("DELETE FROM folders WHERE id IN ($placeholders);")?.use { stmt ->
-                                chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
-                                stmt.step()
-                            }
+                            db.prepare("DELETE FROM folders WHERE id IN ($placeholders);")
+                                ?.use { stmt ->
+                                    chunk.forEachIndexed { index, id ->
+                                        stmt.bindLong(
+                                            index + 1,
+                                            id
+                                        )
+                                    }
+                                    stmt.step()
+                                }
                         }
                     }
 
@@ -622,7 +659,9 @@ class ResultsHandler(private val dbFile: File) {
                                     existingId = stmt.columnLong(0)
                                     localLastMod = stmt.columnLong(1)
                                     existingParentId =
-                                        if (stmt.columnType(2) != SQLiteDB.SQLITE_NULL) stmt.columnLong(2) else null
+                                        if (stmt.columnType(2) != SQLiteDB.SQLITE_NULL) stmt.columnLong(
+                                            2
+                                        ) else null
                                 }
                             }
 
@@ -631,7 +670,13 @@ class ResultsHandler(private val dbFile: File) {
                             if (remoteLastMod >= localLastMod) {
                                 val isOrphan = folder.parentCkRecordId != null && pLocalId == null
                                 val newParent = if (isOrphan) existingParentId else pLocalId
-                                resolveConflictAndUpdate(db, existingId, folder, newParent, isOrphan)
+                                resolveConflictAndUpdate(
+                                    db,
+                                    existingId,
+                                    folder,
+                                    newParent,
+                                    isOrphan
+                                )
                             }
                         } else {
                             val isOrphan = folder.parentCkRecordId != null && pLocalId == null
@@ -653,7 +698,10 @@ class ResultsHandler(private val dbFile: File) {
         }
     }
 
-    fun applyCloudKitResultChanges(resultsToSave: List<SyncResult>, recordIdsToDelete: List<String>): Boolean {
+    fun applyCloudKitResultChanges(
+        resultsToSave: List<SyncResult>,
+        recordIdsToDelete: List<String>
+    ): Boolean {
         try {
             openDb { db ->
                 db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
@@ -662,12 +710,13 @@ class ResultsHandler(private val dbFile: File) {
                     if (recordIdsToDelete.isNotEmpty()) {
                         recordIdsToDelete.chunked(900).forEach { chunk ->
                             val placeholders = chunk.joinToString(",") { "?" }
-                            db.prepare("DELETE FROM results WHERE ckRecordId IN ($placeholders);")?.use { stmt ->
-                                chunk.forEachIndexed { index, ckId ->
-                                    stmt.bindText(index + 1, ckId)
+                            db.prepare("DELETE FROM results WHERE ckRecordId IN ($placeholders);")
+                                ?.use { stmt ->
+                                    chunk.forEachIndexed { index, ckId ->
+                                        stmt.bindText(index + 1, ckId)
+                                    }
+                                    stmt.step()
                                 }
-                                stmt.step()
-                            }
                         }
                     }
 
@@ -687,7 +736,9 @@ class ResultsHandler(private val dbFile: File) {
                                     existingId = stmt.columnLong(0)
                                     localLastMod = stmt.columnLong(1)
                                     existingFolderId =
-                                        if (stmt.columnType(2) != SQLiteDB.SQLITE_NULL) stmt.columnLong(2) else null
+                                        if (stmt.columnType(2) != SQLiteDB.SQLITE_NULL) stmt.columnLong(
+                                            2
+                                        ) else null
                                 }
                             }
 
@@ -765,9 +816,10 @@ class ResultsHandler(private val dbFile: File) {
 
                 if (conflictId != null) {
                     // Merge: move children and results to conflict, delete orphan
-                    db.prepare("UPDATE results SET folder_id = ? WHERE folder_id = ?;")?.use { stmt ->
-                        stmt.bindLong(1, conflictId); stmt.bindLong(2, id); stmt.step()
-                    }
+                    db.prepare("UPDATE results SET folder_id = ? WHERE folder_id = ?;")
+                        ?.use { stmt ->
+                            stmt.bindLong(1, conflictId); stmt.bindLong(2, id); stmt.step()
+                        }
                     db.prepare("UPDATE folders SET parent = ? WHERE parent = ?;")?.use { stmt ->
                         stmt.bindLong(1, conflictId); stmt.bindLong(2, id); stmt.step()
                     }
@@ -938,7 +990,8 @@ class ResultsHandler(private val dbFile: File) {
                 chunk.forEachIndexed { index, id -> stmt.bindLong(index + 1, id) }
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
                     val id = stmt.columnLong(0)
-                    val parent = if (stmt.columnType(1) != SQLiteDB.SQLITE_NULL) stmt.columnLong(1) else null
+                    val parent =
+                        if (stmt.columnType(1) != SQLiteDB.SQLITE_NULL) stmt.columnLong(1) else null
                     parentMap[id] = parent
                 }
             }
@@ -949,7 +1002,10 @@ class ResultsHandler(private val dbFile: File) {
             depths[id]?.let { return it }
             if (!visited.add(id)) return 0
             val parentId = parentMap[id]
-            val depth = if (parentId == null || parentId !in parentMap) 0 else 1 + computeDepth(parentId, visited)
+            val depth = if (parentId == null || parentId !in parentMap) 0 else 1 + computeDepth(
+                parentId,
+                visited
+            )
             depths[id] = depth
             return depth
         }
@@ -960,20 +1016,31 @@ class ResultsHandler(private val dbFile: File) {
         return depths
     }
 
-    private fun resolveConflictAndUpdate(db: SQLiteDB, existingId: Long, folder: SyncFolder, newParent: Long?, isOrphan: Boolean) {
+    private fun resolveConflictAndUpdate(
+        db: SQLiteDB,
+        existingId: Long,
+        folder: SyncFolder,
+        newParent: Long?,
+        isOrphan: Boolean
+    ) {
         if (!isOrphan || newParent != null) {
             // Check unique constraint conflict
             var conflictId: Long? = null
             if (newParent != null) {
-                db.prepare("SELECT id FROM folders WHERE parent = ? AND name = ? AND id != ? LIMIT 1")?.use { stmt ->
-                    stmt.bindLong(1, newParent); stmt.bindText(2, folder.name); stmt.bindLong(3, existingId)
-                    if (stmt.step() == SQLiteDB.SQLITE_ROW) conflictId = stmt.columnLong(0)
-                }
+                db.prepare("SELECT id FROM folders WHERE parent = ? AND name = ? AND id != ? LIMIT 1")
+                    ?.use { stmt ->
+                        stmt.bindLong(1, newParent); stmt.bindText(2, folder.name); stmt.bindLong(
+                        3,
+                        existingId
+                    )
+                        if (stmt.step() == SQLiteDB.SQLITE_ROW) conflictId = stmt.columnLong(0)
+                    }
             } else {
-                db.prepare("SELECT id FROM folders WHERE parent IS NULL AND name = ? AND id != ? LIMIT 1")?.use { stmt ->
-                    stmt.bindText(1, folder.name); stmt.bindLong(2, existingId)
-                    if (stmt.step() == SQLiteDB.SQLITE_ROW) conflictId = stmt.columnLong(0)
-                }
+                db.prepare("SELECT id FROM folders WHERE parent IS NULL AND name = ? AND id != ? LIMIT 1")
+                    ?.use { stmt ->
+                        stmt.bindText(1, folder.name); stmt.bindLong(2, existingId)
+                        if (stmt.step() == SQLiteDB.SQLITE_ROW) conflictId = stmt.columnLong(0)
+                    }
             }
             if (conflictId != null) {
                 db.prepare("DELETE FROM folders WHERE id = ?;")?.use { stmt ->
@@ -981,17 +1048,27 @@ class ResultsHandler(private val dbFile: File) {
                 }
             }
         }
-        db.prepare("UPDATE folders SET name = ?, lastModified = ?, parentCkRecordId = ?, parent = ? WHERE id = ?;")?.use { stmt ->
-            stmt.bindText(1, folder.name)
-            stmt.bindLong(2, folder.lastModified ?: 0)
-            if (folder.parentCkRecordId != null) stmt.bindText(3, folder.parentCkRecordId) else stmt.bindNull(3)
-            if (newParent != null) stmt.bindLong(4, newParent) else stmt.bindNull(4)
-            stmt.bindLong(5, existingId)
-            stmt.step()
-        }
+        db.prepare("UPDATE folders SET name = ?, lastModified = ?, parentCkRecordId = ?, parent = ? WHERE id = ?;")
+            ?.use { stmt ->
+                stmt.bindText(1, folder.name)
+                stmt.bindLong(2, folder.lastModified ?: 0)
+                if (folder.parentCkRecordId != null) stmt.bindText(
+                    3,
+                    folder.parentCkRecordId
+                ) else stmt.bindNull(3)
+                if (newParent != null) stmt.bindLong(4, newParent) else stmt.bindNull(4)
+                stmt.bindLong(5, existingId)
+                stmt.step()
+            }
     }
 
-    private fun insertOrMergeFolder(db: SQLiteDB, folder: SyncFolder, ckId: String, pLocalId: Long?, isOrphan: Boolean) {
+    private fun insertOrMergeFolder(
+        db: SQLiteDB,
+        folder: SyncFolder,
+        ckId: String,
+        pLocalId: Long?,
+        isOrphan: Boolean
+    ) {
         if (isOrphan) {
             // Insert as root orphan — resolveOrphanFolders will fix later
             db.prepare("INSERT INTO folders (name, ckRecordId, lastModified, parentCkRecordId, parent) VALUES (?, ?, ?, ?, NULL);")
@@ -999,7 +1076,10 @@ class ResultsHandler(private val dbFile: File) {
                     stmt.bindText(1, folder.name)
                     stmt.bindText(2, ckId)
                     stmt.bindLong(3, folder.lastModified ?: 0)
-                    if (folder.parentCkRecordId != null) stmt.bindText(4, folder.parentCkRecordId) else stmt.bindNull(4)
+                    if (folder.parentCkRecordId != null) stmt.bindText(
+                        4,
+                        folder.parentCkRecordId
+                    ) else stmt.bindNull(4)
                     stmt.step()
                 }
             return
@@ -1008,15 +1088,21 @@ class ResultsHandler(private val dbFile: File) {
         var conflictId: Long = -1
         var conflictLastMod: Long = 0
         if (pLocalId != null) {
-            db.prepare("SELECT id, lastModified FROM folders WHERE parent = ? AND name = ? LIMIT 1")?.use { stmt ->
-                stmt.bindLong(1, pLocalId); stmt.bindText(2, folder.name)
-                if (stmt.step() == SQLiteDB.SQLITE_ROW) { conflictId = stmt.columnLong(0); conflictLastMod = stmt.columnLong(1) }
-            }
+            db.prepare("SELECT id, lastModified FROM folders WHERE parent = ? AND name = ? LIMIT 1")
+                ?.use { stmt ->
+                    stmt.bindLong(1, pLocalId); stmt.bindText(2, folder.name)
+                    if (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                        conflictId = stmt.columnLong(0); conflictLastMod = stmt.columnLong(1)
+                    }
+                }
         } else {
-            db.prepare("SELECT id, lastModified FROM folders WHERE parent IS NULL AND name = ? LIMIT 1")?.use { stmt ->
-                stmt.bindText(1, folder.name)
-                if (stmt.step() == SQLiteDB.SQLITE_ROW) { conflictId = stmt.columnLong(0); conflictLastMod = stmt.columnLong(1) }
-            }
+            db.prepare("SELECT id, lastModified FROM folders WHERE parent IS NULL AND name = ? LIMIT 1")
+                ?.use { stmt ->
+                    stmt.bindText(1, folder.name)
+                    if (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                        conflictId = stmt.columnLong(0); conflictLastMod = stmt.columnLong(1)
+                    }
+                }
         }
 
         if (conflictId != -1L) {
@@ -1025,7 +1111,10 @@ class ResultsHandler(private val dbFile: File) {
                 db.prepare("UPDATE folders SET ckRecordId = ?, lastModified = ?, parentCkRecordId = ?, parent = ? WHERE id = ?;")
                     ?.use { stmt ->
                         stmt.bindText(1, ckId); stmt.bindLong(2, remoteLM)
-                        if (folder.parentCkRecordId != null) stmt.bindText(3, folder.parentCkRecordId) else stmt.bindNull(3)
+                        if (folder.parentCkRecordId != null) stmt.bindText(
+                            3,
+                            folder.parentCkRecordId
+                        ) else stmt.bindNull(3)
                         if (pLocalId != null) stmt.bindLong(4, pLocalId) else stmt.bindNull(4)
                         stmt.bindLong(5, conflictId)
                         stmt.step()
@@ -1038,32 +1127,51 @@ class ResultsHandler(private val dbFile: File) {
         } else {
             db.prepare("INSERT INTO folders (name, ckRecordId, lastModified, parentCkRecordId, parent) VALUES (?, ?, ?, ?, ?);")
                 ?.use { stmt ->
-                    stmt.bindText(1, folder.name); stmt.bindText(2, ckId); stmt.bindLong(3, folder.lastModified ?: 0)
-                    if (folder.parentCkRecordId != null) stmt.bindText(3, folder.parentCkRecordId) else stmt.bindNull(3)
+                    stmt.bindText(1, folder.name); stmt.bindText(2, ckId); stmt.bindLong(
+                    3,
+                    folder.lastModified ?: 0
+                )
+                    if (folder.parentCkRecordId != null) stmt.bindText(
+                        3,
+                        folder.parentCkRecordId
+                    ) else stmt.bindNull(3)
                     if (pLocalId != null) stmt.bindLong(5, pLocalId) else stmt.bindNull(5)
                     stmt.step()
                 }
         }
     }
 
-    private fun updateResultFromSync(db: SQLiteDB, existingId: Long, res: SyncResult, newFolder: Long?, isOrphan: Boolean) {
+    private fun updateResultFromSync(
+        db: SQLiteDB,
+        existingId: Long,
+        res: SyncResult,
+        newFolder: Long?,
+        isOrphan: Boolean
+    ) {
         if (!isOrphan || newFolder != null) {
             var conflictId: Long? = null
             if (newFolder != null) {
                 db.prepare("SELECT id FROM results WHERE folder_id = ? AND name = ? AND bkId = ? AND id != ? LIMIT 1")
                     ?.use { stmt ->
-                        stmt.bindLong(1, newFolder); stmt.bindText(2, res.name); stmt.bindInt(3, res.bkId); stmt.bindLong(4, existingId)
+                        stmt.bindLong(1, newFolder); stmt.bindText(2, res.name); stmt.bindInt(
+                        3,
+                        res.bkId
+                    ); stmt.bindLong(4, existingId)
                         if (stmt.step() == SQLiteDB.SQLITE_ROW) conflictId = stmt.columnLong(0)
                     }
             } else {
                 db.prepare("SELECT id FROM results WHERE folder_id IS NULL AND name = ? AND bkId = ? AND id != ? LIMIT 1")
                     ?.use { stmt ->
-                        stmt.bindText(1, res.name); stmt.bindInt(2, res.bkId); stmt.bindLong(3, existingId)
+                        stmt.bindText(1, res.name); stmt.bindInt(2, res.bkId); stmt.bindLong(
+                        3,
+                        existingId
+                    )
                         if (stmt.step() == SQLiteDB.SQLITE_ROW) conflictId = stmt.columnLong(0)
                     }
             }
             if (conflictId != null) {
-                db.prepare("DELETE FROM results WHERE id = ?;")?.use { stmt -> stmt.bindLong(1, conflictId); stmt.step() }
+                db.prepare("DELETE FROM results WHERE id = ?;")
+                    ?.use { stmt -> stmt.bindLong(1, conflictId); stmt.step() }
             }
         }
         db.prepare(
@@ -1075,14 +1183,26 @@ class ResultsHandler(private val dbFile: File) {
         )?.use { stmt ->
             if (newFolder != null) stmt.bindLong(1, newFolder) else stmt.bindNull(1)
             stmt.bindText(2, res.name); stmt.bindText(3, res.query); stmt.bindInt(4, res.archive)
-            stmt.bindInt(5, res.bkId); stmt.bindText(6, res.contentId); stmt.bindLong(7, res.lastModified ?: 0)
-            if (res.folderCkRecordId != null) stmt.bindText(8, res.folderCkRecordId) else stmt.bindNull(8)
+            stmt.bindInt(5, res.bkId); stmt.bindText(6, res.contentId); stmt.bindLong(
+            7,
+            res.lastModified ?: 0
+        )
+            if (res.folderCkRecordId != null) stmt.bindText(
+                8,
+                res.folderCkRecordId
+            ) else stmt.bindNull(8)
             stmt.bindLong(9, existingId)
             stmt.step()
         }
     }
 
-    private fun insertOrMergeResult(db: SQLiteDB, res: SyncResult, ckId: String, fLocalId: Long?, isOrphan: Boolean) {
+    private fun insertOrMergeResult(
+        db: SQLiteDB,
+        res: SyncResult,
+        ckId: String,
+        fLocalId: Long?,
+        isOrphan: Boolean
+    ) {
         if (isOrphan) {
             db.prepare(
                 """
@@ -1090,10 +1210,16 @@ class ResultsHandler(private val dbFile: File) {
                 VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
             )?.use { stmt ->
-                stmt.bindText(1, res.name); stmt.bindText(2, res.query); stmt.bindInt(3, res.archive)
+                stmt.bindText(1, res.name); stmt.bindText(2, res.query); stmt.bindInt(
+                3,
+                res.archive
+            )
                 stmt.bindInt(4, res.bkId); stmt.bindText(5, res.contentId); stmt.bindText(6, ckId)
                 stmt.bindLong(7, res.lastModified ?: 0)
-                if (res.folderCkRecordId != null) stmt.bindText(8, res.folderCkRecordId) else stmt.bindNull(8)
+                if (res.folderCkRecordId != null) stmt.bindText(
+                    8,
+                    res.folderCkRecordId
+                ) else stmt.bindNull(8)
                 stmt.step()
             }
             return
@@ -1104,14 +1230,21 @@ class ResultsHandler(private val dbFile: File) {
         if (fLocalId != null) {
             db.prepare("SELECT id, lastModified FROM results WHERE folder_id = ? AND name = ? AND bkId = ? LIMIT 1")
                 ?.use { stmt ->
-                    stmt.bindLong(1, fLocalId); stmt.bindText(2, res.name); stmt.bindInt(3, res.bkId)
-                    if (stmt.step() == SQLiteDB.SQLITE_ROW) { conflictId = stmt.columnLong(0); conflictLastMod = stmt.columnLong(1) }
+                    stmt.bindLong(1, fLocalId); stmt.bindText(2, res.name); stmt.bindInt(
+                    3,
+                    res.bkId
+                )
+                    if (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                        conflictId = stmt.columnLong(0); conflictLastMod = stmt.columnLong(1)
+                    }
                 }
         } else {
             db.prepare("SELECT id, lastModified FROM results WHERE folder_id IS NULL AND name = ? AND bkId = ? LIMIT 1")
                 ?.use { stmt ->
                     stmt.bindText(1, res.name); stmt.bindInt(2, res.bkId)
-                    if (stmt.step() == SQLiteDB.SQLITE_ROW) { conflictId = stmt.columnLong(0); conflictLastMod = stmt.columnLong(1) }
+                    if (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                        conflictId = stmt.columnLong(0); conflictLastMod = stmt.columnLong(1)
+                    }
                 }
         }
 
@@ -1126,10 +1259,19 @@ class ResultsHandler(private val dbFile: File) {
                     """,
                 )?.use { stmt ->
                     if (fLocalId != null) stmt.bindLong(1, fLocalId) else stmt.bindNull(1)
-                    stmt.bindText(2, res.name); stmt.bindText(3, res.query); stmt.bindInt(4, res.archive)
-                    stmt.bindInt(5, res.bkId); stmt.bindText(6, res.contentId); stmt.bindText(7, ckId)
+                    stmt.bindText(2, res.name); stmt.bindText(3, res.query); stmt.bindInt(
+                    4,
+                    res.archive
+                )
+                    stmt.bindInt(5, res.bkId); stmt.bindText(6, res.contentId); stmt.bindText(
+                    7,
+                    ckId
+                )
                     stmt.bindLong(8, remoteLM)
-                    if (res.folderCkRecordId != null) stmt.bindText(9, res.folderCkRecordId) else stmt.bindNull(9)
+                    if (res.folderCkRecordId != null) stmt.bindText(
+                        9,
+                        res.folderCkRecordId
+                    ) else stmt.bindNull(9)
                     stmt.bindLong(10, conflictId)
                     stmt.step()
                 }
@@ -1146,10 +1288,16 @@ class ResultsHandler(private val dbFile: File) {
                 """,
             )?.use { stmt ->
                 if (fLocalId != null) stmt.bindLong(1, fLocalId) else stmt.bindNull(1)
-                stmt.bindText(2, res.name); stmt.bindText(3, res.query); stmt.bindInt(4, res.archive)
+                stmt.bindText(2, res.name); stmt.bindText(3, res.query); stmt.bindInt(
+                4,
+                res.archive
+            )
                 stmt.bindInt(5, res.bkId); stmt.bindText(6, res.contentId); stmt.bindText(7, ckId)
                 stmt.bindLong(8, res.lastModified ?: 0)
-                if (res.folderCkRecordId != null) stmt.bindText(9, res.folderCkRecordId) else stmt.bindNull(9)
+                if (res.folderCkRecordId != null) stmt.bindText(
+                    9,
+                    res.folderCkRecordId
+                ) else stmt.bindNull(9)
                 stmt.step()
             }
         }
@@ -1167,5 +1315,10 @@ class ResultsHandler(private val dbFile: File) {
         val contentId: String,
     )
 
-    private data class Quadruple(val id: Long, val name: String, val bkId: Int, val expectedFolder: Long?)
+    private data class Quadruple(
+        val id: Long,
+        val name: String,
+        val bkId: Int,
+        val expectedFolder: Long?
+    )
 }
