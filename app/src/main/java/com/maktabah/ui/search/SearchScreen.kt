@@ -102,7 +102,7 @@ fun SearchScreen(
     bottomPadding: Dp,
     onNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
     hasDonated: Boolean,
-    onClearGlobalQuery: () -> Unit = {},
+    onClearContentSearchQuery: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -175,7 +175,7 @@ fun SearchScreen(
     BackHandler(enabled = results.isNotEmpty() && !showSavedResults) {
         viewModel.clearResults()
         query = ""
-        onClearGlobalQuery()
+        onClearContentSearchQuery()
     }
 
     HorizontalPager(
@@ -281,7 +281,7 @@ fun SearchScreen(
                                 query = newQuery
                                 if (newQuery.isEmpty()) {
                                     viewModel.clearResults()
-                                    onClearGlobalQuery()
+                                    onClearContentSearchQuery()
                                 }
                             },
                             onSearch = {
@@ -355,7 +355,7 @@ fun SearchScreen(
                                 onClearResults = {
                                     viewModel.clearResults()
                                     query = ""
-                                    onClearGlobalQuery()
+                                    onClearContentSearchQuery()
                                 },
                                 onSelect = onNavigateToReader,
                                 bottomPadding = bottomPadding,
