@@ -405,6 +405,26 @@ class ResultsHandler(private val dbFile: File) {
         for (ckId in ckIds) addPendingSync(ckId, "delete")
     }
 
+    fun migrateBookId(oldId: Int, newId: Int) {
+        val ckIds = mutableListOf<String>()
+        val now = System.currentTimeMillis() / 1000L
+        openDb { db ->
+            db.prepare("SELECT ckRecordId FROM results WHERE bkId = ?")?.use { stmt ->
+                stmt.bindInt(1, oldId)
+                while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                    stmt.columnText(0)?.let { ckIds.add(it) }
+                }
+            }
+            db.prepare("UPDATE results SET bkId = ?, lastModified = ? WHERE bkId = ?;")?.use { stmt ->
+                stmt.bindInt(1, newId)
+                stmt.bindLong(2, now)
+                stmt.bindInt(3, oldId)
+                stmt.step()
+            }
+        }
+        for (ckId in ckIds) addPendingSync(ckId, "upload")
+    }
+
     // endregion
 
     // region Sync helpers
@@ -528,7 +548,7 @@ class ResultsHandler(private val dbFile: File) {
                 db.prepare("DELETE FROM folders;")?.use { it.step() }
                 db.prepare("DELETE FROM sync_pending;")?.use { it.step() }
                 db.prepare("COMMIT;")?.use { it.step() }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 db.prepare("ROLLBACK;")?.use { it.step() }
             }
         }
@@ -761,7 +781,7 @@ class ResultsHandler(private val dbFile: File) {
                 }
             }
             db.prepare("COMMIT;")?.use { it.step() }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             db.prepare("ROLLBACK;")?.use { it.step() }
         }
     }
@@ -820,7 +840,7 @@ class ResultsHandler(private val dbFile: File) {
                 }
             }
             db.prepare("COMMIT;")?.use { it.step() }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             db.prepare("ROLLBACK;")?.use { it.step() }
         }
     }

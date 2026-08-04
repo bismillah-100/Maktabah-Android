@@ -3,8 +3,8 @@ package com.maktabah.database
 import com.maktabah.models.Annotation
 import com.maktabah.models.AnnotationChange
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.yield
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.yield
 import java.io.File
 
 class AnnotationManager(
@@ -313,10 +313,33 @@ class AnnotationManager(
         newId: Int,
     ) {
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
-            db.prepare("UPDATE annotations_v2 SET bkId = ? WHERE bkId = ?")?.use { stmt ->
+            val ckIds = mutableListOf<String>()
+            db.prepare("SELECT ckRecordId FROM annotations_v2 WHERE bkId = ? AND ckRecordId IS NOT NULL")?.use { stmt ->
+                stmt.bindInt(1, oldId)
+                while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                    stmt.columnText(0)?.let { ckIds.add(it) }
+                }
+            }
+
+            db.prepare("UPDATE annotations_v2 SET bkId = ?, lastModified = ? WHERE bkId = ?")?.use { stmt ->
                 stmt.bindInt(1, newId)
-                stmt.bindInt(2, oldId)
+                stmt.bindLong(2, System.currentTimeMillis() / 1000L)
+                stmt.bindInt(3, oldId)
                 stmt.step()
+            }
+
+            db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
+            try {
+                db.prepare("INSERT OR IGNORE INTO pending_uploads (ckRecordId) VALUES (?)")?.use { stmt ->
+                    for (ckId in ckIds) {
+                        stmt.bindText(1, ckId)
+                        stmt.step()
+                        stmt.reset()
+                    }
+                }
+                db.prepare("COMMIT;")?.use { it.step() }
+            } catch (_: Exception) {
+                db.prepare("ROLLBACK;")?.use { it.step() }
             }
         }
         updates.tryEmit(AnnotationChange.ReloadAll)

@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.maktabah.R
 import com.maktabah.database.AnnotationManager
 import com.maktabah.database.BookImportManager
+import com.maktabah.database.ResultsHandler
 import com.maktabah.models.AuthorMode
 import com.maktabah.models.AuthorRow
 import com.maktabah.models.BooksData
@@ -350,6 +351,10 @@ class ImportBookViewModel(application: Application) : AndroidViewModel(applicati
 
         // Update bkId pada anotasi yang ada
         annotationManager.migrateBookId(oldId, newId)
+
+        // Update bkId pada Saved Results
+        val resultsHandler = ResultsHandler(File(context.filesDir, "SearchResults.sqlite"))
+        resultsHandler.migrateBookId(oldId, newId)
 
         return Result.success(Unit)
     }
