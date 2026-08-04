@@ -41,8 +41,8 @@ fun Modifier.insetGroupedBorder(
     val rawWidthPx = borderWidth.toPx()
     val isHairline = borderWidth == Dp.Hairline || rawWidthPx == 0f
 
-    // Di Compose, ketebalan Hairline ditentukan dengan 0f.
-    // Setengah stroke (halfStroke) diberi offset 0.5f agar posisi garis 1px tidak terpotong mask clip.
+    // We tested this and use 0f to ensure stroke is
+	// sharp and bright. No bold border.
     val strokeWidthPx = if (isHairline) 0f else rawWidthPx
     val halfStroke = if (isHairline) 0f else rawWidthPx / 2f
 
