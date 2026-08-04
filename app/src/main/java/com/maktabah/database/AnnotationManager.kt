@@ -348,6 +348,7 @@ class AnnotationManager(
                             stmt.bindText(1, ckId)
                             stmt.step()
                             stmt.reset()
+                            stmt.clearBindings()
                         }
                     }
                 db.prepare("COMMIT;")?.use { it.step() }

@@ -415,7 +415,7 @@ class ResultsHandler(private val dbFile: File) {
                 stmt.step()
             }
         }
-        for (ckId in ckIds) addPendingSync(ckId, "delete")
+        addPendingSyncs(ckIds, "delete")
     }
 
     fun migrateBookId(oldId: Int, newId: Int) {
@@ -436,7 +436,7 @@ class ResultsHandler(private val dbFile: File) {
                     stmt.step()
                 }
         }
-        for (ckId in ckIds) addPendingSync(ckId, "upload")
+        addPendingSyncs(ckIds, "upload")
     }
 
     // endregion
@@ -552,6 +552,66 @@ class ResultsHandler(private val dbFile: File) {
                     stmt.bindLong(3, now)
                     stmt.step()
                 }
+        }
+    }
+
+    fun addPendingSyncs(ckRecordIds: List<String>, operation: String) {
+        if (ckRecordIds.isEmpty()) return
+        openDb { db ->
+            db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
+            try {
+                if (operation == "upload") {
+                    val validIds = mutableListOf<String>()
+                    db.prepare("SELECT COUNT(*) FROM sync_pending WHERE ck_record_id = ? AND operation = 'delete';")
+                        ?.use { stmt ->
+                            for (ckId in ckRecordIds) {
+                                stmt.bindText(1, ckId)
+                                if (stmt.step() == SQLiteDB.SQLITE_ROW && stmt.columnLong(0) == 0L) {
+                                    validIds.add(ckId)
+                                }
+                                stmt.reset()
+                                stmt.clearBindings()
+                            }
+                        }
+                    val now = System.currentTimeMillis() / 1000L
+                    db.prepare("INSERT OR REPLACE INTO sync_pending (ck_record_id, operation, queued_at) VALUES (?, ?, ?);")
+                        ?.use { stmt ->
+                            for (ckId in validIds) {
+                                stmt.bindText(1, ckId)
+                                stmt.bindText(2, operation)
+                                stmt.bindLong(3, now)
+                                stmt.step()
+                                stmt.reset()
+                                stmt.clearBindings()
+                            }
+                        }
+                } else if (operation == "delete") {
+                    db.prepare("DELETE FROM sync_pending WHERE ck_record_id = ? AND operation = 'upload';")
+                        ?.use { stmt ->
+                            for (ckId in ckRecordIds) {
+                                stmt.bindText(1, ckId)
+                                stmt.step()
+                                stmt.reset()
+                                stmt.clearBindings()
+                            }
+                        }
+                    val now = System.currentTimeMillis() / 1000L
+                    db.prepare("INSERT OR REPLACE INTO sync_pending (ck_record_id, operation, queued_at) VALUES (?, ?, ?);")
+                        ?.use { stmt ->
+                            for (ckId in ckRecordIds) {
+                                stmt.bindText(1, ckId)
+                                stmt.bindText(2, operation)
+                                stmt.bindLong(3, now)
+                                stmt.step()
+                                stmt.reset()
+                                stmt.clearBindings()
+                            }
+                        }
+                }
+                db.prepare("COMMIT;")?.use { it.step() }
+            } catch (e: Exception) {
+                db.prepare("ROLLBACK;")?.use { it.step() }
+            }
         }
     }
 
