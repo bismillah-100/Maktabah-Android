@@ -352,8 +352,9 @@ class AnnotationManager(
                         }
                     }
                 db.prepare("COMMIT;")?.use { it.step() }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 db.prepare("ROLLBACK;")?.use { it.step() }
+				e.printStackTrace()
             }
         }
         updates.tryEmit(AnnotationChange.ReloadAll)

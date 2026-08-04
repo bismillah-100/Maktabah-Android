@@ -623,8 +623,9 @@ class ResultsHandler(private val dbFile: File) {
                 db.prepare("DELETE FROM folders;")?.use { it.step() }
                 db.prepare("DELETE FROM sync_pending;")?.use { it.step() }
                 db.prepare("COMMIT;")?.use { it.step() }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 db.prepare("ROLLBACK;")?.use { it.step() }
+				e.printStackTrace()
             }
         }
     }
@@ -848,7 +849,7 @@ class ResultsHandler(private val dbFile: File) {
                 SELECT f1.id, f1.name, f2.id as expected_parent
                 FROM folders f1
                 LEFT JOIN folders f2 ON f1.parentCkRecordId = f2.ckRecordId
-                WHERE f1.parentCkRecordId IS NOT NULL 
+                WHERE f1.parentCkRecordId IS NOT NULL
                 AND COALESCE(f1.parent, -1) != COALESCE(f2.id, -1)
                 """,
             )?.use { stmt ->
@@ -893,8 +894,9 @@ class ResultsHandler(private val dbFile: File) {
                 }
             }
             db.prepare("COMMIT;")?.use { it.step() }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             db.prepare("ROLLBACK;")?.use { it.step() }
+			e.printStackTrace()
         }
     }
 
@@ -952,8 +954,9 @@ class ResultsHandler(private val dbFile: File) {
                 }
             }
             db.prepare("COMMIT;")?.use { it.step() }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             db.prepare("ROLLBACK;")?.use { it.step() }
+			e.printStackTrace()
         }
     }
 
