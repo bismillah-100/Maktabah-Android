@@ -105,6 +105,9 @@
     <string name="search_help_and_desc">Mencari halaman yang mengandung semua kata yang dimasukkan, tidak berurutan.</string>
     <string name="search_help_or_title">Salah Satu (OR)</string>
     <string name="search_help_or_desc">Mencari halaman yang mengandung salah satu kata yang dimasukkan.</string>
+    <string name="search_help_near_title">Kata Berdekatan (NEAR)</string>
+    <string name="search_help_near_desc">Mencari kata-kata yang muncul berdekatan dalam jarak tertentu. Gunakan kolom angka di sebelah mode pencarian untuk menentukan jarak kata maksimal.</string>
+    <string name="search_near_distance_label">Jarak Maksimal (Kata):</string>
     <string name="search_action_help">Bantuan</string>
     <string name="search_action_start">Mulai Cari</string>
     <string name="search_action_clear_query">Hapus query</string>

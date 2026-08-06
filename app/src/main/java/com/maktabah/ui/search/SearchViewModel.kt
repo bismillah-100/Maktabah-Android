@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.maktabah.R
 import com.maktabah.manager.LibraryDataManager
 import com.maktabah.models.BooksData
 import com.maktabah.models.CategoryData
@@ -13,7 +14,6 @@ import com.maktabah.models.SavedResultsItem
 import com.maktabah.models.SearchMode
 import com.maktabah.models.SearchResult
 import com.maktabah.search.SearchEngine
-import com.maktabah.R
 import com.maktabah.utils.convertToArabicDigits
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.snippetAround
@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.time.Duration.Companion.milliseconds
 
 class SearchViewModel : ViewModel() {
     private val searchEngine = SearchEngine()
@@ -91,6 +92,13 @@ class SearchViewModel : ViewModel() {
 
     private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
     val searchHistory: StateFlow<List<String>> = _searchHistory.asStateFlow()
+
+    private val _nearDistance = MutableStateFlow(5)
+    val nearDistance: StateFlow<Int> = _nearDistance.asStateFlow()
+
+    fun updateNearDistance(distance: Int) {
+        _nearDistance.value = distance
+    }
 
     private var isInitialized = false
 
@@ -190,7 +198,7 @@ class SearchViewModel : ViewModel() {
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             if (query.isNotEmpty()) {
-                delay(500)
+                delay(500.milliseconds)
             }
 
             if (query.isNotEmpty()) {
@@ -272,10 +280,6 @@ class SearchViewModel : ViewModel() {
 
     fun clearSelection() {
         _selectedBookIds.value = emptySet()
-    }
-
-    fun selectAllDownloaded() {
-        _selectedBookIds.value = _downloadedBookIds.value
     }
 
     fun setShowSavedResults(show: Boolean) {
@@ -397,7 +401,7 @@ class SearchViewModel : ViewModel() {
         mode: SearchMode,
         dataManager: LibraryDataManager
     ) {
-        val selectedIds = if (_selectedBookIds.value.isEmpty()) _downloadedBookIds.value else _selectedBookIds.value
+        val selectedIds = _selectedBookIds.value.ifEmpty { _downloadedBookIds.value }
         if (query.isBlank() || selectedIds.isEmpty()) {
             _searchResults.value = emptyList()
             return
@@ -421,7 +425,7 @@ class SearchViewModel : ViewModel() {
                 }
 
                 else -> {
-                    query.normalizeArabic().split(" ").filter { it.isNotBlank() }
+                    query.normalizeArabic().split(",").map { it.trim() }.filter { it.isNotBlank() }
                 }
             }.map { it.convertToArabicDigits() }
 
@@ -445,6 +449,7 @@ class SearchViewModel : ViewModel() {
                             archiveFtsFile = ftsFile,
                             query = query,
                             mode = mode,
+                            nearDistance = _nearDistance.value,
                             limit = 50, // Limit per book to ensure UI speed
                             onRowProgress = { current, total ->
                                 _currentBookProgress.value = Pair(current, total)
@@ -501,7 +506,7 @@ class SearchViewModel : ViewModel() {
             _isSearching.value = true
             _searchResults.value = emptyList()
             _completedBooks.value = 0
-            
+
             val groupedByArchive = items.groupBy { it.archive }
             _totalBooks.value = groupedByArchive.size
             _currentBookProgress.value = null
@@ -524,47 +529,58 @@ class SearchViewModel : ViewModel() {
                             val itemsByBook = groupItems.groupBy { it.tableName.toIntOrNull() }.mapNotNull { (k, v) -> k?.let { it to v } }
                             for ((bkId, bookItems) in itemsByBook) {
                                 val book = dataManager.booksById[bkId]
-                                val isMultilingual = book?.isMultiLanguage ?: false
                                 val currentName = book?.name ?: bookItems.firstOrNull()?.bookTitle ?: ""
                                 withContext(Dispatchers.Main) {
                                     _currentBookName.value = currentName
                                 }
 
                                 try {
-                                    db.prepare("SELECT nass, page, part FROM b$bkId WHERE id = ? LIMIT 1")?.use { stmt ->
-                                        for (item in bookItems) {
-                                            val contentId = item.bookId
+                                    bookItems.chunked(900).forEach { chunk ->
+                                        val placeholders = chunk.joinToString(",") { "?" }
+                                        db.prepare("SELECT id, nass, page, part FROM b$bkId WHERE id IN ($placeholders)")
+                                            ?.use { stmt ->
+                                                chunk.forEachIndexed { index, item ->
+                                                    stmt.bindLong(index + 1, item.bookId.toLong())
+                                                }
 
-                                            stmt.bindLong(1, contentId.toLong())
-                                            if (stmt.step() == com.maktabah.database.SQLiteDB.SQLITE_ROW) {
-                                                val nassBlob = stmt.columnBlobDirect(0)
-                                                val page = stmt.columnInt(1)
-                                                val part = stmt.columnInt(2)
+                                                val itemsById = chunk.groupBy { it.bookId }
+
+                                                while (stmt.step() == com.maktabah.database.SQLiteDB.SQLITE_ROW) {
+                                                    val contentId = stmt.columnInt(0)
+                                                    val nassBlob = stmt.columnBlobDirect(1)
+                                                    val page = stmt.columnInt(2)
+                                                    val part = stmt.columnInt(3)
 
                                                 if (nassBlob != null) {
                                                     val nassString = com.maktabah.database.decompressBlob(nassBlob, zstdCtx)
                                                     val stripped = nassString.stripSpanTags()
-
                                                     val normalized = stripped.normalizeArabic().convertToArabicDigits()
-                                                    val queryConverted = item.query.normalizeArabic().convertToArabicDigits()
 
-                                                    val searchKeywords = if (queryConverted.isNotBlank()) listOf(queryConverted) else emptyList()
-                                                    val snippet = normalized.snippetAround(searchKeywords, contextLength = 60)
-
-
-                                                    allResults.add(
-                                                        SearchResult(
-                                                            bookId = bkId,
-                                                            contentId = contentId,
-                                                            text = snippet,
-                                                            page = page,
-                                                            part = part
+                                                    itemsById[contentId]?.forEach { item ->
+                                                        val queryConverted =
+                                                            item.query.normalizeArabic()
+                                                                .convertToArabicDigits()
+                                                        val searchKeywords =
+                                                            if (queryConverted.isNotBlank()) listOf(
+                                                                queryConverted
+                                                            ) else emptyList()
+                                                        val snippet = normalized.snippetAround(
+                                                            searchKeywords,
+                                                            contextLength = 60
                                                         )
-                                                    )
+
+                                                        allResults.add(
+                                                            SearchResult(
+                                                                bookId = bkId,
+                                                                contentId = contentId,
+                                                                text = snippet,
+                                                                page = page,
+                                                                part = part
+                                                            )
+                                                        )
+                                                    }
                                                 }
-                                            }
-                                            stmt.reset()
-                                            stmt.clearBindings()
+                                                }
                                         }
                                     }
                                 } catch (e: Exception) {
@@ -607,14 +623,14 @@ class SearchViewModel : ViewModel() {
         val currentFilter = _bookFilter.value
         val allResults = _searchResults.value
         val booksMap = dataManager.booksById // Capture thread-safe reference
-        
+
         filterJob?.cancel()
-        
+
         if (currentFilter.isEmpty()) {
             _filteredSearchResults.value = allResults
         } else {
             filterJob = viewModelScope.launch(Dispatchers.Default) {
-                delay(500) // UI Debounce
+                delay(500.milliseconds) // UI Debounce
                 val cleanQuery = currentFilter.normalizeArabic()
                 if (cleanQuery.isEmpty()) {
                     _filteredSearchResults.value = allResults

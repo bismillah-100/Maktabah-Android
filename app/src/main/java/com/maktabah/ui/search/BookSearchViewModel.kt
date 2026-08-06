@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.maktabah.R
 import com.maktabah.models.BookContent
 import com.maktabah.models.SearchMode
 import com.maktabah.search.SearchEngine
@@ -12,7 +13,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
-import com.maktabah.R
 
 class BookSearchViewModel : ViewModel() {
     private val searchEngine = SearchEngine()
@@ -41,6 +41,13 @@ class BookSearchViewModel : ViewModel() {
 
     fun updateSearchMode(mode: SearchMode) {
         _searchMode.value = mode
+    }
+
+    private val _nearDistance = MutableStateFlow(5)
+    val nearDistance: StateFlow<Int> = _nearDistance.asStateFlow()
+
+    fun updateNearDistance(distance: Int) {
+        _nearDistance.value = distance
     }
 
     private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
@@ -115,6 +122,7 @@ class BookSearchViewModel : ViewModel() {
                         archiveFtsFile = ftsFile,
                         query = currentQuery,
                         mode = currentMode,
+                        nearDistance = _nearDistance.value,
                         onRowProgress = { current, total ->
                             _searchProgress.value = Pair(current, total)
                         }

@@ -107,6 +107,9 @@
     <string name="search_help_and_desc">Search for pages containing all entered words, in any order.</string>
     <string name="search_help_or_title">Any Word (OR)</string>
     <string name="search_help_or_desc">Search for pages containing at least one of the entered words.</string>
+    <string name="search_help_near_title">Near Words (NEAR)</string>
+    <string name="search_help_near_desc">Search for words that appear within a certain distance from each other. Use the number field next to the search mode to set the maximum word distance.</string>
+    <string name="search_near_distance_label">Max Distance (Words):</string>
     <string name="search_action_help">Help</string>
     <string name="search_action_start">Start Search</string>
     <string name="search_action_clear_query">Clear query</string>
