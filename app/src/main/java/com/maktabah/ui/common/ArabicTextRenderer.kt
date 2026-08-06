@@ -366,17 +366,35 @@ object ArabicTextRenderer {
         if (!searchQuery.isNullOrBlank()) {
             val searchResult = honorific // honorific contains the final rendered text
             val renderedStr = searchResult.text
-            val ranges = renderedStr.findArabicMatchingRanges(listOf(searchQuery))
-            val searchQueryColor = android.graphics.Color.argb(64, 255, 213, 79)
+            val searchTerms = searchQuery
+                .split(",")
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .map { it.replacingHonorificPhrasesWithEvents().text }
 
-            for (r in ranges) {
-                if (r.first >= 0 && r.last < spannable.length && r.first <= r.last) {
-                    spannable.setSpan(
-                        BackgroundColorSpan(searchQueryColor),
-                        r.first,
-                        r.last + 1,
-                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                    )
+            if (searchTerms.isNotEmpty()) {
+                val colors = listOf(
+                    android.graphics.Color.argb(64, 255, 213, 79), // Yellow
+                    android.graphics.Color.argb(102, 255, 0, 255), // Magenta
+                    android.graphics.Color.argb(102, 255, 105, 180), // Pink
+                    android.graphics.Color.argb(102, 128, 0, 128), // Purple
+                    android.graphics.Color.argb(102, 75, 0, 130)  // Indigo
+                )
+
+                for ((index, term) in searchTerms.withIndex()) {
+                    val ranges = renderedStr.findArabicMatchingRanges(listOf(term))
+                    val color = colors[index % colors.size]
+
+                    for (r in ranges) {
+                        if (r.first >= 0 && r.last < spannable.length && r.first <= r.last) {
+                            spannable.setSpan(
+                                BackgroundColorSpan(color),
+                                r.first,
+                                r.last + 1,
+                                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                            )
+                        }
+                    }
                 }
             }
         }
