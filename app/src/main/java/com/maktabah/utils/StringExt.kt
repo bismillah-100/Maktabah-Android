@@ -37,6 +37,9 @@ fun String.normalizeArabic(removeDiacritics: Boolean = true): String {
             0x0649 -> {
                 sb.append('\u064A')
             }
+            0x060C -> {
+                sb.append(',') // Arabic comma to English comma
+            }
             else -> {
                 sb.append(char)
             }
