@@ -57,6 +57,7 @@ import com.maktabah.models.FolderNode
 import com.maktabah.models.ResultNode
 import com.maktabah.models.SavedResultsItem
 import com.maktabah.ui.common.InsetGroupedItem
+import com.maktabah.ui.common.MaktabahTextField
 import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.search.ResultsViewModel
 import com.maktabah.ui.search.SearchTextField
@@ -562,16 +563,13 @@ private fun RenameItemDialog(
             },
             containerColor = MaterialTheme.colorScheme.surface,
             text = {
-                OutlinedTextField(
+                MaktabahTextField(
                     value = text,
                     onValueChange = onTextChange,
                     label = { Text(stringResource(R.string.save_results_folder_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(30.dp),
-                    textStyle = LocalTextStyle.current.copy(
-                        textDirection = TextDirection.ContentOrRtl
-                    )
+                    shape = RoundedCornerShape(30.dp)
                 )
             },
             confirmButton = {
