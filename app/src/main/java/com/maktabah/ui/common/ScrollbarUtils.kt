@@ -26,7 +26,7 @@ fun Modifier.drawGenericVerticalScrollbar(
     scrollOffsetProvider: () -> Float,
     scrollRangeProvider: () -> Float,
     scrollExtentProvider: () -> Float,
-    width: Dp = 4.dp,
+    width: Dp = 2.5.dp,
     color: Color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
     topPadding: Dp = 0.dp,
     bottomPadding: Dp = 0.dp,
@@ -82,11 +82,11 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawScrollbarIntern
     val scrollRatio = (scrollOffset / scrollableContentHeight).coerceIn(0f, 1f)
     val scrollbarY = scrollRatio * (viewportHeight - scrollbarHeight) + topPaddingPx
 
-    // Draw on the left side for RTL, right side for LTR
+    // Digambar tepat di tepi terluar layar (0f untuk RTL, tepi kanan untuk LTR)
     val xOffset = if (layoutDirection == LayoutDirection.Rtl) {
-        2.dp.toPx()
+        0f
     } else {
-        size.width - widthPx - 2.dp.toPx()
+        size.width - widthPx
     }
 
     drawRoundRect(

@@ -266,11 +266,17 @@ constructor(
     init {
         setTextIsSelectable(true)
         textSize = 24f
-        setPadding(32, 32, 32, 32)
+        val density = context.resources.displayMetrics.density
+        val horizontalPaddingPx = (16 * density).toInt()
+        val verticalPaddingPx = (16 * density).toInt()
+        setPadding(horizontalPaddingPx, verticalPaddingPx, horizontalPaddingPx, verticalPaddingPx)
         layoutDirection = LAYOUT_DIRECTION_RTL
         textDirection = TEXT_DIRECTION_RTL
         textAlignment = TEXT_ALIGNMENT_GRAVITY
         gravity = Gravity.TOP or Gravity.START
+
+        setElegantTextHeight(true)
+        includeFontPadding = true
 
         customSelectionActionModeCallback =
             object : ActionMode.Callback {
