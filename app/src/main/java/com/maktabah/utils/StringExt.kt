@@ -199,6 +199,13 @@ fun calculateRangeWithoutHarakat(
  * Dari teks *dengan* harakat (this), temukan range yang cocok
  * dengan [selectedText] (tanpa harakat) mendekati [approxStart].
  *
+ * [approxStart] berada dalam koordinat NO-HARAKAT (sourceText yang sudah di-strip),
+ * sedangkan [this] adalah teks WITH-HARAKAT (nash asli).
+ *
+ * Solusi: bangun versi no-harakat dari this + offsetMap ke posisi asli,
+ * cari di no-harakat space (koordinat cocok dengan approxStart) dalam radius tertentu,
+ * lalu gunakan offsetMap untuk menghasilkan range di with-harakat string.
+ *
  * Mengembalikan (start, length) di teks dengan harakat.
  */
 fun String.findRangeInOriginal(
@@ -208,28 +215,46 @@ fun String.findRangeInOriginal(
     val cleanSelected = selectedText.normalizeArabic()
     if (cleanSelected.isEmpty()) return approxStart to selectedText.length
 
-    val cleanSelf = this.normalizeArabic()
-    val idx = cleanSelf.indexOf(cleanSelected)
-    if (idx < 0) return approxStart to selectedText.length
+    // Bangun versi no-harakat dari this + offsetMap: noHarakatIdx → withHarakatIdx
+    val noHarakatSb = StringBuilder(length)
+    val offsetMap = ArrayList<Int>(length + 1)
 
-    // Konversi posisi di cleanSelf → posisi di self (dengan harakat)
-    var origStart = 0
-    var cleanCount = 0
-    for (i in this.indices) {
-        if (cleanCount == idx) {
-            origStart = i
-            break
+    for (i in indices) {
+        val ch = this[i]
+        if (!ch.isArabicHarakat() && ch.code != 0x0640) {
+            offsetMap.add(i)
+            noHarakatSb.append(ch)
         }
-        if (!this[i].isArabicHarakat() && this[i].code != 0x0640) cleanCount++
     }
-    var origEnd = origStart
-    cleanCount = 0
-    for (i in origStart until this.length) {
-        if (cleanCount == cleanSelected.length) break
-        if (!this[i].isArabicHarakat() && this[i].code != 0x0640) cleanCount++
-        origEnd = i + 1
+    offsetMap.add(length) // sentinel
+
+    // Cari di no-harakat space (koordinat sama dengan approxStart)
+    val noHarakatText = noHarakatSb.toString()
+    val totalLen = noHarakatText.length
+    val cleanLen = cleanSelected.length
+    val radius = 300
+    val searchStart = maxOf(0, approxStart - radius)
+    val searchEnd = minOf(totalLen, approxStart + cleanLen + radius)
+
+    var foundIdx = -1
+    if (searchStart < searchEnd) {
+        foundIdx = noHarakatText.indexOf(cleanSelected, searchStart)
+        if (foundIdx < 0 || foundIdx >= searchEnd) {
+            // tidak ditemukan dalam radius, coba full search
+            foundIdx = noHarakatText.indexOf(cleanSelected)
+        }
+    } else {
+        foundIdx = noHarakatText.indexOf(cleanSelected)
     }
-    return origStart to (origEnd - origStart)
+
+    if (foundIdx < 0) return approxStart to selectedText.length
+
+    // Map noHarakat index → withHarakat index via offsetMap
+    val mapStart = foundIdx.coerceAtMost(offsetMap.size - 1)
+    val mapEnd = (foundIdx + cleanLen).coerceAtMost(offsetMap.size - 1)
+    val harakatStart = offsetMap[mapStart]
+    val harakatEnd = offsetMap[mapEnd]
+    return harakatStart to maxOf(0, harakatEnd - harakatStart)
 }
 
 // ─── Lucene Arabic Light10 Stemmer ──────────────────────────────────────────
