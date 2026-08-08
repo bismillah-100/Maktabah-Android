@@ -18,6 +18,8 @@ import com.maktabah.models.Annotation
 import com.maktabah.utils.HonorificReplacementResult
 import com.maktabah.utils.convertToArabicDigits
 import com.maktabah.utils.findArabicMatchingRanges
+import com.maktabah.utils.findArabicMatchingRangesWithIndex
+import com.maktabah.utils.filterRangesForNearMode
 import com.maktabah.utils.isArabicHarakat
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.removingHarakat
@@ -272,6 +274,8 @@ object ArabicTextRenderer {
         showHarakat: Boolean = true,
         annotations: List<Annotation> = emptyList(),
         searchQuery: String? = null,
+        searchMode: Int = 0,
+        nearDistance: Int = 10,
         isImported: Boolean = true,
         isMultiLanguage: Boolean = false,
         typeface: Typeface? = null,
@@ -381,11 +385,11 @@ object ArabicTextRenderer {
                     android.graphics.Color.argb(102, 75, 0, 130)  // Indigo
                 )
 
-                for ((index, term) in searchTerms.withIndex()) {
-                    val ranges = renderedStr.findArabicMatchingRanges(listOf(term))
-                    val color = colors[index % colors.size]
-
-                    for (r in ranges) {
+                if (searchMode == 2 && searchTerms.size > 1) { // 2 is NEAR mode
+                    val rangesWithIndex = renderedStr.findArabicMatchingRangesWithIndex(searchTerms)
+                    val filteredRanges = renderedStr.filterRangesForNearMode(rangesWithIndex, searchTerms.size, nearDistance)
+                    for ((i, r) in filteredRanges.withIndex()) {
+                        val color = colors[i % colors.size]
                         if (r.first >= 0 && r.last < spannable.length && r.first <= r.last) {
                             spannable.setSpan(
                                 BackgroundColorSpan(color),
@@ -393,6 +397,22 @@ object ArabicTextRenderer {
                                 r.last + 1,
                                 android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
                             )
+                        }
+                    }
+                } else {
+                    for ((index, term) in searchTerms.withIndex()) {
+                        val ranges = renderedStr.findArabicMatchingRanges(listOf(term))
+                        val color = colors[index % colors.size]
+
+                        for (r in ranges) {
+                            if (r.first >= 0 && r.last < spannable.length && r.first <= r.last) {
+                                spannable.setSpan(
+                                    BackgroundColorSpan(color),
+                                    r.first,
+                                    r.last + 1,
+                                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                                )
+                            }
                         }
                     }
                 }

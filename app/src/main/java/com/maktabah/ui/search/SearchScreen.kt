@@ -370,6 +370,7 @@ fun SearchScreen(
                                 filteredResults = filteredResults,
                                 query = lastSearchQuery,
                                 searchMode = activeSearchMode,
+                                nearDistance = viewModel.nearDistance.collectAsState().value,
                                 bookFilter = bookFilter,
                                 onBookFilterChange = { viewModel.updateBookFilter(it, libraryViewModel.dataManager) },
                                 onClearResults = {
@@ -727,6 +728,7 @@ private fun SearchResultsOverlay(
     filteredResults: List<SearchResult>,
     query: String,
     searchMode: SearchMode,
+    nearDistance: Int,
     bookFilter: String,
     onBookFilterChange: (String) -> Unit,
     onClearResults: () -> Unit,
@@ -873,6 +875,11 @@ private fun SearchResultsOverlay(
                 key = { "${filteredResults[it].bookId}_${filteredResults[it].contentId}" },
             ) { index ->
                 val result = filteredResults[index]
+                val finalQuery = if (searchMode == SearchMode.NEAR) {
+                    "NEAR:$nearDistance:$query"
+                } else {
+                    query
+                }
                 val bookName =
                     libraryViewModel.dataManager.booksById[result.bookId]?.name
                         ?: stringResource(R.string.library_fallback_book_name)
@@ -880,7 +887,7 @@ private fun SearchResultsOverlay(
                 InsetGroupedItem(
                     index = index,
                     lastIndex = filteredResults.lastIndex,
-                    onClick = { onSelect(result.bookId, result.contentId, null, null, query) },
+                    onClick = { onSelect(result.bookId, result.contentId, null, null, finalQuery) },
                     color = MaterialTheme.colorScheme.surface,
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                     dividerStartPadding = Dp.Hairline,

@@ -103,6 +103,8 @@ fun ReaderScreen(
     val tocList by viewModel.tocList.collectAsState()
     val bookId by viewModel.currentBookIdFlow.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val searchMode by viewModel.searchMode.collectAsState()
+    val nearDistance by viewModel.nearDistance.collectAsState()
     val isMultiLanguage by viewModel.isMultiLanguage.collectAsState()
     val flashTarget by viewModel.flashTarget.collectAsState()
     val context = LocalContext.current
@@ -453,6 +455,9 @@ fun ReaderScreen(
                     paddingValues = padding,
                     tabManager = tabManager,
                     tabId = activeTabId,
+                    searchQuery = searchQuery,
+                    searchMode = searchMode,
+                    nearDistance = nearDistance,
                     isMultiLanguage = isMultiLanguage,
                     flashTarget = flashTarget,
                     onScrollViewCreated = { scrollViewRef.value = it },
@@ -511,7 +516,6 @@ fun ReaderScreen(
                     onCopyReference = { selectedText ->
                         copyWithReference(selectedText)
                     },
-                    searchQuery = searchQuery,
                 )
             } else if (!isLoading) {
                 Text(

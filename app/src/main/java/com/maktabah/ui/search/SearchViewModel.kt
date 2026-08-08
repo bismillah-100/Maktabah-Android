@@ -562,13 +562,13 @@ class SearchViewModel : ViewModel() {
                                                     val normalized = stripped.normalizeArabic().convertToArabicDigits()
 
                                                     itemsById[contentId]?.forEach { item ->
-                                                        val queryConverted =
-                                                            item.query.normalizeArabic()
-                                                                .convertToArabicDigits()
-                                                        val searchKeywords =
-                                                            if (queryConverted.isNotBlank()) listOf(
-                                                                queryConverted
-                                                            ) else emptyList()
+                                                        val queryConverted = item.query.normalizeArabic().convertToArabicDigits()
+                                                        val searchKeywords = queryConverted
+                                                            .split(",")
+                                                            .map { it.trim() }
+                                                            .filter { it.isNotEmpty() }
+                                                            .map { it.trim() }
+                                                            .filter { it.isNotEmpty() }
                                                         val snippet = if (_lastSearchMode.value == SearchMode.NEAR) {
                                                             normalized.snippetNear(searchKeywords, _nearDistance.value, contextLength = 60)
                                                         } else {

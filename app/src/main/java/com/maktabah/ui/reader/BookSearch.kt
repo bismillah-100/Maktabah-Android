@@ -166,7 +166,11 @@ fun BookSearchSheet(
                                     if (viewModel.currentContent.value?.id != contentItem.id) {
                                         viewModel.loadContentById(contentItem.id)
                                     }
-                                    viewModel.setSearchQuery(lastSearchQuery)
+                                    viewModel.setSearchQuery(
+                                        query = lastSearchQuery,
+                                        mode = searchMode.ordinal,
+                                        distance = nearDistance
+                                    )
                                     viewModel.setFlashTarget(
                                         FlashTarget(
                                             query = lastSearchQuery,
