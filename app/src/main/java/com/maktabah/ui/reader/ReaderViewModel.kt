@@ -382,6 +382,13 @@ class ReaderViewModel : ViewModel() {
     }
 
     fun setFlashTarget(target: FlashTarget?) {
+        if (target?.query != null && target.query.startsWith("NEAR:")) {
+            val parts = target.query.split(":", limit = 3)
+            if (parts.size == 3) {
+                _flashTarget.value = target.copy(query = parts[2])
+                return
+            }
+        }
         _flashTarget.value = target
     }
 
