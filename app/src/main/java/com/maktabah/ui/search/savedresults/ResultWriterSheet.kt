@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.maktabah.R
 import com.maktabah.manager.LibraryDataManager
 import com.maktabah.models.FolderNode
+import com.maktabah.models.SearchMode
 import com.maktabah.models.SearchResult
 import com.maktabah.ui.search.ResultsViewModel
 
@@ -25,6 +26,8 @@ import com.maktabah.ui.search.ResultsViewModel
 fun ResultWriterSheet(
     results: List<SearchResult>,
     query: String,
+    searchMode: SearchMode,
+    nearDistance: Int,
     resultsViewModel: ResultsViewModel,
     dataManager: LibraryDataManager,
     onDismiss: () -> Unit
@@ -132,6 +135,8 @@ fun ResultWriterSheet(
                             query = query,
                             folderId = selectedFolderId,
                             name = name.trim(),
+                            searchMode = searchMode.ordinal,
+                            nearDistance = nearDistance,
                             dataManager = dataManager
                         )
                         if (success) {

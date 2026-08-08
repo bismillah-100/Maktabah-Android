@@ -17,6 +17,7 @@ import com.maktabah.search.SearchEngine
 import com.maktabah.utils.convertToArabicDigits
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.snippetAround
+import com.maktabah.utils.snippetNear
 import com.maktabah.utils.stripSpanTags
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -459,8 +460,11 @@ class SearchViewModel : ViewModel() {
                         val mapped = bookResults.map {
                             val stripped = it.nass.stripSpanTags()
                             val normalized = stripped.convertToArabicDigits()
-                            val snippet =
+                            val snippet = if (mode == SearchMode.NEAR) {
+                                normalized.snippetNear(searchKeywords, _nearDistance.value, contextLength = 60)
+                            } else {
                                 normalized.snippetAround(searchKeywords, contextLength = 60)
+                            }
 
 
                             SearchResult(
@@ -500,7 +504,8 @@ class SearchViewModel : ViewModel() {
     fun loadSavedResults(items: List<SavedResultsItem>, context: Context, dataManager: LibraryDataManager) {
         val firstItem = items.firstOrNull() ?: return
         _lastSearchQuery.value = firstItem.query
-        _lastSearchMode.value = SearchMode.PHRASE // Saved results don't store mode, assume phrase for highlight
+        _lastSearchMode.value = SearchMode.entries.getOrElse(firstItem.searchMode) { SearchMode.PHRASE }
+        _nearDistance.value = firstItem.nearDistance
 
         viewModelScope.launch {
             _isSearching.value = true
@@ -564,10 +569,11 @@ class SearchViewModel : ViewModel() {
                                                             if (queryConverted.isNotBlank()) listOf(
                                                                 queryConverted
                                                             ) else emptyList()
-                                                        val snippet = normalized.snippetAround(
-                                                            searchKeywords,
-                                                            contextLength = 60
-                                                        )
+                                                        val snippet = if (_lastSearchMode.value == SearchMode.NEAR) {
+                                                            normalized.snippetNear(searchKeywords, _nearDistance.value, contextLength = 60)
+                                                        } else {
+                                                            normalized.snippetAround(searchKeywords, contextLength = 60)
+                                                        }
 
                                                         allResults.add(
                                                             SearchResult(

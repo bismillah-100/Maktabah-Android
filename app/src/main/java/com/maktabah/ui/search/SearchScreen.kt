@@ -442,6 +442,7 @@ fun SearchScreen(
                             viewModel.setShowSavedResults(false)
                             viewModel.loadSavedResults(items, context, libraryViewModel.dataManager)
                         },
+                        onRefresh = {},
                         onDismiss = { viewModel.setShowSavedResults(false) },
                         bottomPadding = bottomPadding,
                         backHandlerEnabled = pagerState.currentPage == 1
@@ -455,6 +456,8 @@ fun SearchScreen(
         ResultWriterSheet(
             results = results,
             query = lastSearchQuery,
+            searchMode = lastSearchMode,
+            nearDistance = nearDistance,
             resultsViewModel = resultsViewModel,
             dataManager = libraryViewModel.dataManager,
             onDismiss = { showResultWriter = false }
@@ -581,9 +584,9 @@ private fun SearchFilterTopBar(
                 placeholder = stringResource(R.string.library_search_books_placeholder),
                 modifier = Modifier
                     .padding(end = searchPaddingEnd)
-                    .fillMaxWidth(),
-                onClearClick = { onQueryChange("") },
-                onFocusChanged = { isSearchFocused = it }
+                    .fillMaxWidth()
+                    .onFocusChanged { isSearchFocused = it.isFocused },
+                onClearClick = { onQueryChange("") }
             )
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -790,9 +793,9 @@ private fun SearchResultsOverlay(
                         placeholder = stringResource(R.string.search_filter_placeholder),
                         modifier = Modifier
                             .padding(end = searchPaddingEnd)
-                            .fillMaxWidth(),
-                        onClearClick = { onBookFilterChange("") },
-                        onFocusChanged = { isSearchFocused = it }
+                            .fillMaxWidth()
+                            .onFocusChanged { isSearchFocused = it.isFocused },
+                        onClearClick = { onBookFilterChange("") }
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),

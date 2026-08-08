@@ -62,6 +62,8 @@ class ResultsHandler(private val dbFile: File) {
                     ckRecordId TEXT,
                     lastModified INTEGER,
                     folderCkRecordId TEXT,
+                    searchMode INTEGER DEFAULT 0,
+                    nearDistance INTEGER DEFAULT 10,
                     UNIQUE(folder_id, name, bkId)
                 );
                 """,
@@ -85,6 +87,13 @@ class ResultsHandler(private val dbFile: File) {
                 ?.use { it.step() }
             db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_results_folder_name_bk ON results (COALESCE(folder_id, 0), name, bkId);")
                 ?.use { it.step() }
+
+            try {
+                db.prepare("ALTER TABLE results ADD COLUMN searchMode INTEGER DEFAULT 0;")?.use { it.step() }
+            } catch (e: Exception) {}
+            try {
+                db.prepare("ALTER TABLE results ADD COLUMN nearDistance INTEGER DEFAULT 10;")?.use { it.step() }
+            } catch (e: Exception) {}
 
             resolveOrphanFoldersInternal(db)
             resolveOrphanResultsInternal(db)
@@ -284,15 +293,15 @@ class ResultsHandler(private val dbFile: File) {
 
     // region Result CRUD
 
-    fun insertResult(archive: Int, bkId: Int, contentId: String, folderId: Long?, query: String, name: String) {
+    fun insertResult(archive: Int, bkId: Int, contentId: String, folderId: Long?, query: String, name: String, searchMode: Int = 0, nearDistance: Int = 10) {
         val ckId = UUID.randomUUID().toString()
         val now = System.currentTimeMillis() / 1000L
         openDb { db ->
             val fCkId = if (folderId != null) fetchFolderCkRecordId(db, folderId) else null
             db.prepare(
                 """
-                INSERT INTO results (folder_id, name, query, archives, bkId, contentId, ckRecordId, lastModified, folderCkRecordId)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                INSERT INTO results (folder_id, name, query, archives, bkId, contentId, ckRecordId, lastModified, folderCkRecordId, searchMode, nearDistance)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
             )?.use { stmt ->
                 if (folderId != null) stmt.bindLong(1, folderId) else stmt.bindNull(1)
@@ -304,6 +313,8 @@ class ResultsHandler(private val dbFile: File) {
                 stmt.bindText(7, ckId)
                 stmt.bindLong(8, now)
                 if (fCkId != null) stmt.bindText(9, fCkId) else stmt.bindNull(9)
+                stmt.bindInt(10, searchMode)
+                stmt.bindInt(11, nearDistance)
                 stmt.step()
             }
         }
@@ -318,9 +329,9 @@ class ResultsHandler(private val dbFile: File) {
         val results = mutableListOf<RawResult>()
         openDb { db ->
             val sql = if (folderId != null) {
-                "SELECT id, folder_id, name, query, archives, bkId, contentId FROM results WHERE folder_id = ?"
+                "SELECT id, folder_id, name, query, archives, bkId, contentId, searchMode, nearDistance FROM results WHERE folder_id = ?"
             } else {
-                "SELECT id, folder_id, name, query, archives, bkId, contentId FROM results WHERE folder_id IS NULL"
+                "SELECT id, folder_id, name, query, archives, bkId, contentId, searchMode, nearDistance FROM results WHERE folder_id IS NULL"
             }
             db.prepare(sql)?.use { stmt ->
                 if (folderId != null) stmt.bindLong(1, folderId)
@@ -334,6 +345,8 @@ class ResultsHandler(private val dbFile: File) {
                             archive = stmt.columnInt(4),
                             bkId = stmt.columnInt(5),
                             contentId = stmt.columnText(6) ?: "",
+                            searchMode = stmt.columnInt(7),
+                            nearDistance = stmt.columnInt(8),
                         ),
                     )
                 }
@@ -912,6 +925,8 @@ class ResultsHandler(private val dbFile: File) {
         ckRecordId = stmt.columnText(7),
         lastModified = if (stmt.columnType(8) != SQLiteDB.SQLITE_NULL) stmt.columnLong(8) else null,
         folderCkRecordId = stmt.columnText(9),
+        searchMode = stmt.columnInt(10),
+        nearDistance = stmt.columnInt(11),
     )
 
     private fun topologicalSort(folders: List<SyncFolder>): List<SyncFolder> {
@@ -1112,14 +1127,16 @@ class ResultsHandler(private val dbFile: File) {
         if (isOrphan) {
             db.prepare(
                 """
-                INSERT INTO results (folder_id, name, query, archives, bkId, contentId, ckRecordId, lastModified, folderCkRecordId)
-                VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?);
+                INSERT INTO results (folder_id, name, query, archives, bkId, contentId, ckRecordId, lastModified, folderCkRecordId, searchMode, nearDistance)
+                VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
             )?.use { stmt ->
                 stmt.bindText(1, res.name); stmt.bindText(2, res.query); stmt.bindInt(3, res.archive)
                 stmt.bindInt(4, res.bkId); stmt.bindText(5, res.contentId); stmt.bindText(6, ckId)
                 stmt.bindLong(7, res.lastModified ?: 0)
                 if (res.folderCkRecordId != null) stmt.bindText(8, res.folderCkRecordId) else stmt.bindNull(8)
+                stmt.bindInt(9, res.searchMode)
+                stmt.bindInt(10, res.nearDistance)
                 stmt.step()
             }
             return
@@ -1147,7 +1164,7 @@ class ResultsHandler(private val dbFile: File) {
                 db.prepare(
                     """
                     UPDATE results SET folder_id = ?, name = ?, query = ?, archives = ?,
-                    bkId = ?, contentId = ?, ckRecordId = ?, lastModified = ?, folderCkRecordId = ?
+                    bkId = ?, contentId = ?, ckRecordId = ?, lastModified = ?, folderCkRecordId = ?, searchMode = ?, nearDistance = ?
                     WHERE id = ?;
                     """,
                 )?.use { stmt ->
@@ -1156,7 +1173,9 @@ class ResultsHandler(private val dbFile: File) {
                     stmt.bindInt(5, res.bkId); stmt.bindText(6, res.contentId); stmt.bindText(7, ckId)
                     stmt.bindLong(8, remoteLM)
                     if (res.folderCkRecordId != null) stmt.bindText(9, res.folderCkRecordId) else stmt.bindNull(9)
-                    stmt.bindLong(10, conflictId)
+                    stmt.bindInt(10, res.searchMode)
+                    stmt.bindInt(11, res.nearDistance)
+                    stmt.bindLong(12, conflictId)
                     stmt.step()
                 }
             } else {
@@ -1167,8 +1186,8 @@ class ResultsHandler(private val dbFile: File) {
         } else {
             db.prepare(
                 """
-                INSERT INTO results (folder_id, name, query, archives, bkId, contentId, ckRecordId, lastModified, folderCkRecordId)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                INSERT INTO results (folder_id, name, query, archives, bkId, contentId, ckRecordId, lastModified, folderCkRecordId, searchMode, nearDistance)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
             )?.use { stmt ->
                 if (fLocalId != null) stmt.bindLong(1, fLocalId) else stmt.bindNull(1)
@@ -1176,6 +1195,8 @@ class ResultsHandler(private val dbFile: File) {
                 stmt.bindInt(5, res.bkId); stmt.bindText(6, res.contentId); stmt.bindText(7, ckId)
                 stmt.bindLong(8, res.lastModified ?: 0)
                 if (res.folderCkRecordId != null) stmt.bindText(9, res.folderCkRecordId) else stmt.bindNull(9)
+                stmt.bindInt(10, res.searchMode)
+                stmt.bindInt(11, res.nearDistance)
                 stmt.step()
             }
         }
@@ -1191,6 +1212,8 @@ class ResultsHandler(private val dbFile: File) {
         val archive: Int,
         val bkId: Int,
         val contentId: String,
+        val searchMode: Int,
+        val nearDistance: Int,
     )
 
     private data class Quadruple(val id: Long, val name: String, val bkId: Int, val expectedFolder: Long?)

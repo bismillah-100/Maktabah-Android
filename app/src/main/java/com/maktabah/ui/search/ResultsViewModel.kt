@@ -132,6 +132,8 @@ class ResultsViewModel : ViewModel() {
                                     query = row.query,
                                     bookId = cid,
                                     bookTitle = book.name,
+                                    searchMode = row.searchMode,
+                                    nearDistance = row.nearDistance,
                                 )
                             }
                         }
@@ -139,6 +141,8 @@ class ResultsViewModel : ViewModel() {
                             id = firstRow.id,
                             parentId = firstRow.folderId,
                             name = name,
+                            searchMode = firstRow.searchMode,
+                            nearDistance = firstRow.nearDistance,
                             items = items,
                         )
                     }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
@@ -392,7 +396,7 @@ class ResultsViewModel : ViewModel() {
         }
     }
 
-    fun saveSearchResults(results: List<SearchResult>, query: String, folderId: Long?, name: String, dataManager: LibraryDataManager): Boolean {
+    fun saveSearchResults(results: List<SearchResult>, query: String, folderId: Long?, name: String, searchMode: Int, nearDistance: Int, dataManager: LibraryDataManager): Boolean {
         val handler = resultsHandler ?: return false
         val groupedResults = mutableMapOf<String, GroupedResult>()
 
@@ -413,7 +417,7 @@ class ResultsViewModel : ViewModel() {
         for ((_, group) in groupedResults) {
             val commaSeparated = group.contentIds.joinToString(",")
             try {
-                handler.insertResult(group.archive, group.bkId, commaSeparated, folderId, query, name)
+                handler.insertResult(group.archive, group.bkId, commaSeparated, folderId, query, name, searchMode, nearDistance)
             } catch (e: Exception) {
                 e.printStackTrace()
                 success = false

@@ -590,7 +590,6 @@ fun ReaderScreen(
             bookId = bookId,
             libraryViewModel = libraryViewModel,
             viewModel = viewModel,
-            tabId = activeTabId ?: "",
             onDismissRequest = { showBookSearchSheet = false },
         )
     }
