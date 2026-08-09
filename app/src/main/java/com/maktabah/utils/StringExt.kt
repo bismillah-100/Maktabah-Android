@@ -580,42 +580,18 @@ fun String.snippetNear(keywords: List<String>, nearDistance: Int, contextLength:
     }
 
     val sortedRanges = rangesWithIndex.sortedBy { it.range.first }
+    val uniqueKeywordsCount = sortedRanges.map { it.keywordIndex }.toSet().size
     var bestStartIdx: Int? = null
     var bestEndIdx: Int? = null
-
-    val uniqueKeywordsCount = sortedRanges.map { it.keywordIndex }.toSet().size
     var foundCluster = false
 
     if (uniqueKeywordsCount > 1) {
-        var minWordDistance = Int.MAX_VALUE
-        val maxAllowedDistance = nearDistance * (uniqueKeywordsCount - 1) + 5
-
-        for (i in sortedRanges.indices) {
-            val currentSet = mutableSetOf<Int>()
-            for (j in i until sortedRanges.size) {
-                currentSet.add(sortedRanges[j].keywordIndex)
-
-                if (currentSet.size == uniqueKeywordsCount) {
-                    val startRange = sortedRanges[i].range
-                    val endRange = sortedRanges[j].range
-
-                    val startBound = startRange.last + 1
-                    val endBound = endRange.first
-
-                    if (startBound <= endBound && endBound <= this.length) {
-                        val textBetween = this.substring(startBound, endBound)
-                        val wordsBetween = textBetween.split(WHITESPACE_REGEX).count { it.isNotEmpty() }
-
-                        if (wordsBetween <= maxAllowedDistance && wordsBetween < minWordDistance) {
-                            minWordDistance = wordsBetween
-                            bestStartIdx = startRange.first
-                            bestEndIdx = endRange.last + 1
-                            foundCluster = true
-                        }
-                    }
-                    break
-                }
-            }
+        val validRanges = filterRangesForNearMode(rangesWithIndex, uniqueKeywordsCount, nearDistance)
+        if (validRanges.isNotEmpty()) {
+            val sortedValid = validRanges.sortedBy { it.first }
+            bestStartIdx = sortedValid.first().first
+            bestEndIdx = sortedValid.last().last + 1
+            foundCluster = true
         }
     }
 

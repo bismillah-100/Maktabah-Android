@@ -856,6 +856,7 @@ private fun SearchResultsOverlay(
             if (normalized.isBlank()) emptyList()
             else when (searchMode) {
                 SearchMode.PHRASE -> listOf(normalized)
+                SearchMode.NEAR -> normalized.split(",").map { it.trim() }.filter { it.isNotBlank() }
                 else -> normalized.split(" ").filter { it.isNotBlank() }
             }.map { it.convertToArabicDigits() }
         }
@@ -920,7 +921,9 @@ private fun SearchResultsOverlay(
                             Spacer(modifier = Modifier.height(4.dp))
                             val highlightedText = buildHighlightedText(
                                 text = result.text,
-                                searchKeywords = searchKeywords
+                                searchKeywords = searchKeywords,
+                                searchMode = searchMode,
+                                nearDistance = nearDistance
                             )
                             Text(
                                 text = highlightedText,

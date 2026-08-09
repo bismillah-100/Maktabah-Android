@@ -54,6 +54,7 @@ import com.maktabah.ui.search.buildHighlightedText
 import com.maktabah.utils.convertToArabicDigits
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.snippetAround
+import com.maktabah.utils.snippetNear
 import com.maktabah.utils.stripSpanTags
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -199,14 +200,20 @@ fun BookSearchSheet(
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    val displayText = remember(contentItem.nass, searchKeywords) {
+                                    val displayText = remember(contentItem.nass, searchKeywords, searchMode, nearDistance) {
                                         val stripped = contentItem.nass.stripSpanTags()
                                         val normalized = stripped.convertToArabicDigits()
-                                        normalized.snippetAround(searchKeywords, contextLength = 60)
+                                        if (searchMode == SearchMode.NEAR) {
+                                            normalized.snippetNear(searchKeywords, nearDistance, contextLength = 60)
+                                        } else {
+                                            normalized.snippetAround(searchKeywords, contextLength = 60)
+                                        }
                                     }
                                     val highlightedText = buildHighlightedText(
                                         text = displayText,
                                         searchKeywords = searchKeywords,
+                                        searchMode = searchMode,
+                                        nearDistance = nearDistance,
                                     )
                                     Text(
                                         text = highlightedText,

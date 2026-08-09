@@ -72,7 +72,9 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.maktabah.R
 import com.maktabah.models.SearchMode
+import com.maktabah.utils.filterRangesForNearMode
 import com.maktabah.utils.findArabicMatchingRanges
+import com.maktabah.utils.findArabicMatchingRangesWithIndex
 import com.maktabah.utils.startsWithArabic
 
 @Composable
@@ -497,14 +499,22 @@ fun SearchHelpDialog(onDismiss: () -> Unit) {
 fun buildHighlightedText(
     text: String,
     searchKeywords: List<String>,
+    searchMode: SearchMode = SearchMode.PHRASE,
+    nearDistance: Int = 10,
     highlightColor: Color = Color(0xFFFFD54F).copy(alpha = 0.4f),
 ): AnnotatedString {
-    return remember(text, searchKeywords) {
+    return remember(text, searchKeywords, searchMode, nearDistance, highlightColor) {
         buildAnnotatedString {
             append(text)
             if (searchKeywords.isEmpty()) return@buildAnnotatedString
 
-            val ranges = text.findArabicMatchingRanges(searchKeywords)
+            val ranges = if (searchMode == SearchMode.NEAR && searchKeywords.size > 1) {
+                val rangesWithIndex = text.findArabicMatchingRangesWithIndex(searchKeywords)
+                text.filterRangesForNearMode(rangesWithIndex, searchKeywords.size, nearDistance)
+            } else {
+                text.findArabicMatchingRanges(searchKeywords)
+            }
+
             for (range in ranges) {
                 if (range.first in text.indices && range.last < text.length && range.first <= range.last) {
                     addStyle(
