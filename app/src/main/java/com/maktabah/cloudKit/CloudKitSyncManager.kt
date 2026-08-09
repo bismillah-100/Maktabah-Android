@@ -96,35 +96,37 @@ class CloudKitSyncManager {
      * Retry upload/delete entries yang masih di sync_pending dari sesi sebelumnya.
      * Dipanggil saat app resume (ON_RESUME lifecycle event) sebelum fetchChanges.
      */
-    suspend fun retryPendingSyncs(context: Context, historyViewModel: com.maktabah.ui.history.HistoryViewModel) {
-        val db = HistoryDatabaseManager.instance ?: return
-        val pendingUploads = db.fetchPendingSync("upload")
-        val pendingDeletes = db.fetchPendingSync("delete")
-        if (pendingUploads.isEmpty() && pendingDeletes.isEmpty()) return
+    suspend fun retryPendingSyncs(context: Context, historyViewModel: HistoryViewModel) {
+        withContext(Dispatchers.IO) {
+            val db = HistoryDatabaseManager.instance ?: return@withContext
+            val pendingUploads = db.fetchPendingSync("upload")
+            val pendingDeletes = db.fetchPendingSync("delete")
+            if (pendingUploads.isEmpty() && pendingDeletes.isEmpty()) return@withContext
 
-        val allEntries = historyViewModel.entriesByBookId.value
-        val entriesToRetry = mutableListOf<ReadingEntry>()
+            val allEntries = historyViewModel.entriesByBookId.value
+            val entriesToRetry = mutableListOf<ReadingEntry>()
 
-        // Cari entries yang masih pending upload di memory ViewModel
-        for (ckId in pendingUploads) {
-            val entry = allEntries.values.find { (it.ckRecordId ?: it.bookId.toString()) == ckId }
-            if (entry != null) entriesToRetry.add(entry)
+            // Cari entries yang masih pending upload di memory ViewModel
+            for (ckId in pendingUploads) {
+                val entry = allEntries.values.find { (it.ckRecordId ?: it.bookId.toString()) == ckId }
+                if (entry != null) entriesToRetry.add(entry)
+            }
+            // Buat dummy delete entries untuk ckIds yang perlu dihapus
+            for (ckId in pendingDeletes) {
+                entriesToRetry.add(ReadingEntry(
+                    bookId = ckId.toIntOrNull() ?: continue,
+                    ckRecordId = ckId,
+                    lastOpenedAt = null,
+                    isFavorite = false
+                ))
+            }
+            if (entriesToRetry.isEmpty()) {
+                // Tidak ada di memory — data sudah tidak relevan, bersihkan pending
+                db.removePendingSync(pendingUploads + pendingDeletes)
+                return@withContext
+            }
+            uploadHistory(context, entriesToRetry)
         }
-        // Buat dummy delete entries untuk ckIds yang perlu dihapus
-        for (ckId in pendingDeletes) {
-            entriesToRetry.add(ReadingEntry(
-                bookId = ckId.toIntOrNull() ?: continue,
-                ckRecordId = ckId,
-                lastOpenedAt = null,
-                isFavorite = false
-            ))
-        }
-        if (entriesToRetry.isEmpty()) {
-            // Tidak ada di memory — data sudah tidak relevan, bersihkan pending
-            db.removePendingSync(pendingUploads + pendingDeletes)
-            return
-        }
-        uploadHistory(context, entriesToRetry)
     }
 
     private fun buildReadingEntryRecord(entry: ReadingEntry, recordId: String): JSONObject =
@@ -587,10 +589,23 @@ class CloudKitSyncManager {
                 recordsToSave.put(record)
             }
 
-            if (recordsToSave.length() == 0) return@withContext "No results to sync"
+            val pendingDeletes = handler.fetchPendingSync("delete")
+            val recordIDsToDelete = JSONArray()
+            for (ckId in pendingDeletes) {
+                recordIDsToDelete.put(ckId)
+            }
 
-            val result = CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, JSONArray())
-            if (result.isSuccess) "Success" else "Failed: ${result.exceptionOrNull()?.message}"
+            if (recordsToSave.length() == 0 && recordIDsToDelete.length() == 0) return@withContext "No results to sync"
+
+            val result = CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, recordIDsToDelete)
+            if (result.isSuccess) {
+                if (pendingDeletes.isNotEmpty()) {
+                    handler.removePendingSync(pendingDeletes)
+                }
+                "Success"
+            } else {
+                "Failed: ${result.exceptionOrNull()?.message}"
+            }
         }
     }
 

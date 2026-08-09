@@ -428,6 +428,7 @@ class ResultsViewModel : ViewModel() {
         viewModelScope.launch {
             loadAllResults()
         }
+        appContext?.let { CloudKitResultSyncHelper.uploadResults(it, emptyList()) }
         return success
     }
 
