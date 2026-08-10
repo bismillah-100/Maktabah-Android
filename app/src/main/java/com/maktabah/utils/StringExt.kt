@@ -424,21 +424,7 @@ fun String.findArabicMatchingRanges(keywords: List<String>): List<IntRange> {
     val normalizedText = normalizedChars.toString()
     val ranges = mutableListOf<IntRange>()
 
-    val prefixes = listOf(
-        "والله", "وبالله", "فالله", "فبالله",
-        "والل", "فالل", "بالل", "كالل", "وللم", "فللم",
-        "وال", "فال", "بال", "كال", "لل", "ال",
-        "و", "ف", "ب", "ك", "ل"
-    )
-
-    fun coreWord(s: String): String {
-        for (p in prefixes) {
-            if (s.startsWith(p) && (s.length - p.length) >= 3) {
-                return s.substring(p.length)
-            }
-        }
-        return s
-    }
+    fun coreWord(s: String): String = ArabicLightStemmer.stemWord(s)
 
     fun normalizeToken(token: CharSequence): String {
         val norm = StringBuilder()
