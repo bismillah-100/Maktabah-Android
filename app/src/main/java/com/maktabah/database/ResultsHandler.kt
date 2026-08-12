@@ -611,8 +611,44 @@ class ResultsHandler(private val dbFile: File) {
                 db.prepare("COMMIT;")?.use { it.step() }
             } catch (e: Exception) {
                 db.prepare("ROLLBACK;")?.use { it.step() }
+                throw e
             }
         }
+    }
+    fun removePendingSync(ckRecordIds: List<String>) {
+        if (ckRecordIds.isEmpty()) return
+        openDb { db ->
+            db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
+            try {
+                for (chunk in ckRecordIds.chunked(900)) {
+                    val placeholders = chunk.joinToString(",") { "?" }
+                    val sql = "DELETE FROM sync_pending WHERE ck_record_id IN ($placeholders);"
+                    db.prepare(sql)?.use { stmt ->
+                        chunk.forEachIndexed { index, id ->
+                            stmt.bindText(index + 1, id)
+                        }
+                        stmt.step()
+                    }
+                }
+                db.prepare("COMMIT;")?.use { it.step() }
+            } catch (e: Exception) {
+                db.prepare("ROLLBACK;")?.use { it.step() }
+                throw e
+            }
+        }
+    }
+
+    fun fetchPendingSync(operation: String): List<String> {
+        val result = mutableListOf<String>()
+        openDb { db ->
+            db.prepare("SELECT ck_record_id FROM sync_pending WHERE operation = ? ORDER BY queued_at ASC;")?.use { stmt ->
+                stmt.bindText(1, operation)
+                while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                    stmt.columnText(0)?.let { result.add(it) }
+                }
+            }
+        }
+        return result
     }
 
     fun nukeDatabase() {

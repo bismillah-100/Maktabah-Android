@@ -275,6 +275,10 @@ class AnnotationsAdapter(
             itemView.setOnClickListener(null)
             itemView.setOnLongClickListener(null)
             typeIcon.setOnClickListener(null)
+            typeIcon.animate().cancel()
+            arrowIcon.animate().cancel()
+            arrowIcon.setTag(R.id.tag_animating_rotation, null)
+            divider.animate().cancel()
         }
 
         fun bind(item: AnnotationFlatItem.Header, onToggle: () -> Unit) {
@@ -378,6 +382,7 @@ class AnnotationsAdapter(
             itemView.setOnClickListener(null)
             itemView.setOnLongClickListener(null)
             selectIcon?.setOnClickListener(null)
+            divider.animate().cancel()
         }
 
         fun bind(
