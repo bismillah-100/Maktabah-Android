@@ -851,7 +851,7 @@ private fun AppNavHost(
                 bottomPadding = innerPadding.calculateBottomPadding(),
                 onNavigateToReader = handleNavigateToReader,
                 hasDonated = hasDonated,
-                onClearGlobalQuery = {
+                onClearContentSearchQuery = {
                     tabManager.tabs.value.forEach { tab ->
                         tab.viewModel.setSearchQuery(null)
                         tab.viewModel.setFlashTarget(null)
