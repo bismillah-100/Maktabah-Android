@@ -424,7 +424,7 @@ fun String.findArabicMatchingRanges(keywords: List<String>): List<IntRange> {
     val normalizedText = normalizedChars.toString()
     val ranges = mutableListOf<IntRange>()
 
-    fun coreWord(s: String): String = ArabicLightStemmer.stemWord(s)
+    fun coreWord(s: String): String = s.stemArabicLight10()
 
     fun normalizeToken(token: CharSequence): String {
         val norm = StringBuilder()
