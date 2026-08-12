@@ -20,7 +20,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
+import com.maktabah.ui.common.MaktabahTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -72,7 +72,7 @@ fun ResultWriterSheet(
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
-            OutlinedTextField(
+            MaktabahTextField(
                 value = name,
                 onValueChange = { name = it },
                 label = { Text(stringResource(R.string.save_results_name_label)) },
@@ -174,7 +174,7 @@ fun ResultWriterSheet(
             title = { Text(stringResource(R.string.save_results_create_folder)) },
             containerColor = MaterialTheme.colorScheme.surface,
             text = {
-                OutlinedTextField(
+                MaktabahTextField(
                     value = newFolderName,
                     onValueChange = { newFolderName = it },
                     label = { Text(stringResource(R.string.save_results_folder_name)) },

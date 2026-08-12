@@ -38,10 +38,10 @@ fun Modifier.insetGroupedBorder(
 ) = this.drawWithContent {
     drawContent()
 
-    // We tested this and use 0f to ensure stroke is
-	// sharp and bright. No bold border.
-    val strokeWidthPx = borderWidth.toPx()
-    val halfStroke = strokeWidthPx / 2f
+    // Menghitung pixel offset untuk pixel-snapping agar stroke tajam (tidak anti-aliasing bleed).
+    // Dp.Hairline menghasilkan 0f dari toPx(), kita anggap 1 physical pixel untuk offset.
+    val actualStrokeWidth = if (borderWidth == Dp.Hairline) 1f else borderWidth.toPx()
+    val halfStroke = actualStrokeWidth / 2f
 
     val w = size.width
     val h = size.height
@@ -50,7 +50,8 @@ fun Modifier.insetGroupedBorder(
     val right = w - halfStroke
     val bottom = h - halfStroke
 
-    val strokeStyle = Stroke(width = strokeWidthPx)
+    // Tetap gunakan 0f untuk Dp.Hairline agar Compose menggambar 1 physical pixel
+    val strokeStyle = Stroke(width = borderWidth.toPx())
 
     when {
         // Case 1: Item Tunggal (First & Last) -> Full Rounded Rect
@@ -124,13 +125,13 @@ fun Modifier.insetGroupedBorder(
                 color = borderColor,
                 start = Offset(halfStroke, 0f),
                 end = Offset(halfStroke, h),
-                strokeWidth = strokeWidthPx,
+                strokeWidth = actualStrokeWidth,
             )
             drawLine(
                 color = borderColor,
                 start = Offset(right, 0f),
                 end = Offset(right, h),
-                strokeWidth = strokeWidthPx,
+                strokeWidth = actualStrokeWidth,
             )
         }
     }

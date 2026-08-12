@@ -161,10 +161,13 @@ class GroupedCardDecoration(
             val topRadius = if (currentIsFirst) cornerRadius else 0f
             val bottomRadius = if (currentIsLast) cornerRadius else 0f
 
-            val left = marginHorizontal + halfStroke + currentTranslationX
-            val right = parent.width - marginHorizontal - halfStroke + currentTranslationX
-            val top = snap(currentTop) + halfStroke
-            val bottom = snap(currentBottom) - halfStroke
+            // Kita gunakan fungsi snap() untuk left dan right agar bernilai x.5f
+            // Sama seperti top dan bottom, ini akan membuat hairline (strokeWidth = 0f) menjadi sangat tajam
+            val left = snap(marginHorizontal + currentTranslationX)
+            // Untuk right, kita gunakan snap() dan pastikan garis menjorok ke dalam (dikurangi 1 agar presisi dengan margin)
+            val right = snap(parent.width - marginHorizontal + currentTranslationX) - 1f
+            val top = snap(currentTop)
+            val bottom = snap(currentBottom) - 1f
 
             radiiCache[0] = topRadius
             radiiCache[1] = topRadius
