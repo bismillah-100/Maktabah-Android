@@ -223,7 +223,14 @@ fun String.findRangeInOriginal(
         val ch = this[i]
         if (!ch.isArabicHarakat() && ch.code != 0x0640) {
             offsetMap.add(i)
-            noHarakatSb.append(ch)
+            val normalizedChar = when (ch.code) {
+                0x0623, 0x0625, 0x0622, 0x0671 -> '\u0627'
+                0x0629 -> '\u0647'
+                0x0649 -> '\u064A'
+                0x060C -> ','
+                else -> ch
+            }
+            noHarakatSb.append(normalizedChar)
         }
     }
     offsetMap.add(length) // sentinel
