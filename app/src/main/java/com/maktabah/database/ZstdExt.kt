@@ -2,6 +2,7 @@ package com.maktabah.database
 
 import com.github.luben.zstd.Zstd
 import java.nio.ByteBuffer
+import java.nio.charset.StandardCharsets
 
 import com.github.luben.zstd.ZstdDecompressCtx
 
@@ -13,10 +14,11 @@ fun decompressBlob(blob: ByteBuffer?, ctx: ZstdDecompressCtx): String {
     val dstBuf = ZstdContextPool.getDirectBuffer(decompressedSize)
     return try {
         ctx.decompressDirectByteBuffer(dstBuf, 0, decompressedSize, blob, 0, blob.limit())
-        val dst = ByteArray(decompressedSize)
-        dstBuf.get(dst)
-        String(dst)
+        dstBuf.position(0)
+        dstBuf.limit(decompressedSize)
+        StandardCharsets.UTF_8.decode(dstBuf).toString()
     } finally {
+        dstBuf.clear()
         ZstdContextPool.releaseDirectBuffer(dstBuf)
     }
 }

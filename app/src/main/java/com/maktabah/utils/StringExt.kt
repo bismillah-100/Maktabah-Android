@@ -4,6 +4,7 @@ val arabicDigits = listOf("٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", 
 
 private val SPAN_REGEX = Regex("<[^>]*>")
 private val WHITESPACE_REGEX = Regex("\\s+")
+private val PUNCT_REGEX = Regex("[\\s\\p{Punct}]+")
 
 fun Char.isArabicHarakat(): Boolean {
     val v = this.code
@@ -35,6 +36,9 @@ fun String.normalizeArabic(removeDiacritics: Boolean = true): String {
             }
             0x0649 -> {
                 sb.append('\u064A')
+            }
+            0x060C -> {
+                sb.append(',') // Arabic comma to English comma
             }
             else -> {
                 sb.append(char)
@@ -195,6 +199,13 @@ fun calculateRangeWithoutHarakat(
  * Dari teks *dengan* harakat (this), temukan range yang cocok
  * dengan [selectedText] (tanpa harakat) mendekati [approxStart].
  *
+ * [approxStart] berada dalam koordinat NO-HARAKAT (sourceText yang sudah di-strip),
+ * sedangkan [this] adalah teks WITH-HARAKAT (nash asli).
+ *
+ * Solusi: bangun versi no-harakat dari this + offsetMap ke posisi asli,
+ * cari di no-harakat space (koordinat cocok dengan approxStart) dalam radius tertentu,
+ * lalu gunakan offsetMap untuk menghasilkan range di with-harakat string.
+ *
  * Mengembalikan (start, length) di teks dengan harakat.
  */
 fun String.findRangeInOriginal(
@@ -204,28 +215,53 @@ fun String.findRangeInOriginal(
     val cleanSelected = selectedText.normalizeArabic()
     if (cleanSelected.isEmpty()) return approxStart to selectedText.length
 
-    val cleanSelf = this.normalizeArabic()
-    val idx = cleanSelf.indexOf(cleanSelected)
-    if (idx < 0) return approxStart to selectedText.length
+    // Bangun versi no-harakat dari this + offsetMap: noHarakatIdx → withHarakatIdx
+    val noHarakatSb = StringBuilder(length)
+    val offsetMap = ArrayList<Int>(length + 1)
 
-    // Konversi posisi di cleanSelf → posisi di self (dengan harakat)
-    var origStart = 0
-    var cleanCount = 0
-    for (i in this.indices) {
-        if (cleanCount == idx) {
-            origStart = i
-            break
+    for (i in indices) {
+        val ch = this[i]
+        if (!ch.isArabicHarakat() && ch.code != 0x0640) {
+            offsetMap.add(i)
+            val normalizedChar = when (ch.code) {
+                0x0623, 0x0625, 0x0622, 0x0671 -> '\u0627'
+                0x0629 -> '\u0647'
+                0x0649 -> '\u064A'
+                0x060C -> ','
+                else -> ch
+            }
+            noHarakatSb.append(normalizedChar)
         }
-        if (!this[i].isArabicHarakat() && this[i].code != 0x0640) cleanCount++
     }
-    var origEnd = origStart
-    cleanCount = 0
-    for (i in origStart until this.length) {
-        if (cleanCount == cleanSelected.length) break
-        if (!this[i].isArabicHarakat() && this[i].code != 0x0640) cleanCount++
-        origEnd = i + 1
+    offsetMap.add(length) // sentinel
+
+    // Cari di no-harakat space (koordinat sama dengan approxStart)
+    val noHarakatText = noHarakatSb.toString()
+    val totalLen = noHarakatText.length
+    val cleanLen = cleanSelected.length
+    val radius = 300
+    val searchStart = maxOf(0, approxStart - radius)
+    val searchEnd = minOf(totalLen, approxStart + cleanLen + radius)
+
+    var foundIdx = -1
+    if (searchStart < searchEnd) {
+        foundIdx = noHarakatText.indexOf(cleanSelected, searchStart)
+        if (foundIdx < 0 || foundIdx >= searchEnd) {
+            // tidak ditemukan dalam radius, coba full search
+            foundIdx = noHarakatText.indexOf(cleanSelected)
+        }
+    } else {
+        foundIdx = noHarakatText.indexOf(cleanSelected)
     }
-    return origStart to (origEnd - origStart)
+
+    if (foundIdx < 0) return approxStart to selectedText.length
+
+    // Map noHarakat index → withHarakat index via offsetMap
+    val mapStart = foundIdx.coerceAtMost(offsetMap.size - 1)
+    val mapEnd = (foundIdx + cleanLen).coerceAtMost(offsetMap.size - 1)
+    val harakatStart = offsetMap[mapStart]
+    val harakatEnd = offsetMap[mapEnd]
+    return harakatStart to maxOf(0, harakatEnd - harakatStart)
 }
 
 // ─── Lucene Arabic Light10 Stemmer ──────────────────────────────────────────
@@ -395,21 +431,7 @@ fun String.findArabicMatchingRanges(keywords: List<String>): List<IntRange> {
     val normalizedText = normalizedChars.toString()
     val ranges = mutableListOf<IntRange>()
 
-    val prefixes = listOf(
-        "والله", "وبالله", "فالله", "فبالله",
-        "والل", "فالل", "بالل", "كالل", "وللم", "فللم",
-        "وال", "فال", "بال", "كال", "لل", "ال",
-        "و", "ف", "ب", "ك", "ل"
-    )
-
-    fun coreWord(s: String): String {
-        for (p in prefixes) {
-            if (s.startsWith(p) && (s.length - p.length) >= 3) {
-                return s.substring(p.length)
-            }
-        }
-        return s
-    }
+    fun coreWord(s: String): String = s.stemArabicLight10()
 
     fun normalizeToken(token: CharSequence): String {
         val norm = StringBuilder()
@@ -465,7 +487,7 @@ fun String.findArabicMatchingRanges(keywords: List<String>): List<IntRange> {
         val trimmed = keyword.trim()
         if (trimmed.isEmpty()) continue
 
-        val rawTokens = trimmed.split(Regex("[\\s\\p{Punct}]+")).filter { it.isNotEmpty() }
+        val rawTokens = trimmed.split(PUNCT_REGEX).filter { it.isNotEmpty() }
         class QueryWord(val norm: String, val core: String)
 
         val queryWords = rawTokens.mapNotNull { token ->
