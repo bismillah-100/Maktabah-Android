@@ -96,7 +96,7 @@ fun AnnotationEditorDialog(
     LaunchedEffect(bookId) {
         existingTags = annotationManager
             .getAnnotationsForBook(bookId)
-            .flatMap { it.tags.split(",") }
+            .flatMap { it.tags.replace("،", ",").split(",") }
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .distinct()
@@ -280,6 +280,7 @@ fun AnnotationEditorDialog(
                                 AssistChip(
                                     onClick = {
                                         val currentList = tagsText
+                                            .replace("،", ",")
                                             .split(",")
                                             .map { it.trim() }
                                             .filter { it.isNotEmpty() }
@@ -336,6 +337,7 @@ fun AnnotationEditorDialog(
                         rangeDiacLength = diacLen,
                         part = active.annotation?.part ?: content!!.part,
                         tags = tagsText
+                            .replace("،", ",")
                             .split(",")
                             .map { it.trim() }
                             .filter { it.isNotEmpty() }
