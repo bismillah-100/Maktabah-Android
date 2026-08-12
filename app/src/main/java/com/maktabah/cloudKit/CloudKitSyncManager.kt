@@ -598,10 +598,23 @@ class CloudKitSyncManager {
                 recordsToSave.put(record)
             }
 
-            if (recordsToSave.length() == 0) return@withContext "No results to sync"
+            val pendingDeletes = handler.fetchPendingSync("delete")
+            val recordIDsToDelete = JSONArray()
+            for (ckId in pendingDeletes) {
+                recordIDsToDelete.put(ckId)
+            }
 
-            val result = CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, JSONArray())
-            if (result.isSuccess) "Success" else "Failed: ${result.exceptionOrNull()?.message}"
+            if (recordsToSave.length() == 0 && recordIDsToDelete.length() == 0) return@withContext "No results to sync"
+
+            val result = CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, recordIDsToDelete)
+            if (result.isSuccess) {
+                if (pendingDeletes.isNotEmpty()) {
+                    handler.removePendingSync(pendingDeletes)
+                }
+                "Success"
+            } else {
+                "Failed: ${result.exceptionOrNull()?.message}"
+            }
         }
     }
 
