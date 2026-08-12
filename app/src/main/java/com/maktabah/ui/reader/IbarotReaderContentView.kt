@@ -238,6 +238,8 @@ fun IbarotReaderContentView(
                     this.contentId = contentId
                     this.lastAnnotations = annotations
                     this.lastSearchQuery = searchQuery
+                    this.lastSearchMode = searchMode
+                    this.lastNearDistance = nearDistance
                     this.lastTextColor = textColorInt
                     this.lastBackgroundColor = bgColorInt
                     this.lastHighlightColor = highlightColorInt
@@ -327,6 +329,8 @@ fun IbarotReaderContentView(
                                  textView.currentShowHarakat != showHarakat ||
                                  textView.lastAnnotations != annotations ||
                                  textView.lastSearchQuery != searchQuery ||
+                                 textView.lastSearchMode != searchMode ||
+                                 textView.lastNearDistance != nearDistance ||
                                  textView.lastTextColor != currentTextColorInt ||
                                  textView.lastBackgroundColor != currentBgColorInt ||
                                  textView.lastHighlightColor != currentHighlightColorInt
@@ -372,6 +376,8 @@ fun IbarotReaderContentView(
 
                 textView.lastAnnotations = annotations
                 textView.lastSearchQuery = searchQuery
+                textView.lastSearchMode = searchMode
+                textView.lastNearDistance = nearDistance
                 textView.currentShowHarakat = showHarakat
                 textView.lastTextColor = currentTextColorInt
                 textView.lastBackgroundColor = currentBgColorInt
@@ -608,7 +614,7 @@ private fun findQueryRange(
 ): Pair<Int, Int>? {
     val renderedStr = text.toString()
     
-    if (searchMode == 2) {
+    if (searchMode == 3) {
         val keywords = query.split(",").map { it.trim() }.filter { it.isNotEmpty() }
         if (keywords.size > 1) {
             val rangesWithIndex = renderedStr.findArabicMatchingRangesWithIndex(keywords)

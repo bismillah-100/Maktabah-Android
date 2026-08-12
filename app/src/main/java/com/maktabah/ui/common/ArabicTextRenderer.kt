@@ -385,7 +385,7 @@ object ArabicTextRenderer {
                     android.graphics.Color.argb(102, 75, 0, 130)  // Indigo
                 )
 
-                if (searchMode == 2 && searchTerms.size > 1) { // 2 is NEAR mode
+                if (searchMode == 3 && searchTerms.size > 1) { // 3 is NEAR mode
                     val rangesWithIndex = renderedStr.findArabicMatchingRangesWithIndex(searchTerms)
                     val filteredRanges = renderedStr.filterRangesForNearMode(rangesWithIndex, searchTerms.size, nearDistance)
                     for ((i, r) in filteredRanges.withIndex()) {

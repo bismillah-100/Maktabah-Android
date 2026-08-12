@@ -400,7 +400,7 @@ class ReaderViewModel : ViewModel() {
         if (query != null && query.startsWith("NEAR:")) {
             val parts = query.split(":", limit = 3)
             if (parts.size == 3) {
-                _searchMode.value = 2 // SearchMode.NEAR ordinal
+                _searchMode.value = 3 // SearchMode.NEAR ordinal
                 _nearDistance.value = parts[1].toIntOrNull() ?: distance
                 _searchQuery.value = parts[2]
                 return

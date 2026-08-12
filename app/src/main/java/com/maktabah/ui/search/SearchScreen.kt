@@ -369,7 +369,7 @@ fun SearchScreen(
                             SearchResultsOverlay(
                                 filteredResults = filteredResults,
                                 query = lastSearchQuery,
-                                searchMode = activeSearchMode,
+                                searchMode = lastSearchMode,
                                 nearDistance = viewModel.nearDistance.collectAsState().value,
                                 bookFilter = bookFilter,
                                 onBookFilterChange = { viewModel.updateBookFilter(it, libraryViewModel.dataManager) },

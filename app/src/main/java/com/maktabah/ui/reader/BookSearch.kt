@@ -174,7 +174,11 @@ fun BookSearchSheet(
                                     )
                                     viewModel.setFlashTarget(
                                         FlashTarget(
-                                            query = lastSearchQuery,
+                                            query = if (searchMode == SearchMode.NEAR) {
+                                                "NEAR:$nearDistance:$lastSearchQuery"
+                                            } else {
+                                                lastSearchQuery
+                                            },
                                         ),
                                     )
                                     onDismissRequest()
