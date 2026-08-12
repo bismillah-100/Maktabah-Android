@@ -208,12 +208,12 @@ fun SearchScreen(
                 }
             },
     ) { page ->
-        val pageOffset = page - (pagerState.currentPage + pagerState.currentPageOffsetFraction)
-
         val pageModifier = Modifier
             .fillMaxSize()
             .zIndex(if (page == 1) 1f else 0f)
             .graphicsLayer {
+                val pageOffset = page - (pagerState.currentPage + pagerState.currentPageOffsetFraction)
+
                 if (page == 0) {
                     if (pageOffset < 0f) {
                         translationX = -pageOffset * size.width * 0.7f
