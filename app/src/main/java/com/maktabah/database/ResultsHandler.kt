@@ -611,6 +611,7 @@ class ResultsHandler(private val dbFile: File) {
                 db.prepare("COMMIT;")?.use { it.step() }
             } catch (e: Exception) {
                 db.prepare("ROLLBACK;")?.use { it.step() }
+                throw e
             }
         }
     }
@@ -632,6 +633,7 @@ class ResultsHandler(private val dbFile: File) {
                 db.prepare("COMMIT;")?.use { it.step() }
             } catch (e: Exception) {
                 db.prepare("ROLLBACK;")?.use { it.step() }
+                throw e
             }
         }
     }
