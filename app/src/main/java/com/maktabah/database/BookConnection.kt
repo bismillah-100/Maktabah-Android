@@ -1,6 +1,5 @@
 package com.maktabah.database
 
-import com.github.luben.zstd.Zstd
 import com.maktabah.manager.LibraryDataManager
 import com.maktabah.models.BookContent
 import com.maktabah.models.ShortsMapping
@@ -9,11 +8,13 @@ import com.maktabah.models.TOCNode
 import java.io.File
 
 
+private val TABLE_NAME_REGEX = Regex("^[a-zA-Z0-9_]+$")
+
 class BookConnection(private val libraryDataManager: LibraryDataManager) {
 
     private fun getSafeTableName(prefix: String, id: Int): String {
         val tableName = "$prefix$id"
-        require(tableName.matches(Regex("^[a-zA-Z0-9_]+$"))) { "Invalid table name format" }
+        require(tableName.matches(TABLE_NAME_REGEX)) { "Invalid table name format" }
         return tableName
     }
 

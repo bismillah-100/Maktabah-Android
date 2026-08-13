@@ -1,10 +1,11 @@
 package com.maktabah.ui.reader
 
 import android.content.Context
-import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -13,21 +14,18 @@ import com.maktabah.database.BookConnection
 import com.maktabah.manager.LibraryDataManager
 import com.maktabah.models.ActiveAnnotationState
 import com.maktabah.models.Annotation
+import com.maktabah.models.AnnotationSearchScope
 import com.maktabah.models.BookContent
 import com.maktabah.models.FlashTarget
 import com.maktabah.models.TOCNode
-import com.maktabah.utils.normalizeArabic
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import com.maktabah.models.AnnotationSearchScope
 import com.maktabah.ui.annotation.AnnotationCoordinator
 import com.maktabah.ui.search.BookSearchViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream

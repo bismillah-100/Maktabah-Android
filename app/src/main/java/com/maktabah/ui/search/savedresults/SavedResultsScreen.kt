@@ -61,10 +61,10 @@ import com.maktabah.models.ResultNode
 import com.maktabah.models.SavedResultsItem
 import com.maktabah.models.SearchMode
 import com.maktabah.ui.common.InsetGroupedItem
+import com.maktabah.ui.common.MaktabahTextField
 import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.search.ResultsViewModel
 import com.maktabah.ui.search.SearchTextField
-import com.maktabah.utils.normalizeArabic
 
 sealed class MoveTarget {
     data class Folder(val node: FolderNode) : MoveTarget()
@@ -82,7 +82,6 @@ sealed class RenameTarget {
 fun SavedResultsScreen(
     resultsViewModel: ResultsViewModel,
     onSelectResult: (List<SavedResultsItem>) -> Unit,
-    onRefresh: () -> Unit,
     onDismiss: () -> Unit,
     bottomPadding: androidx.compose.ui.unit.Dp = 0.dp,
     backHandlerEnabled: Boolean = true
@@ -362,7 +361,6 @@ private fun FolderItem(
         onClick = onClick,
         onLongClick = { expanded = true },
         dividerStartPadding = 48.dp,
-        dividerEndPadding = 0.dp,
         contentPadding = PaddingValues(start = 16.dp, end = 0.dp, top = 8.dp, bottom = 8.dp)
     ) {
         Row(
@@ -443,7 +441,6 @@ private fun ResultItem(
         onClick = onClick,
         onLongClick = { expanded = true },
         dividerStartPadding = 48.dp,
-        dividerEndPadding = 0.dp,
         contentPadding = PaddingValues(start = 16.dp, end = 0.dp, top = 8.dp, bottom = 8.dp)
     ) {
         Row(
@@ -577,16 +574,13 @@ private fun RenameItemDialog(
             },
             containerColor = MaterialTheme.colorScheme.surface,
             text = {
-                OutlinedTextField(
+                MaktabahTextField(
                     value = text,
                     onValueChange = onTextChange,
                     label = { Text(stringResource(R.string.save_results_folder_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(30.dp),
-                    textStyle = LocalTextStyle.current.copy(
-                        textDirection = TextDirection.ContentOrRtl
-                    )
+                    shape = RoundedCornerShape(30.dp)
                 )
             },
             confirmButton = {

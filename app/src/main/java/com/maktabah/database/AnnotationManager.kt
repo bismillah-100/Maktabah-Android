@@ -3,8 +3,8 @@ package com.maktabah.database
 import com.maktabah.models.Annotation
 import com.maktabah.models.AnnotationChange
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.yield
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.yield
 import java.io.File
 
 class AnnotationManager(
@@ -56,11 +56,12 @@ class AnnotationManager(
             db.prepare(sqlDeleted)?.use { it.step() }
 
             var tableCreated = false
-            db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='pending_uploads'")?.use { checkStmt ->
-                if (checkStmt.step() != SQLiteDB.SQLITE_ROW) {
-                    tableCreated = true
+            db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='pending_uploads'")
+                ?.use { checkStmt ->
+                    if (checkStmt.step() != SQLiteDB.SQLITE_ROW) {
+                        tableCreated = true
+                    }
                 }
-            }
 
             if (tableCreated) {
                 val sqlPending = """
@@ -108,7 +109,12 @@ class AnnotationManager(
             newId = executeInsertOrUpdate(db, annotation, fromSync)
         }
         if (newId > 0L) {
-            updates.tryEmit(AnnotationChange.Upsert(annotation.copy(id = newId), fromSync = fromSync))
+            updates.tryEmit(
+                AnnotationChange.Upsert(
+                    annotation.copy(id = newId),
+                    fromSync = fromSync
+                )
+            )
         }
         return newId
     }
@@ -157,13 +163,15 @@ class AnnotationManager(
             stmt.bindInt(12, annotation.rangeDiacLength)
             stmt.bindInt(13, annotation.part)
             stmt.bindText(14, annotation.tags)
-            if (annotation.ckRecordId != null) stmt.bindText(15, annotation.ckRecordId) else stmt.bindNull(15)
-            val lastMod =
-                if (fromSync && annotation.lastModified != null) {
-                    annotation.lastModified
-                } else {
-                    System.currentTimeMillis() / 1000
-                }
+            if (annotation.ckRecordId != null) stmt.bindText(
+                15,
+                annotation.ckRecordId
+            ) else stmt.bindNull(15)
+            val lastMod = if (fromSync && annotation.lastModified != null) {
+                annotation.lastModified
+            } else {
+                System.currentTimeMillis() / 1000
+            }
             stmt.bindLong(16, lastMod)
 
             if (stmt.step() == SQLiteDB.SQLITE_DONE) {
@@ -188,10 +196,11 @@ class AnnotationManager(
                     stmt.step()
                 }
             } else {
-                db.prepare("INSERT OR IGNORE INTO pending_uploads (ckRecordId) VALUES (?)")?.use { stmt ->
-                    stmt.bindText(1, annotation.ckRecordId)
-                    stmt.step()
-                }
+                db.prepare("INSERT OR IGNORE INTO pending_uploads (ckRecordId) VALUES (?)")
+                    ?.use { stmt ->
+                        stmt.bindText(1, annotation.ckRecordId)
+                        stmt.step()
+                    }
             }
         }
 
@@ -215,37 +224,37 @@ class AnnotationManager(
     suspend fun getAnnotationsForBook(bkId: Int): List<Annotation> {
         val list = mutableListOf<Annotation>()
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
-            db.prepare("SELECT * FROM annotations_v2 WHERE bkId = ? ORDER BY createdAt DESC")?.use { stmt ->
-                stmt.bindInt(1, bkId)
-                while (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                    yield()
-                    list.add(mapRowToAnnotation(stmt))
+            db.prepare("SELECT * FROM annotations_v2 WHERE bkId = ? ORDER BY createdAt DESC")
+                ?.use { stmt ->
+                    stmt.bindInt(1, bkId)
+                    while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                        yield()
+                        list.add(mapRowToAnnotation(stmt))
+                    }
                 }
-            }
         }
         return list
     }
 
-    private fun mapRowToAnnotation(stmt: SQLiteStmt): Annotation =
-        Annotation(
-            id = stmt.columnLong(0),
-            bkId = stmt.columnInt(1),
-            contentId = stmt.columnInt(2),
-            colorHex = stmt.columnText(3) ?: "",
-            note = stmt.columnText(4),
-            type = stmt.columnInt(5),
-            createdAt = stmt.columnLong(6),
-            page = stmt.columnInt(7),
-            context = stmt.columnText(8) ?: "",
-            rangeLocation = stmt.columnInt(9),
-            rangeLength = stmt.columnInt(10),
-            rangeDiacLocation = stmt.columnInt(11),
-            rangeDiacLength = stmt.columnInt(12),
-            part = stmt.columnInt(13),
-            tags = stmt.columnText(14) ?: "",
-            ckRecordId = stmt.columnText(15),
-            lastModified = if (stmt.columnType(16) != SQLiteDB.SQLITE_NULL) stmt.columnLong(16) else null,
-        )
+    private fun mapRowToAnnotation(stmt: SQLiteStmt): Annotation = Annotation(
+        id = stmt.columnLong(0),
+        bkId = stmt.columnInt(1),
+        contentId = stmt.columnInt(2),
+        colorHex = stmt.columnText(3) ?: "",
+        note = stmt.columnText(4),
+        type = stmt.columnInt(5),
+        createdAt = stmt.columnLong(6),
+        page = stmt.columnInt(7),
+        context = stmt.columnText(8) ?: "",
+        rangeLocation = stmt.columnInt(9),
+        rangeLength = stmt.columnInt(10),
+        rangeDiacLocation = stmt.columnInt(11),
+        rangeDiacLength = stmt.columnInt(12),
+        part = stmt.columnInt(13),
+        tags = stmt.columnText(14) ?: "",
+        ckRecordId = stmt.columnText(15),
+        lastModified = if (stmt.columnType(16) != SQLiteDB.SQLITE_NULL) stmt.columnLong(16) else null,
+    )
 
     fun deleteAnnotation(
         id: Long,
@@ -257,10 +266,11 @@ class AnnotationManager(
                 stmt.step()
             }
             if (ckRecordId != null) {
-                db.prepare("INSERT OR IGNORE INTO deleted_records (ckRecordId) VALUES (?)")?.use { stmt ->
-                    stmt.bindText(1, ckRecordId)
-                    stmt.step()
-                }
+                db.prepare("INSERT OR IGNORE INTO deleted_records (ckRecordId) VALUES (?)")
+                    ?.use { stmt ->
+                        stmt.bindText(1, ckRecordId)
+                        stmt.step()
+                    }
                 db.prepare("DELETE FROM pending_uploads WHERE ckRecordId = ?")?.use { stmt ->
                     stmt.bindText(1, ckRecordId)
                     stmt.step()
@@ -288,14 +298,15 @@ class AnnotationManager(
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
             db.prepare("BEGIN TRANSACTION")?.use { it.step() }
             try {
-                db.prepare("DELETE FROM deleted_records WHERE ckRecordId = ?")?.use { stmt ->
-                    for (id in ids) {
-                        yield()
-                        stmt.bindText(1, id)
+                ids.chunked(900).forEach { chunk ->
+                    val placeholders = chunk.joinToString(",") { "?" }
+                    db.prepare("DELETE FROM deleted_records WHERE ckRecordId IN ($placeholders)")?.use { stmt ->
+                        chunk.forEachIndexed { index, id ->
+                            stmt.bindText(index + 1, id)
+                        }
                         stmt.step()
-                        stmt.reset()
-                        stmt.clearBindings()
                     }
+                    yield()
                 }
                 db.prepare("COMMIT")?.use { it.step() }
             } catch (e: CancellationException) {
@@ -313,10 +324,38 @@ class AnnotationManager(
         newId: Int,
     ) {
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
-            db.prepare("UPDATE annotations_v2 SET bkId = ? WHERE bkId = ?")?.use { stmt ->
-                stmt.bindInt(1, newId)
-                stmt.bindInt(2, oldId)
-                stmt.step()
+            val ckIds = mutableListOf<String>()
+            db.prepare("SELECT ckRecordId FROM annotations_v2 WHERE bkId = ? AND ckRecordId IS NOT NULL")
+                ?.use { stmt ->
+                    stmt.bindInt(1, oldId)
+                    while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                        stmt.columnText(0)?.let { ckIds.add(it) }
+                    }
+                }
+
+            db.prepare("UPDATE annotations_v2 SET bkId = ?, lastModified = ? WHERE bkId = ?")
+                ?.use { stmt ->
+                    stmt.bindInt(1, newId)
+                    stmt.bindLong(2, System.currentTimeMillis() / 1000L)
+                    stmt.bindInt(3, oldId)
+                    stmt.step()
+                }
+
+            db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
+            try {
+                db.prepare("INSERT OR IGNORE INTO pending_uploads (ckRecordId) VALUES (?)")
+                    ?.use { stmt ->
+                        for (ckId in ckIds) {
+                            stmt.bindText(1, ckId)
+                            stmt.step()
+                            stmt.reset()
+                            stmt.clearBindings()
+                        }
+                    }
+                db.prepare("COMMIT;")?.use { it.step() }
+            } catch (e: Exception) {
+                db.prepare("ROLLBACK;")?.use { it.step() }
+				e.printStackTrace()
             }
         }
         updates.tryEmit(AnnotationChange.ReloadAll)
@@ -346,14 +385,15 @@ class AnnotationManager(
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
             db.prepare("BEGIN TRANSACTION")?.use { it.step() }
             try {
-                db.prepare("DELETE FROM pending_uploads WHERE ckRecordId = ?")?.use { stmt ->
-                    for (id in ckRecordIds) {
-                        yield()
-                        stmt.bindText(1, id)
+                ckRecordIds.chunked(900).forEach { chunk ->
+                    val placeholders = chunk.joinToString(",") { "?" }
+                    db.prepare("DELETE FROM pending_uploads WHERE ckRecordId IN ($placeholders)")?.use { stmt ->
+                        chunk.forEachIndexed { index, id ->
+                            stmt.bindText(index + 1, id)
+                        }
                         stmt.step()
-                        stmt.reset()
-                        stmt.clearBindings()
                     }
+                    yield()
                 }
                 db.prepare("COMMIT")?.use { it.step() }
             } catch (e: CancellationException) {
@@ -373,7 +413,8 @@ class AnnotationManager(
                 if (stmt.step() == SQLiteDB.SQLITE_ROW) return true
             }
         }
-        val sql = "SELECT 1 FROM annotations_v2 WHERE bkId = ? AND contentId = ? AND rangeLocation = ? AND rangeLength = ?"
+        val sql =
+            "SELECT 1 FROM annotations_v2 WHERE bkId = ? AND contentId = ? AND rangeLocation = ? AND rangeLength = ?"
         db.prepare(sql)?.use { stmt ->
             stmt.bindInt(1, ann.bkId)
             stmt.bindInt(2, ann.contentId)
@@ -389,16 +430,25 @@ class AnnotationManager(
         overwrite: Boolean = true,
     ): Int {
         var count = 0
-        SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
-            for (ann in annotations) {
-                if (!overwrite && existsAnnotation(db, ann)) {
-                    continue
-                }
-                val recordId = ann.ckRecordId ?: java.util.UUID.randomUUID().toString()
-                val annToSave = ann.copy(ckRecordId = recordId)
-                val newId = insertOrUpdate(annToSave, fromSync = false)
-                if (newId > 0L) {
-                    count++
+        synchronized(this) {
+            SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
+                db.prepare("BEGIN TRANSACTION")?.use { it.step() }
+                try {
+                    for (ann in annotations) {
+                        if (!overwrite && existsAnnotation(db, ann)) {
+                            continue
+                        }
+                        val recordId = ann.ckRecordId ?: java.util.UUID.randomUUID().toString()
+                        val annToSave = ann.copy(ckRecordId = recordId)
+                        val newId = executeInsertOrUpdate(db, annToSave, fromSync = false)
+                        if (newId > 0L) {
+                            count++
+                        }
+                    }
+                    db.prepare("COMMIT")?.use { it.step() }
+                } catch (e: Exception) {
+                    db.prepare("ROLLBACK")?.use { it.step() }
+                    throw e
                 }
             }
         }

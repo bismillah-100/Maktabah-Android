@@ -62,10 +62,10 @@ constructor(
     var isMultiLanguage: Boolean = false
         set(value) {
             field = value
-            if (value) {
-                textDirection = TEXT_DIRECTION_FIRST_STRONG
+            textDirection = if (value) {
+                TEXT_DIRECTION_FIRST_STRONG
             } else {
-                textDirection = TEXT_DIRECTION_RTL
+                TEXT_DIRECTION_RTL
             }
         }
 
@@ -100,7 +100,7 @@ constructor(
         event: MotionEvent
     ) {
         if (isInternalCancel) return
-        
+
         val canScrollUp = scrollView.canScrollVertically(-1)
         val canScrollDown = scrollView.canScrollVertically(1)
 
@@ -120,7 +120,7 @@ constructor(
                     canTriggerTopOverscroll = !canScrollUp
                     canTriggerBottomOverscroll = !canScrollDown
                 }
-                
+
                 val deltaY = event.y - touchStartY
 
                 if (deltaY > 0 && canScrollUp) {
@@ -268,11 +268,17 @@ constructor(
     init {
         setTextIsSelectable(true)
         textSize = 24f
-        setPadding(32, 32, 32, 32)
+        val density = context.resources.displayMetrics.density
+        val horizontalPaddingPx = (16 * density).toInt()
+        val verticalPaddingPx = (16 * density).toInt()
+        setPadding(horizontalPaddingPx, verticalPaddingPx, horizontalPaddingPx, verticalPaddingPx)
         layoutDirection = LAYOUT_DIRECTION_RTL
         textDirection = TEXT_DIRECTION_RTL
         textAlignment = TEXT_ALIGNMENT_GRAVITY
         gravity = Gravity.TOP or Gravity.START
+
+        setElegantTextHeight(true)
+        includeFontPadding = true
 
         customSelectionActionModeCallback =
             object : ActionMode.Callback {

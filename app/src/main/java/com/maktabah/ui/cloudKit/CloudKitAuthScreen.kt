@@ -59,14 +59,14 @@ fun CloudKitAuthScreen(
                 val url = URL(authUrl)
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
-                
+
                 val responseCode = connection.responseCode
                 val inputStream = if (responseCode in 200..299) {
                     connection.inputStream
                 } else {
                     connection.errorStream
                 }
-                
+
                 val responseString = inputStream?.bufferedReader()?.use { it.readText() }
                 if (responseString != null) {
                     val jsonObject = JSONObject(responseString)
@@ -157,10 +157,6 @@ fun CloudKitAuthScreen(
                                 ) {
                                     handleUrl(url)
                                     super.onPageStarted(view, url, favicon)
-                                }
-
-                                override fun onPageFinished(view: WebView?, url: String?) {
-                                    super.onPageFinished(view, url)
                                 }
                             }
                             loadUrl(redirectUrl!!)

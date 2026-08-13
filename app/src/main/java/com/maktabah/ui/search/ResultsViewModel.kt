@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Port dari iOS ResultsViewModel.swift.
@@ -50,7 +51,7 @@ class ResultsViewModel : ViewModel() {
         this.appContext = context.applicationContext
         this.dataManager = dataManager
         val dbFile = File(context.filesDir, "SearchResults.sqlite")
-        resultsHandler = ResultsHandler(dbFile)
+        resultsHandler = ResultsHandler.getInstance(context)
         viewModelScope.launch {
             getFolders()
             loadAllResults()
@@ -58,7 +59,11 @@ class ResultsViewModel : ViewModel() {
                 if (com.maktabah.BuildConfig.DEBUG) {
                     appContext?.let { ctx ->
                         withContext(Dispatchers.Main) {
-                            android.widget.Toast.makeText(ctx, "CloudKit Results Synced (Pull)", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(
+                                ctx,
+                                "CloudKit Results Synced (Pull)",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
                         }
                     }
                 }
@@ -66,8 +71,6 @@ class ResultsViewModel : ViewModel() {
             }
         }
     }
-
-    fun getHandler(): ResultsHandler? = resultsHandler
 
     fun pushFolder(folder: FolderNode) {
         val current = _folderStack.value.toMutableList()
@@ -83,10 +86,6 @@ class ResultsViewModel : ViewModel() {
             return true
         }
         return false
-    }
-
-    fun clearFolderStack() {
-        _folderStack.value = emptyList()
     }
 
     // region Folders
@@ -212,12 +211,17 @@ class ResultsViewModel : ViewModel() {
         return node.children.any { hasDescendantWithId(it, id) }
     }
 
-    private fun replaceFolderNodeInTree(nodes: List<FolderNode>, id: Long, newName: String): List<FolderNode> {
+    private fun replaceFolderNodeInTree(
+        nodes: List<FolderNode>,
+        id: Long,
+        newName: String
+    ): List<FolderNode> {
         return nodes.map { node ->
             if (node.id == id) {
                 node.copy(name = newName)
             } else if (hasDescendantWithId(node, id)) {
-                val newChildren = replaceFolderNodeInTree(node.children, id, newName).toMutableList()
+                val newChildren =
+                    replaceFolderNodeInTree(node.children, id, newName).toMutableList()
                 node.copy(children = newChildren)
             } else {
                 node
@@ -262,7 +266,7 @@ class ResultsViewModel : ViewModel() {
         handler.deleteFolder(node.id)
 
         for (id in allIds) {
-            _folderResults.value = _folderResults.value - id
+            _folderResults.value -= id
             folderById.remove(id)
             parentById.remove(id)
         }
@@ -275,7 +279,7 @@ class ResultsViewModel : ViewModel() {
         // Remove node from tree
         removeNodeFromTree(node)
         _folderRoots.value = _folderRoots.value.toList()
-        
+
         appContext?.let { CloudKitResultSyncHelper.delete(it, emptyList()) }
     }
 
@@ -328,7 +332,7 @@ class ResultsViewModel : ViewModel() {
         _folderResults.value = current
 
         resultById.entries.removeAll { (_, r) -> r.parentId == parentFolderId && r.name == name }
-        
+
         appContext?.let { CloudKitResultSyncHelper.delete(it, emptyList()) }
     }
 
@@ -396,7 +400,15 @@ class ResultsViewModel : ViewModel() {
         }
     }
 
-    fun saveSearchResults(results: List<SearchResult>, query: String, folderId: Long?, name: String, searchMode: Int, nearDistance: Int, dataManager: LibraryDataManager): Boolean {
+    fun saveSearchResults(
+        results: List<SearchResult>,
+        query: String,
+        folderId: Long?,
+        name: String,
+        searchMode: Int,
+        nearDistance: Int,
+        dataManager: LibraryDataManager
+    ): Boolean {
         val handler = resultsHandler ?: return false
         val groupedResults = mutableMapOf<String, GroupedResult>()
 
@@ -417,7 +429,16 @@ class ResultsViewModel : ViewModel() {
         for ((_, group) in groupedResults) {
             val commaSeparated = group.contentIds.joinToString(",")
             try {
-                handler.insertResult(group.archive, group.bkId, commaSeparated, folderId, query, name, searchMode, nearDistance)
+                handler.insertResult(
+                    group.archive,
+                    group.bkId,
+                    commaSeparated,
+                    folderId,
+                    query,
+                    name,
+                    searchMode,
+                    nearDistance
+                )
             } catch (e: Exception) {
                 e.printStackTrace()
                 success = false
@@ -451,23 +472,6 @@ class ResultsViewModel : ViewModel() {
             it.name.normalizeArabic().contains(cleanQuery, ignoreCase = true)
         }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
     }
-
-    fun folderPath(folderId: Long?): String {
-        var id = folderId ?: return "Root"
-        val parts = mutableListOf<String>()
-        while (true) {
-            val node = folderById[id] ?: break
-            parts.add(0, node.name)
-            val parent = parentById[id]
-            if (parent != null) id = parent else break
-        }
-        return parts.joinToString(" / ")
-    }
-
-    fun findFolder(id: Long): FolderNode? = folderById[id]
-
-    val allFolders: List<FolderNode>
-        get() = folderById.values.toList()
 
     // endregion
 
@@ -546,7 +550,8 @@ class ResultsViewModel : ViewModel() {
 
     private fun uploadResultSyncByName(folderId: Long?, name: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val syncData = resultsHandler?.fetchResultsSyncDataByFolder(folderId, name) ?: return@launch
+            val syncData =
+                resultsHandler?.fetchResultsSyncDataByFolder(folderId, name) ?: return@launch
             if (syncData.isNotEmpty()) {
                 appContext?.let { CloudKitResultSyncHelper.uploadResults(it, syncData) }
             }
@@ -560,14 +565,21 @@ class ResultsViewModel : ViewModel() {
  */
 object CloudKitResultSyncHelper {
     val syncEvent = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+    private val scope =
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
     private var syncJob: kotlinx.coroutines.Job? = null
 
-    fun uploadFolders(context: android.content.Context, folders: List<com.maktabah.models.SyncFolder>) {
+    fun uploadFolders(
+        context: android.content.Context,
+        folders: List<com.maktabah.models.SyncFolder>
+    ) {
         triggerSync(context)
     }
 
-    fun uploadResults(context: android.content.Context, results: List<com.maktabah.models.SyncResult>) {
+    fun uploadResults(
+        context: android.content.Context,
+        results: List<com.maktabah.models.SyncResult>
+    ) {
         triggerSync(context)
     }
 
@@ -578,11 +590,15 @@ object CloudKitResultSyncHelper {
     private fun triggerSync(context: android.content.Context) {
         syncJob?.cancel()
         syncJob = scope.launch {
-            kotlinx.coroutines.delay(3000)
+            kotlinx.coroutines.delay(3000.milliseconds)
             val result = com.maktabah.cloudKit.CloudKitSyncManager().syncResults(context)
             if (com.maktabah.BuildConfig.DEBUG) {
-                kotlinx.coroutines.withContext(Dispatchers.Main) {
-                    android.widget.Toast.makeText(context, "CloudKit Upload: $result", android.widget.Toast.LENGTH_SHORT).show()
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "CloudKit Upload: $result",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
                 }
             }
         }

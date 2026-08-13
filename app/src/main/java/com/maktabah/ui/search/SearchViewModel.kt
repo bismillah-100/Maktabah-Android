@@ -548,7 +548,7 @@ class SearchViewModel : ViewModel() {
                                                     stmt.bindLong(index + 1, item.bookId.toLong())
                                                 }
 
-                                                val itemsById = chunk.groupBy { it.bookId }
+                                                val itemsById = chunk.groupBy { it.bookId.toInt() }
 
                                                 while (stmt.step() == com.maktabah.database.SQLiteDB.SQLITE_ROW) {
                                                     val contentId = stmt.columnInt(0)
@@ -586,7 +586,7 @@ class SearchViewModel : ViewModel() {
                                                         )
                                                     }
                                                 }
-                                                }
+                                            }
                                         }
                                     }
                                 } catch (e: Exception) {

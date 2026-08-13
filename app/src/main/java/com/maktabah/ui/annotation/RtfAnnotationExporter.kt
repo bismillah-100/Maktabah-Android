@@ -2,12 +2,10 @@ package com.maktabah.ui.annotation
 
 import android.content.Context
 import android.content.Intent
-import android.text.format.DateUtils
 import androidx.core.content.FileProvider
 import androidx.core.graphics.toColorInt
 import com.maktabah.R
 import com.maktabah.manager.LibraryDataManager
-import com.maktabah.models.Annotation
 import com.maktabah.models.AnnotationGroup
 import com.maktabah.utils.convertToArabicDigits
 import java.io.File

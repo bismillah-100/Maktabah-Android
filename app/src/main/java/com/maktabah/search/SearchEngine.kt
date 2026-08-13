@@ -120,7 +120,7 @@ class SearchEngine {
                     while (stmt.step() == SQLiteDB.SQLITE_ROW) {
                         coroutineContext.ensureActive()
                         val id = stmt.columnInt(0)
-                        var nassText = ""
+                        var nassText: String
 
                         if (nassType == -1) {
                             nassType = stmt.columnType(1)

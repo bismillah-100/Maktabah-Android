@@ -104,7 +104,7 @@ fun SearchScreen(
     bottomPadding: Dp,
     onNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
     hasDonated: Boolean,
-    onClearGlobalQuery: () -> Unit = {},
+    onClearContentSearchQuery: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -179,7 +179,7 @@ fun SearchScreen(
     BackHandler(enabled = results.isNotEmpty() && !showSavedResults) {
         viewModel.clearResults()
         query = ""
-        onClearGlobalQuery()
+        onClearContentSearchQuery()
     }
 
     HorizontalPager(
@@ -212,12 +212,12 @@ fun SearchScreen(
                 }
             },
     ) { page ->
-        val pageOffset = page - (pagerState.currentPage + pagerState.currentPageOffsetFraction)
-
         val pageModifier = Modifier
             .fillMaxSize()
             .zIndex(if (page == 1) 1f else 0f)
             .graphicsLayer {
+                val pageOffset = page - (pagerState.currentPage + pagerState.currentPageOffsetFraction)
+
                 if (page == 0) {
                     if (pageOffset < 0f) {
                         translationX = -pageOffset * size.width * 0.7f
@@ -328,7 +328,7 @@ fun SearchScreen(
                                         query = newQuery
                                         if (newQuery.isEmpty()) {
                                             viewModel.clearResults()
-                                            onClearGlobalQuery()
+                                            onClearContentSearchQuery()
                                         }
                                     },
                                     onSearch = {
@@ -376,7 +376,7 @@ fun SearchScreen(
                                 onClearResults = {
                                     viewModel.clearResults()
                                     query = ""
-                                    onClearGlobalQuery()
+                                    onClearContentSearchQuery()
                                 },
                                 onSelect = onNavigateToReader,
                                 bottomPadding = bottomPadding,

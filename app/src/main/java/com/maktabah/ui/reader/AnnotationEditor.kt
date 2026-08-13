@@ -31,6 +31,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import com.maktabah.ui.common.MaktabahTextField
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -96,7 +97,7 @@ fun AnnotationEditorDialog(
     LaunchedEffect(bookId) {
         existingTags = annotationManager
             .getAnnotationsForBook(bookId)
-            .flatMap { it.tags.split(",") }
+            .flatMap { it.tags.replace("،", ",").split(",") }
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .distinct()
@@ -249,16 +250,17 @@ fun AnnotationEditorDialog(
                     )
                 }
 
-                OutlinedTextField(
+                MaktabahTextField(
                     value = noteText,
                     onValueChange = { noteText = it },
                     label = { Text(stringResource(R.string.reader_ann_editor_notes_label)) },
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = false,
                     maxLines = 4,
                 )
 
                 Column {
-                    OutlinedTextField(
+                    MaktabahTextField(
                         value = tagsText,
                         onValueChange = { tagsText = it },
                         label = { Text(stringResource(R.string.reader_ann_editor_tags_label)) },
@@ -280,6 +282,7 @@ fun AnnotationEditorDialog(
                                 AssistChip(
                                     onClick = {
                                         val currentList = tagsText
+                                            .replace("،", ",")
                                             .split(",")
                                             .map { it.trim() }
                                             .filter { it.isNotEmpty() }
@@ -336,6 +339,7 @@ fun AnnotationEditorDialog(
                         rangeDiacLength = diacLen,
                         part = active.annotation?.part ?: content!!.part,
                         tags = tagsText
+                            .replace("،", ",")
                             .split(",")
                             .map { it.trim() }
                             .filter { it.isNotEmpty() }

@@ -28,8 +28,15 @@ import com.maktabah.R
 import com.maktabah.ui.library.LibraryViewModel
 import com.maktabah.ui.common.fadingEdge
 
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+
+private val NEWLINE_REGEX = Regex("(?:\r?\n|\\\\n)")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,8 +49,35 @@ fun BookInfoSheet(
     val book by libraryViewModel.getBookFlow(bookId).collectAsState(
         initial = libraryViewModel.dataManager.booksById[bookId]
     )
+
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
+        skipPartiallyExpanded = true
+    )
+    val scrollState = rememberScrollState()
+
+    val isAtTop by remember {
+        derivedStateOf {
+            scrollState.value == 0
+        }
+    }
+    var sheetGesturesEnabled by remember {
+        mutableStateOf(isAtTop)
+    }
+    LaunchedEffect(isAtTop) {
+        if (!isAtTop) {
+            sheetGesturesEnabled = false
+        }
+    }
+    LaunchedEffect(scrollState.isScrollInProgress, isAtTop) {
+        if (isAtTop && !scrollState.isScrollInProgress) {
+            sheetGesturesEnabled = true
+        }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
+        sheetState = sheetState,
+        sheetGesturesEnabled = sheetGesturesEnabled,
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = { WindowInsets(0.dp) },
     ) {
@@ -55,7 +89,6 @@ fun BookInfoSheet(
             androidx.compose.runtime.CompositionLocalProvider(
                 LocalLayoutDirection provides LayoutDirection.Rtl,
             ) {
-                val scrollState = rememberScrollState()
                 SelectionContainer {
                     Column(
                         modifier = Modifier
@@ -150,7 +183,7 @@ private fun ParagraphText(
     modifier: Modifier = Modifier,
 ) {
     val paragraphs = androidx.compose.runtime.remember(text) {
-        text.split(Regex("(?:\r?\n|\\\\n)"))
+        text.split(NEWLINE_REGEX)
             .map { it.trim() }
             .filter { it.isNotEmpty() }
     }

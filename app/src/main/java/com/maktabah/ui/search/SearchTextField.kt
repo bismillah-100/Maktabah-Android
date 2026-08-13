@@ -34,12 +34,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import com.maktabah.models.AnnotationSearchScope
+import com.maktabah.utils.startsWithArabic
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -51,16 +52,25 @@ fun SearchTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     isError: Boolean = false,
     onClearClick: (() -> Unit)? = null,
+    onFocusChanged: (Boolean) -> Unit = {},
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
     val focusManager = LocalFocusManager.current
     val isImeVisible = WindowInsets.isImeVisible
 
+    LaunchedEffect(isFocused) {
+        onFocusChanged(isFocused)
+    }
+
     LaunchedEffect(isImeVisible) {
         if (!isImeVisible && isFocused) {
             focusManager.clearFocus()
         }
+    }
+
+    val isArabic = remember(value, placeholder) {
+        if (value.isNotEmpty()) value.startsWithArabic() else placeholder.startsWithArabic()
     }
 
     val borderColor =
@@ -83,6 +93,7 @@ fun SearchTextField(
         textStyle =
             MaterialTheme.typography.bodyMedium.copy(
                 color = MaterialTheme.colorScheme.onSurface,
+                textDirection = if (isArabic) TextDirection.Rtl else TextDirection.Ltr
             ),
         singleLine = true,
         keyboardOptions = keyboardOptions,
@@ -95,7 +106,10 @@ fun SearchTextField(
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(start = 12.dp, end = 8.dp),
+                    .padding(
+                        start = if (isArabic) 8.dp else 12.dp,
+                        end = if (isArabic) 12.dp else 8.dp
+                    ),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
@@ -104,12 +118,14 @@ fun SearchTextField(
                             .weight(1f)
                             .fillMaxHeight()
                             .padding(horizontal = 8.dp),
-                    contentAlignment = Alignment.CenterStart,
+                    contentAlignment = if (isArabic) Alignment.CenterEnd else Alignment.CenterStart,
                 ) {
                     if (value.isEmpty()) {
                         Text(
                             text = placeholder,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                textDirection = if (isArabic) TextDirection.Rtl else TextDirection.Ltr
+                            ),
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
                         )
                     }
@@ -130,7 +146,7 @@ fun SearchTextField(
                     }
                 }
             }
-        },
+        }
     )
 }
 
