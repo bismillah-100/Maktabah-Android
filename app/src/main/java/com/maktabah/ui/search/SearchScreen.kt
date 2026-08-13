@@ -443,7 +443,6 @@ fun SearchScreen(
                             viewModel.setShowSavedResults(false)
                             viewModel.loadSavedResults(items, context, libraryViewModel.dataManager)
                         },
-                        onRefresh = {},
                         onDismiss = { viewModel.setShowSavedResults(false) },
                         bottomPadding = bottomPadding,
                         backHandlerEnabled = pagerState.currentPage == 1

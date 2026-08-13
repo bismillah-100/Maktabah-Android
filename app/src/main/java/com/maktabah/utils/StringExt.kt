@@ -79,14 +79,7 @@ fun String.stripSpanTags(): String = replace(SPAN_REGEX, "")
 
 // ─── Honorific replacement dengan range tracking ───────────────────────────
 
-fun String.startsWithArabic(): Boolean {
-    val trimmed = this.trimStart()
-    if (trimmed.isEmpty()) return false
-    val valCode = trimmed[0].code
-    return valCode in 0x0600..0x06FF ||
-           valCode in 0x0750..0x077F ||
-           valCode in 0x08A0..0x08FF
-}
+
 
 val HONORIFIC_PHRASES =
     listOf(
