@@ -614,7 +614,7 @@ private fun findQueryRange(
     val renderedStr = text.toString()
     
     if (searchMode == 3) {
-        val keywords = query.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        val keywords = query.replace("،", ",").split(",").map { it.trim() }.filter { it.isNotEmpty() }
         if (keywords.size > 1) {
             val rangesWithIndex = renderedStr.findArabicMatchingRangesWithIndex(keywords)
             val filteredRanges = renderedStr.filterRangesForNearMode(rangesWithIndex, keywords.size, nearDistance)

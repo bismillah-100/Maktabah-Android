@@ -371,6 +371,7 @@ object ArabicTextRenderer {
             val searchResult = honorific // honorific contains the final rendered text
             val renderedStr = searchResult.text
             val searchTerms = searchQuery
+                .replace("،", ",")
                 .split(",")
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
