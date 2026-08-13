@@ -1293,21 +1293,23 @@ class ResultsHandler(private val dbFile: File) {
         db.prepare(
             """
             UPDATE results SET folder_id = ?, name = ?, query = ?, archives = ?,
-            bkId = ?, contentId = ?, lastModified = ?, folderCkRecordId = ?
+            bkId = ?, contentId = ?, lastModified = ?, folderCkRecordId = ?, searchMode = ?, nearDistance = ?
             WHERE id = ?;
             """,
         )?.use { stmt ->
             if (newFolder != null) stmt.bindLong(1, newFolder) else stmt.bindNull(1)
             stmt.bindText(2, res.name); stmt.bindText(3, res.query); stmt.bindInt(4, res.archive)
             stmt.bindInt(5, res.bkId); stmt.bindText(6, res.contentId); stmt.bindLong(
-            7,
-            res.lastModified ?: 0
-        )
+                7,
+                res.lastModified ?: 0
+            )
             if (res.folderCkRecordId != null) stmt.bindText(
                 8,
                 res.folderCkRecordId
             ) else stmt.bindNull(8)
-            stmt.bindLong(9, existingId)
+            stmt.bindInt(9, res.searchMode)
+            stmt.bindInt(10, res.nearDistance)
+            stmt.bindLong(11, existingId)
             stmt.step()
         }
     }
