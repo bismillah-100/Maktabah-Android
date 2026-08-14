@@ -577,51 +577,59 @@ class ResultsHandler(private val dbFile: File) {
             try {
                 if (operation == "upload") {
                     val validIds = mutableListOf<String>()
-                    db.prepare("SELECT COUNT(*) FROM sync_pending WHERE ck_record_id = ? AND operation = 'delete';")
-                        ?.use { stmt ->
-                            for (ckId in ckRecordIds) {
-                                stmt.bindText(1, ckId)
-                                if (stmt.step() == SQLiteDB.SQLITE_ROW && stmt.columnLong(0) == 0L) {
-                                    validIds.add(ckId)
-                                }
-                                stmt.reset()
-                                stmt.clearBindings()
+                    val hasDeleteIds = mutableSetOf<String>()
+                    for (chunk in ckRecordIds.chunked(900)) {
+                        val placeholders = chunk.joinToString(",") { "?" }
+                        db.prepare("SELECT ck_record_id FROM sync_pending WHERE ck_record_id IN ($placeholders) AND operation = 'delete';")?.use { stmt ->
+                            chunk.forEachIndexed { index, id ->
+                                stmt.bindText(index + 1, id)
+                            }
+                            while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                                stmt.columnText(0)?.let { hasDeleteIds.add(it) }
                             }
                         }
+                    }
+                    for (id in ckRecordIds) {
+                        if (!hasDeleteIds.contains(id)) {
+                            validIds.add(id)
+                        }
+                    }
                     val now = System.currentTimeMillis() / 1000L
-                    db.prepare("INSERT OR REPLACE INTO sync_pending (ck_record_id, operation, queued_at) VALUES (?, ?, ?);")
-                        ?.use { stmt ->
-                            for (ckId in validIds) {
-                                stmt.bindText(1, ckId)
-                                stmt.bindText(2, operation)
-                                stmt.bindLong(3, now)
-                                stmt.step()
-                                stmt.reset()
-                                stmt.clearBindings()
+                    for (chunk in validIds.chunked(300)) {
+                        val placeholders = chunk.joinToString(",") { "(?, ?, ?)" }
+                        db.prepare("INSERT OR REPLACE INTO sync_pending (ck_record_id, operation, queued_at) VALUES $placeholders;")?.use { stmt ->
+                            var bindIndex = 1
+                            for (id in chunk) {
+                                stmt.bindText(bindIndex++, id)
+                                stmt.bindText(bindIndex++, operation)
+                                stmt.bindLong(bindIndex++, now)
                             }
+                            stmt.step()
                         }
+                    }
                 } else if (operation == "delete") {
-                    db.prepare("DELETE FROM sync_pending WHERE ck_record_id = ? AND operation = 'upload';")
-                        ?.use { stmt ->
-                            for (ckId in ckRecordIds) {
-                                stmt.bindText(1, ckId)
-                                stmt.step()
-                                stmt.reset()
-                                stmt.clearBindings()
+                    for (chunk in ckRecordIds.chunked(900)) {
+                        val placeholders = chunk.joinToString(",") { "?" }
+                        db.prepare("DELETE FROM sync_pending WHERE ck_record_id IN ($placeholders) AND operation = 'upload';")?.use { stmt ->
+                            chunk.forEachIndexed { index, id ->
+                                stmt.bindText(index + 1, id)
                             }
+                            stmt.step()
                         }
+                    }
                     val now = System.currentTimeMillis() / 1000L
-                    db.prepare("INSERT OR REPLACE INTO sync_pending (ck_record_id, operation, queued_at) VALUES (?, ?, ?);")
-                        ?.use { stmt ->
-                            for (ckId in ckRecordIds) {
-                                stmt.bindText(1, ckId)
-                                stmt.bindText(2, operation)
-                                stmt.bindLong(3, now)
-                                stmt.step()
-                                stmt.reset()
-                                stmt.clearBindings()
+                    for (chunk in ckRecordIds.chunked(300)) {
+                        val placeholders = chunk.joinToString(",") { "(?, ?, ?)" }
+                        db.prepare("INSERT OR REPLACE INTO sync_pending (ck_record_id, operation, queued_at) VALUES $placeholders;")?.use { stmt ->
+                            var bindIndex = 1
+                            for (id in chunk) {
+                                stmt.bindText(bindIndex++, id)
+                                stmt.bindText(bindIndex++, operation)
+                                stmt.bindLong(bindIndex++, now)
                             }
+                            stmt.step()
                         }
+                    }
                 }
                 db.prepare("COMMIT;")?.use { it.step() }
             } catch (e: Exception) {
