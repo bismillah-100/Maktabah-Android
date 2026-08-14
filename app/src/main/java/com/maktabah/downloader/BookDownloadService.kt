@@ -140,9 +140,10 @@ class BookDownloadService : Service() {
     ) {
         val toDownload = currentState.bulkBookIds
         var successCount = 0
+        val indexMap = index.associateBy { it.bkid }
 
         for ((idx, bookId) in toDownload.withIndex()) {
-            val entry = index.find { it.bkid == bookId }
+            val entry = indexMap[bookId]
             if (entry != null) {
                 val overallStartProgress = (idx * 100) / toDownload.size
                 updateStates { states ->
