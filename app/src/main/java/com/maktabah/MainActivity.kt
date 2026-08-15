@@ -168,7 +168,16 @@ class MainActivity : ComponentActivity() {
                                 }
                                 if (isLocal) {
                                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                        cloudKitSyncManager.syncAnnotations(this@MainActivity, annotationManager)
+                                        val syncResult = cloudKitSyncManager.syncAnnotations(this@MainActivity, annotationManager)
+                                        if (syncResult != null && syncResult != "Success") {
+                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                android.widget.Toast.makeText(
+                                                    this@MainActivity,
+                                                    syncResult,
+                                                    android.widget.Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        }
                                     }
                                 }
                             }

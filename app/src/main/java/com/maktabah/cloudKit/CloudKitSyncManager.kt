@@ -2,6 +2,7 @@ package com.maktabah.cloudKit
 
 import android.content.Context
 import androidx.core.content.edit
+import com.maktabah.R
 import com.maktabah.database.AnnotationManager
 import com.maktabah.database.HistoryDatabaseManager
 import com.maktabah.database.ResultsHandler
@@ -10,6 +11,7 @@ import com.maktabah.models.ReadingEntry
 import com.maktabah.models.SyncFolder
 import com.maktabah.models.SyncResult
 import com.maktabah.ui.history.HistoryViewModel
+import com.maktabah.utils.isNetworkError
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -389,7 +391,10 @@ class CloudKitSyncManager {
                 },
                 onFailure = {
                     if (it.message == "No Web Auth Token") return@withContext null
-                    return@withContext "Exception: ${it.message}"
+                    if (isNetworkError(it, context)) {
+                        return@withContext context.getString(R.string.no_internet_connection)
+                    }
+                    return@withContext "Sync failed: ${it.localizedMessage ?: it.message}"
                 }
             )
         } }
@@ -464,13 +469,20 @@ class CloudKitSyncManager {
                 annotationManager.clearPendingUploads(uploadedIds)
                 "Success"
             } else {
-                val msg = result.exceptionOrNull()?.message
-                if (msg == "No Web Auth Token") null else "Failed: $msg"
+                val ex = result.exceptionOrNull()
+                val msg = ex?.message
+                if (msg == "No Web Auth Token") {
+                    null
+                } else if (isNetworkError(ex, context)) {
+                    context.getString(R.string.no_internet_connection)
+                } else {
+                    "Failed: ${ex?.localizedMessage ?: msg}"
+                }
             }
         } }
 
     /** Manual sync — dipakai oleh onSyncHistoryRequested di ReaderScreen. */
-    suspend fun syncHistoryAndFavorites(context: Context, entries: List<ReadingEntry>) =
+    suspend fun syncHistoryAndFavorites(context: Context, entries: List<ReadingEntry>): String? =
         withContext(Dispatchers.IO) {
             val recordsToSave = JSONArray()
             val recordIDsToDelete = JSONArray()
@@ -487,7 +499,15 @@ class CloudKitSyncManager {
             if (result.isSuccess) {
                 "Success: Uploaded history and favorites"
             } else {
-                "Failed: ${result.exceptionOrNull()?.message}"
+                val ex = result.exceptionOrNull()
+                val msg = ex?.message
+                if (msg == "No Web Auth Token") {
+                    null
+                } else if (isNetworkError(ex, context)) {
+                    context.getString(R.string.no_internet_connection)
+                } else {
+                    "Failed: ${ex?.localizedMessage ?: msg}"
+                }
             }
         }
 
@@ -550,7 +570,7 @@ class CloudKitSyncManager {
 
     // region Search Results Sync
 
-    suspend fun syncResults(context: Context): String = syncMutex.withLock {
+    suspend fun syncResults(context: Context): String? = syncMutex.withLock {
         withContext(Dispatchers.IO) {
             val handler = getResultsHandler(context)
             val folders = handler.fetchAllSyncFolders()
@@ -619,7 +639,15 @@ class CloudKitSyncManager {
                 }
                 "Success"
             } else {
-                "Failed: ${result.exceptionOrNull()?.message}"
+                val ex = result.exceptionOrNull()
+                val msg = ex?.message
+                if (msg == "No Web Auth Token") {
+                    null
+                } else if (isNetworkError(ex, context)) {
+                    context.getString(R.string.no_internet_connection)
+                } else {
+                    "Failed: ${ex?.localizedMessage ?: msg}"
+                }
             }
         }
     }

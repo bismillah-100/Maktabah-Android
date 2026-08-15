@@ -277,7 +277,7 @@ fun AnnotationsScreen(
                             }
                             withContext(Dispatchers.Main) {
                                 if (resultMsg != null) {
-                                    Toast.makeText(context, resultMsg, Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, resultMsg, Toast.LENGTH_SHORT).show()
                                 }
                             }
                             viewModel.forceReload(annotationManager)

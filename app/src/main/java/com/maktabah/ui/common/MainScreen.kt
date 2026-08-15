@@ -925,25 +925,7 @@ private fun AppNavHost(
                         onBack = {
                             navController.popBackStack()
                         },
-                        onSyncRequested = {
-                            scope.launch {
-                                val syncResult =
-                                    cloudKitSyncManager.syncAnnotations(
-                                        context,
-                                        annotationManager,
-                                    )
-                                withContext(Dispatchers.Main) {
-                                    if (syncResult != null) {
-                                        android.widget.Toast
-                                            .makeText(
-                                                context,
-                                                syncResult,
-                                                android.widget.Toast.LENGTH_LONG,
-                                            ).show()
-                                    }
-                                }
-                            }
-                        },
+                        onSyncRequested = {},
                         onSyncHistoryRequested = {
                             scope.launch {
                                 val entry =
