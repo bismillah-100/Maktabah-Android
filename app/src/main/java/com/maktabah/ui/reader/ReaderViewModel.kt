@@ -33,6 +33,8 @@ import java.util.UUID
 
 class ReaderViewModel : ViewModel() {
 
+    var recordHistory: Boolean = true
+
     // Tab-specific UI state for Book TOC
     var tocSearchQuery = mutableStateOf("")
     var tocExpandedNodes = mutableStateOf(setOf<String>())

@@ -19,6 +19,9 @@ class SettingsViewModel : ViewModel() {
     private val _hideTabsOnScroll = MutableStateFlow(true)
     val hideTabsOnScroll: StateFlow<Boolean> = _hideTabsOnScroll.asStateFlow()
 
+    private val _recordSearchHistory = MutableStateFlow(true)
+    val recordSearchHistory: StateFlow<Boolean> = _recordSearchHistory.asStateFlow()
+
     fun initialize(context: Context) {
         val ckPrefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
         val token = ckPrefs.getString("ckWebAuthToken", null)
@@ -42,12 +45,19 @@ class SettingsViewModel : ViewModel() {
 
         val mainPrefs = context.getSharedPreferences("main_prefs", Context.MODE_PRIVATE)
         _hideTabsOnScroll.value = mainPrefs.getBoolean("hide_tabs_on_scroll", true)
+        _recordSearchHistory.value = mainPrefs.getBoolean("record_search_history", true)
     }
 
     fun setHideTabsOnScroll(context: Context, enabled: Boolean) {
         _hideTabsOnScroll.value = enabled
         val mainPrefs = context.getSharedPreferences("main_prefs", Context.MODE_PRIVATE)
         mainPrefs.edit { putBoolean("hide_tabs_on_scroll", enabled) }
+    }
+
+    fun setRecordSearchHistory(context: Context, enabled: Boolean) {
+        _recordSearchHistory.value = enabled
+        val mainPrefs = context.getSharedPreferences("main_prefs", Context.MODE_PRIVATE)
+        mainPrefs.edit { putBoolean("record_search_history", enabled) }
     }
 
     fun logoutCloudKit(context: Context) {

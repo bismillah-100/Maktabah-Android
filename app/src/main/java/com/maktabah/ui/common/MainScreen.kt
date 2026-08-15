@@ -2,6 +2,7 @@
 
 package com.maktabah.ui.common
 
+import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.core.Spring
@@ -281,7 +282,7 @@ fun MainScreen(
         }
     }
 
-    val handleNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit =
+    val handleNavigateToReader: (Int, Int?, Int?, Int?, String?, Boolean) -> Unit =
         remember(
             libraryViewModel,
             tabManager,
@@ -290,7 +291,7 @@ fun MainScreen(
             historyViewModel,
             annotationManager
         ) {
-            { bookId, contentId, loc, len, query ->
+            { bookId, contentId, loc, len, query, recordHistory ->
                 val book = libraryViewModel.dataManager.booksById[bookId]
                 if (book == null) {
                     showBookNotFoundPopover = true
@@ -313,6 +314,7 @@ fun MainScreen(
                                 flashTarget = flashTarget,
                                 searchQuery = query,
                                 setActive = !isInReader,
+                                recordHistory = recordHistory,
                             )
                         // Initialize ViewModel jika belum
                         tab.viewModel.initialize(
@@ -416,7 +418,9 @@ fun MainScreen(
                 BookDownloadOverlay(
                     viewModel = libraryViewModel,
                     bottomPadding = innerPadding.calculateBottomPadding(),
-                    onNavigateToReader = handleNavigateToReader,
+                    onNavigateToReader = { bId, cId, l, ln, q ->
+                        handleNavigateToReader(bId, cId, l, ln, q, true)
+                    },
                 )
             }
 
@@ -749,7 +753,7 @@ private fun AppNavHost(
     historyViewModel: HistoryViewModel,
     annotationsViewModel: AnnotationsViewModel,
     tabManager: ReaderTabManager,
-    handleNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
+    handleNavigateToReader: (Int, Int?, Int?, Int?, String?, Boolean) -> Unit,
     hasDonated: Boolean,
     onCheckForUpdates: () -> Unit,
 ) {
@@ -834,7 +838,9 @@ private fun AppNavHost(
                 viewModel = libraryViewModel,
                 annotationManager = annotationManager,
                 tabManager = tabManager,
-                onNavigateToReader = handleNavigateToReader,
+                onNavigateToReader = { b, c, loc, len, q ->
+                    handleNavigateToReader(b, c, loc, len, q, true)
+                },
                 onNavigateToCloudKit = { navController.navigate("cloudkit_login") },
                 onCheckForUpdates = onCheckForUpdates,
                 bottomPadding = innerPadding.calculateBottomPadding(),
@@ -849,7 +855,11 @@ private fun AppNavHost(
                 viewModel = searchViewModel,
                 libraryViewModel = libraryViewModel,
                 bottomPadding = innerPadding.calculateBottomPadding(),
-                onNavigateToReader = handleNavigateToReader,
+                onNavigateToReader = { bookId, contentId, loc, len, query ->
+                    val mainPrefs = context.getSharedPreferences("main_prefs", Context.MODE_PRIVATE)
+                    val shouldRecord = mainPrefs.getBoolean("record_search_history", true)
+                    handleNavigateToReader(bookId, contentId, loc, len, query, shouldRecord)
+                },
                 hasDonated = hasDonated,
                 onClearContentSearchQuery = {
                     tabManager.tabs.value.forEach { tab ->
@@ -867,7 +877,9 @@ private fun AppNavHost(
                 historyViewModel,
                 annotationsViewModel,
                 innerPadding.calculateBottomPadding(),
-                onNavigateToReader = handleNavigateToReader,
+                onNavigateToReader = { b, c, loc, len, q ->
+                    handleNavigateToReader(b, c, loc, len, q, true)
+                },
                 hasDonated = hasDonated,
             )
         }
@@ -878,7 +890,9 @@ private fun AppNavHost(
                 annotationManager = annotationManager,
                 cloudKitSyncManager = cloudKitSyncManager,
                 bottomPadding = innerPadding.calculateBottomPadding(),
-                onNavigateToReader = handleNavigateToReader,
+                onNavigateToReader = { b, c, loc, len, q ->
+                    handleNavigateToReader(b, c, loc, len, q, true)
+                },
                 hasDonated = hasDonated,
             )
         }
@@ -909,9 +923,11 @@ private fun AppNavHost(
             val activeTab = tabManager.activeTab
 
             if (activeTab != null) {
-                LaunchedEffect(activeTab.bookId) {
-                    val affectedEntries = historyViewModel.addBookToHistory(activeTab.bookId)
-                    cloudKitSyncManager.uploadHistory(context, affectedEntries)
+                LaunchedEffect(activeTab.bookId, activeTab.viewModel.recordHistory) {
+                    if (activeTab.viewModel.recordHistory) {
+                        val affectedEntries = historyViewModel.addBookToHistory(activeTab.bookId)
+                        cloudKitSyncManager.uploadHistory(context, affectedEntries)
+                    }
                 }
 
                 androidx.compose.runtime.key(activeTab.id) {

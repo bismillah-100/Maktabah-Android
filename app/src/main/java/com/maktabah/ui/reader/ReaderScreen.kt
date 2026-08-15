@@ -260,9 +260,9 @@ fun ReaderScreen(
         clipboard.setPrimaryClip(clip)
     }
 
-    LaunchedEffect(content?.id, bookId) {
+    LaunchedEffect(content?.id, bookId, viewModel.recordHistory) {
         val cid = content?.id
-        if (cid != null && bookId != 0) {
+        if (cid != null && bookId != 0 && viewModel.recordHistory) {
             historyViewModel.updateLastContentId(cid, bookId)
 
             delay(10.seconds)

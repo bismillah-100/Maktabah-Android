@@ -28,10 +28,12 @@ class ReaderTabManager : ViewModel() {
         flashTarget: FlashTarget? = null,
         searchQuery: String? = null,
         setActive: Boolean = true,
+        recordHistory: Boolean = true,
     ): ReaderTab {
         val existing = _tabs.value.firstOrNull { it.bookId == book.id }
         if (existing != null) {
             if (setActive) _activeTabId.value = existing.id
+            existing.viewModel.recordHistory = recordHistory
             if (flashTarget != null) existing.viewModel.setFlashTarget(flashTarget)
             if (searchQuery != null) existing.viewModel.setSearchQuery(searchQuery)
             if (initialContentId != null) existing.viewModel.loadContentById(initialContentId)
@@ -39,6 +41,7 @@ class ReaderTabManager : ViewModel() {
         }
 
         val newViewModel = ReaderViewModel()
+        newViewModel.recordHistory = recordHistory
         if (flashTarget != null) newViewModel.setFlashTarget(flashTarget)
         if (searchQuery != null) newViewModel.setSearchQuery(searchQuery)
         val tab = ReaderTab(
