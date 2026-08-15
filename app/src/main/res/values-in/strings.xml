@@ -100,13 +100,13 @@
     <string name="search_help_action_close">Tutup</string>
     <string name="search_help_title">Pilihan Pencarian</string>
     <string name="search_help_phrase_title">Frasa Tepat</string>
-    <string name="search_help_phrase_desc">Mencari kalimat persis seperti yang ditulis.</string>
+    <string name="search_help_phrase_desc">Fitur ini memastikan semua kata yang diketik ditemukan secara berurutan dan sesuai urutan aslinya di dalam data (contoh: عقيدة الإمام الشافعي).</string>
     <string name="search_help_and_title">Semua Kata (AND)</string>
-    <string name="search_help_and_desc">Mencari halaman yang mengandung semua kata yang dimasukkan, tidak berurutan.</string>
+    <string name="search_help_and_desc">Mencari kata-kata yang dipisahkan oleh sebuah koma (,). Kata-kata tersebut tidak perlu berdampingan atau dalam urutan yang ditentukan. (contoh: صلاة الجماعة, المأموم المسبوق)</string>
     <string name="search_help_or_title">Salah Satu (OR)</string>
-    <string name="search_help_or_desc">Mencari halaman yang mengandung salah satu kata yang dimasukkan.</string>
+    <string name="search_help_or_desc">Mencari data yang mengandung setidaknya satu kata atau frasa yang dipisahkan dengan koma (,). Data yang cocok dengan salah satu entri akan ditampilkan dalam hasil pencarian. (contoh: زكاة ,الصوم)</string>
     <string name="search_help_near_title">Kata Berdekatan (NEAR)</string>
-    <string name="search_help_near_desc">Mencari kata-kata yang muncul berdekatan dalam jarak tertentu. Gunakan kolom angka di sebelah mode pencarian untuk menentukan jarak kata maksimal.</string>
+    <string name="search_help_near_desc">Mencari kata-kata yang dipisahkan oleh sebuah koma (,) yang muncul berdekatan dalam batas jarak kata yang ditentukan pada kolom angka. (contoh: الإيمان, العمل)</string>
     <string name="search_near_distance_label">Jarak Maksimal (Kata):</string>
     <string name="search_action_help">Bantuan</string>
     <string name="search_action_start">Mulai Cari</string>
