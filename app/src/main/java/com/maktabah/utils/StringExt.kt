@@ -80,7 +80,6 @@ fun String.stripSpanTags(): String = replace(SPAN_REGEX, "")
 // ─── Honorific replacement dengan range tracking ───────────────────────────
 
 
-
 val HONORIFIC_PHRASES =
     listOf(
         "صلى الله عليه وسلم" to "\uFDFA",
