@@ -30,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -52,6 +54,7 @@ import com.maktabah.ui.search.buildHighlightedText
 import com.maktabah.utils.convertToArabicDigits
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.snippetAround
+import com.maktabah.utils.snippetNear
 import com.maktabah.utils.stripSpanTags
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,6 +73,7 @@ fun BookSearchSheet(
     val searchMode by bookSearchViewModel.searchMode.collectAsState()
     val searchProgress by bookSearchViewModel.searchProgress.collectAsState()
     val searchHistory by bookSearchViewModel.searchHistory.collectAsState()
+    val nearDistance by bookSearchViewModel.nearDistance.collectAsState()
 
     val book = libraryViewModel.dataManager.booksById[bookId]
     var isFocused by remember { mutableStateOf(false) }
@@ -79,6 +83,7 @@ fun BookSearchSheet(
 
     LaunchedEffect(Unit) {
         bookSearchViewModel.loadHistory(context)
+        bookSearchViewModel.loadPreferences(context)
     }
 
     LaunchedEffect(isFocused) {
@@ -119,7 +124,7 @@ fun BookSearchSheet(
         }
     }
     LaunchedEffect(listState.isScrollInProgress, isAtTop) {
-        if (isAtTop && !listState.isScrollInProgress) {
+        if (!listState.isScrollInProgress && isAtTop) {
             sheetGesturesEnabled = true
         }
     }
@@ -132,6 +137,7 @@ fun BookSearchSheet(
         contentWindowInsets = { WindowInsets(0.dp) },
     ) {
         val focusManager = LocalFocusManager.current
+        val focusRequester = remember { FocusRequester() }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -151,7 +157,7 @@ fun BookSearchSheet(
                 if (normalized.isBlank()) emptyList()
                 else when (searchMode) {
                     SearchMode.PHRASE -> listOf(normalized)
-                    else -> normalized.split(" ").filter { it.isNotBlank() }
+                    else -> normalized.split(",").map { it.trim() }.filter { it.isNotBlank() }
                 }.map { it.convertToArabicDigits() }
             }
 
@@ -174,13 +180,22 @@ fun BookSearchSheet(
                                 index = index,
                                 lastIndex = results.lastIndex,
                                 onClick = {
+                                    val effectiveNearDistance = if (nearDistance <= 0) 10 else nearDistance
                                     if (viewModel.currentContent.value?.id != contentItem.id) {
                                         viewModel.loadContentById(contentItem.id)
                                     }
-                                    viewModel.setSearchQuery(lastSearchQuery)
+                                    viewModel.setSearchQuery(
+                                        query = lastSearchQuery,
+                                        mode = searchMode.ordinal,
+                                        distance = effectiveNearDistance
+                                    )
                                     viewModel.setFlashTarget(
                                         FlashTarget(
-                                            query = lastSearchQuery,
+                                            query = if (searchMode == SearchMode.NEAR) {
+                                                "NEAR:$effectiveNearDistance:$lastSearchQuery"
+                                            } else {
+                                                lastSearchQuery
+                                            },
                                         ),
                                     )
                                     onDismissRequest()
@@ -206,14 +221,20 @@ fun BookSearchSheet(
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    val displayText = remember(contentItem.nass, searchKeywords) {
+                                    val displayText = remember(contentItem.nass, searchKeywords, searchMode, nearDistance) {
                                         val stripped = contentItem.nass.stripSpanTags()
                                         val normalized = stripped.convertToArabicDigits()
-                                        normalized.snippetAround(searchKeywords, contextLength = 60)
+                                        if (searchMode == SearchMode.NEAR) {
+                                            normalized.snippetNear(searchKeywords, nearDistance, contextLength = 60)
+                                        } else {
+                                            normalized.snippetAround(searchKeywords, contextLength = 60)
+                                        }
                                     }
                                     val highlightedText = buildHighlightedText(
                                         text = displayText,
                                         searchKeywords = searchKeywords,
+                                        searchMode = searchMode,
+                                        nearDistance = nearDistance,
                                     )
                                     Text(
                                         text = highlightedText,
@@ -265,6 +286,17 @@ fun BookSearchSheet(
                 }
             }
 
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+                    .onFocusChanged {
+                        isFocused = it.hasFocus
+                        if (it.hasFocus) {
+                            isHistoryVisible = true
+                        }
+                    }
+            ) {
             QueryInputBar(
                 query = query,
                 onQueryChange = {
@@ -290,15 +322,12 @@ fun BookSearchSheet(
                 canSearch = query.isNotBlank(),
                 placeholder = stringResource(R.string.reader_search_book_placeholder),
                 modifier = Modifier.fillMaxWidth(),
-                onFocusChanged = {
-                    isFocused = it
-                    if (!it) {
-                        isHistoryVisible = false
-                    }
-                }
+                onFocusChanged = { /* Handled by parent Column */ },
+                focusRequester = focusRequester
             )
 
             if (isHistoryVisible) {
+                Spacer(modifier = Modifier.height(8.dp))
                 SearchHistoryOverlay(
                     searchHistory = searchHistory,
                     onClearAll = { bookSearchViewModel.clearHistory(context) },
@@ -319,10 +348,13 @@ fun BookSearchSheet(
                         bookSearchViewModel.removeFromHistory(context, historyQuery)
                     },
                     activeMode = searchMode,
-                    onModeSelect = { bookSearchViewModel.updateSearchMode(it) },
-                    onHelpClick = { showHelpDialog = true },
-                    modifier = Modifier
-                        .padding(top = 68.dp)
+                    onModeSelect = {
+                        bookSearchViewModel.updateSearchMode(it)
+                        focusRequester.requestFocus()
+                    },
+                    nearDistance = nearDistance,
+                    onNearDistanceChange = { bookSearchViewModel.updateNearDistance(it, context) },
+                    onHelpClick = { showHelpDialog = true }
                 )
             }
 
@@ -331,4 +363,5 @@ fun BookSearchSheet(
             }
         }
     }
+}
 }

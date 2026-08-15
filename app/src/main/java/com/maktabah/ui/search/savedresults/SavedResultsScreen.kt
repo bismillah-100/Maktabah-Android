@@ -19,9 +19,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.PlaylistAddCheck
+import androidx.compose.material.icons.automirrored.filled.WrapText
 import androidx.compose.material.icons.filled.CreateNewFolder
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -56,6 +59,7 @@ import com.maktabah.R
 import com.maktabah.models.FolderNode
 import com.maktabah.models.ResultNode
 import com.maktabah.models.SavedResultsItem
+import com.maktabah.models.SearchMode
 import com.maktabah.ui.common.InsetGroupedItem
 import com.maktabah.ui.common.MaktabahTextField
 import com.maktabah.ui.common.fadingEdge
@@ -423,6 +427,13 @@ private fun ResultItem(
     onDelete: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val searchMode = SearchMode.entries.getOrNull(result.searchMode) ?: SearchMode.PHRASE
+    val searchModeIcon = when (searchMode) {
+        SearchMode.PHRASE -> Icons.Default.FormatQuote
+        SearchMode.CONTAINS -> Icons.AutoMirrored.Filled.PlaylistAddCheck
+        SearchMode.OR -> Icons.AutoMirrored.Filled.List
+        SearchMode.NEAR -> Icons.AutoMirrored.Filled.WrapText
+    }
 
     InsetGroupedItem(
         index = index,
@@ -437,7 +448,7 @@ private fun ResultItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = Icons.Default.Description,
+                imageVector = searchModeIcon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary
             )

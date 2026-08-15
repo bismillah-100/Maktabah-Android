@@ -22,6 +22,8 @@ data class SyncResult(
     val ckRecordId: String? = null,
     val lastModified: Long? = null,
     val folderCkRecordId: String? = null,
+    val searchMode: Int = 0,
+    val nearDistance: Int = 10,
 )
 
 data class FolderNode(
@@ -34,6 +36,8 @@ data class ResultNode(
     val id: Long,
     val parentId: Long?,
     val name: String,
+    val searchMode: Int = 0,
+    val nearDistance: Int = 10,
     val items: List<SavedResultsItem>,
 )
 
@@ -43,6 +47,8 @@ data class SavedResultsItem(
     val query: String,
     val bookId: Int,
     val bookTitle: String,
+    val searchMode: Int = 0,
+    val nearDistance: Int = 10,
 )
 
 data class GroupedResult(

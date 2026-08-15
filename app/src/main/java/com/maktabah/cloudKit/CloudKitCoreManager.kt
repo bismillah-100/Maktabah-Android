@@ -93,6 +93,24 @@ class CloudKitCoreManager private constructor() {
                     val errorStr = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
                     val reason = try { JSONObject(errorStr).getString("reason") } catch(_: Exception) { errorStr.take(100) }
                     return@withContext Result.failure(Exception("Err: $reason"))
+                } else {
+                    try {
+                        val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
+                        val responseObj = JSONObject(responseStr)
+                        val recordsArr = responseObj.optJSONArray("records")
+                        if (recordsArr != null) {
+                            for (i in 0 until recordsArr.length()) {
+                                val rec = recordsArr.getJSONObject(i)
+                                if (rec.has("serverErrorCode")) {
+                                    val err = rec.optString("serverErrorCode")
+                                    val recName = rec.optString("recordName")
+                                    android.util.Log.w("CloudKitCore", "modifyRecord $recName: $err")
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("CloudKitCore", "Error parsing modifyRecords response", e)
+                    }
                 }
             }
             

@@ -1,9 +1,15 @@
 package com.maktabah.ui.search
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,10 +22,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.PlaylistAddCheck
+import androidx.compose.material.icons.automirrored.filled.WrapText
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.History
@@ -44,22 +53,28 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.maktabah.R
 import com.maktabah.models.SearchMode
+import com.maktabah.utils.filterRangesForNearMode
 import com.maktabah.utils.findArabicMatchingRanges
+import com.maktabah.utils.findArabicMatchingRangesWithIndex
 import com.maktabah.utils.startsWithArabic
 
 @Composable
@@ -71,6 +86,7 @@ fun QueryInputBar(
     placeholder: String,
     modifier: Modifier = Modifier,
     onFocusChanged: ((Boolean) -> Unit)? = null,
+    focusRequester: FocusRequester? = null,
 ) {
     val isArabic = remember(query) { query.startsWithArabic() }
     val layoutDirection = if (isArabic) LayoutDirection.Rtl else LayoutDirection.Ltr
@@ -106,6 +122,7 @@ fun QueryInputBar(
                     modifier =
                         Modifier
                             .weight(1f)
+                            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                             .onFocusChanged { focusState ->
                                 onFocusChanged?.invoke(focusState.isFocused)
                             },
@@ -177,6 +194,8 @@ fun SearchHistoryOverlay(
     onRemoveHistory: (String) -> Unit,
     activeMode: SearchMode,
     onModeSelect: (SearchMode) -> Unit,
+    nearDistance: Int,
+    onNearDistanceChange: (Int) -> Unit,
     onHelpClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -185,9 +204,11 @@ fun SearchHistoryOverlay(
             modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
-                .pointerInput(Unit) {
-                    detectTapGestures { }
-                },
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null,
+                    onClick = {} // Blocks clicks to layers below
+                ),
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 8.dp,
@@ -320,11 +341,74 @@ fun SearchHistoryOverlay(
                                     SearchMode.PHRASE -> Icons.Default.FormatQuote
                                     SearchMode.CONTAINS -> Icons.AutoMirrored.Filled.PlaylistAddCheck
                                     SearchMode.OR -> Icons.AutoMirrored.Filled.List
+                                    SearchMode.NEAR -> Icons.AutoMirrored.Filled.WrapText
                                 },
                                 contentDescription = null,
                                 modifier = Modifier.size(20.dp),
                             )
                         }
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = activeMode == SearchMode.NEAR,
+                    enter = expandHorizontally() + fadeIn(),
+                    exit = shrinkHorizontally() + fadeOut()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        BasicTextField(
+                            value = if (nearDistance == 0) "" else nearDistance.toString(),
+                            onValueChange = { newValue ->
+                                val filtered = newValue.filter { char -> char.isDigit() }
+                                if (filtered.isNotEmpty()) {
+                                    onNearDistanceChange(filtered.toInt().coerceIn(1, 999))
+                                } else if (newValue.isEmpty()) {
+                                    onNearDistanceChange(0)
+                                }
+                            },
+                            modifier = Modifier
+                                .width(54.dp)
+                                .height(40.dp), // Match SegmentedButton default height
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                textAlign = TextAlign.Center,
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            decorationBox = { innerTextField ->
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(
+                                            MaterialTheme.colorScheme.surfaceVariant.copy(
+                                                alpha = 0.5f
+                                            )
+                                        )
+                                        .border(
+                                            width = 1.dp,
+                                            color = MaterialTheme.colorScheme.outlineVariant,
+                                            shape = RoundedCornerShape(20.dp)
+                                        )
+                                        .padding(horizontal = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (nearDistance == 0) {
+                                        Text(
+                                            text = "10",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                                alpha = 0.5f
+                                            ),
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            }
+                        )
                     }
                 }
 
@@ -394,6 +478,18 @@ fun SearchHelpDialog(onDismiss: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                Column {
+                    Text(
+                        stringResource(R.string.search_help_near_title),
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        stringResource(R.string.search_help_near_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         },
     )
@@ -403,14 +499,23 @@ fun SearchHelpDialog(onDismiss: () -> Unit) {
 fun buildHighlightedText(
     text: String,
     searchKeywords: List<String>,
+    searchMode: SearchMode = SearchMode.PHRASE,
+    nearDistance: Int = 10,
     highlightColor: Color = Color(0xFFFFD54F).copy(alpha = 0.4f),
 ): AnnotatedString {
-    return remember(text, searchKeywords) {
+    return remember(text, searchKeywords, searchMode, nearDistance, highlightColor) {
         buildAnnotatedString {
             append(text)
             if (searchKeywords.isEmpty()) return@buildAnnotatedString
 
-            val ranges = text.findArabicMatchingRanges(searchKeywords)
+            val ranges = if (searchMode == SearchMode.NEAR && searchKeywords.size > 1) {
+                val rangesWithIndex = text.findArabicMatchingRangesWithIndex(searchKeywords)
+                val effectiveDistance = if (nearDistance <= 0) 10 else nearDistance
+                text.filterRangesForNearMode(rangesWithIndex, searchKeywords.size, effectiveDistance)
+            } else {
+                text.findArabicMatchingRanges(searchKeywords)
+            }
+
             for (range in ranges) {
                 if (range.first in text.indices && range.last < text.length && range.first <= range.last) {
                     addStyle(
@@ -423,5 +528,3 @@ fun buildHighlightedText(
         }
     }
 }
-
-

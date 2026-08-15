@@ -62,6 +62,8 @@ class ResultsHandler(private val dbFile: File) {
                     ckRecordId TEXT,
                     lastModified INTEGER,
                     folderCkRecordId TEXT,
+                    searchMode INTEGER DEFAULT 0,
+                    nearDistance INTEGER DEFAULT 10,
                     UNIQUE(folder_id, name, bkId)
                 );
                 """,
@@ -85,6 +87,13 @@ class ResultsHandler(private val dbFile: File) {
                 ?.use { it.step() }
             db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_results_folder_name_bk ON results (COALESCE(folder_id, 0), name, bkId);")
                 ?.use { it.step() }
+
+            try {
+                db.prepare("ALTER TABLE results ADD COLUMN searchMode INTEGER DEFAULT 0;")?.use { it.step() }
+            } catch (e: Exception) {}
+            try {
+                db.prepare("ALTER TABLE results ADD COLUMN nearDistance INTEGER DEFAULT 10;")?.use { it.step() }
+            } catch (e: Exception) {}
 
             resolveOrphanFoldersInternal(db)
             resolveOrphanResultsInternal(db)
@@ -286,7 +295,9 @@ class ResultsHandler(private val dbFile: File) {
         contentId: String,
         folderId: Long?,
         query: String,
-        name: String
+        name: String,
+        searchMode: Int = 0,
+        nearDistance: Int = 10
     ) {
         val ckId = UUID.randomUUID().toString()
         val now = System.currentTimeMillis() / 1000L
@@ -294,8 +305,8 @@ class ResultsHandler(private val dbFile: File) {
             val fCkId = if (folderId != null) fetchFolderCkRecordId(db, folderId) else null
             db.prepare(
                 """
-                INSERT INTO results (folder_id, name, query, archives, bkId, contentId, ckRecordId, lastModified, folderCkRecordId)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                INSERT INTO results (folder_id, name, query, archives, bkId, contentId, ckRecordId, lastModified, folderCkRecordId, searchMode, nearDistance)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
             )?.use { stmt ->
                 if (folderId != null) stmt.bindLong(1, folderId) else stmt.bindNull(1)
@@ -307,6 +318,8 @@ class ResultsHandler(private val dbFile: File) {
                 stmt.bindText(7, ckId)
                 stmt.bindLong(8, now)
                 if (fCkId != null) stmt.bindText(9, fCkId) else stmt.bindNull(9)
+                stmt.bindInt(10, searchMode)
+                stmt.bindInt(11, nearDistance)
                 stmt.step()
             }
         }
@@ -321,9 +334,9 @@ class ResultsHandler(private val dbFile: File) {
         val results = mutableListOf<RawResult>()
         openDb { db ->
             val sql = if (folderId != null) {
-                "SELECT id, folder_id, name, query, archives, bkId, contentId FROM results WHERE folder_id = ?"
+                "SELECT id, folder_id, name, query, archives, bkId, contentId, searchMode, nearDistance FROM results WHERE folder_id = ?"
             } else {
-                "SELECT id, folder_id, name, query, archives, bkId, contentId FROM results WHERE folder_id IS NULL"
+                "SELECT id, folder_id, name, query, archives, bkId, contentId, searchMode, nearDistance FROM results WHERE folder_id IS NULL"
             }
             db.prepare(sql)?.use { stmt ->
                 if (folderId != null) stmt.bindLong(1, folderId)
@@ -339,6 +352,8 @@ class ResultsHandler(private val dbFile: File) {
                             archive = stmt.columnInt(4),
                             bkId = stmt.columnInt(5),
                             contentId = stmt.columnText(6) ?: "",
+                            searchMode = stmt.columnInt(7),
+                            nearDistance = stmt.columnInt(8),
                         ),
                     )
                 }
@@ -562,51 +577,59 @@ class ResultsHandler(private val dbFile: File) {
             try {
                 if (operation == "upload") {
                     val validIds = mutableListOf<String>()
-                    db.prepare("SELECT COUNT(*) FROM sync_pending WHERE ck_record_id = ? AND operation = 'delete';")
-                        ?.use { stmt ->
-                            for (ckId in ckRecordIds) {
-                                stmt.bindText(1, ckId)
-                                if (stmt.step() == SQLiteDB.SQLITE_ROW && stmt.columnLong(0) == 0L) {
-                                    validIds.add(ckId)
-                                }
-                                stmt.reset()
-                                stmt.clearBindings()
+                    val hasDeleteIds = mutableSetOf<String>()
+                    for (chunk in ckRecordIds.chunked(900)) {
+                        val placeholders = chunk.joinToString(",") { "?" }
+                        db.prepare("SELECT ck_record_id FROM sync_pending WHERE ck_record_id IN ($placeholders) AND operation = 'delete';")?.use { stmt ->
+                            chunk.forEachIndexed { index, id ->
+                                stmt.bindText(index + 1, id)
+                            }
+                            while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                                stmt.columnText(0)?.let { hasDeleteIds.add(it) }
                             }
                         }
+                    }
+                    for (id in ckRecordIds) {
+                        if (!hasDeleteIds.contains(id)) {
+                            validIds.add(id)
+                        }
+                    }
                     val now = System.currentTimeMillis() / 1000L
-                    db.prepare("INSERT OR REPLACE INTO sync_pending (ck_record_id, operation, queued_at) VALUES (?, ?, ?);")
-                        ?.use { stmt ->
-                            for (ckId in validIds) {
-                                stmt.bindText(1, ckId)
-                                stmt.bindText(2, operation)
-                                stmt.bindLong(3, now)
-                                stmt.step()
-                                stmt.reset()
-                                stmt.clearBindings()
+                    for (chunk in validIds.chunked(300)) {
+                        val placeholders = chunk.joinToString(",") { "(?, ?, ?)" }
+                        db.prepare("INSERT OR REPLACE INTO sync_pending (ck_record_id, operation, queued_at) VALUES $placeholders;")?.use { stmt ->
+                            var bindIndex = 1
+                            for (id in chunk) {
+                                stmt.bindText(bindIndex++, id)
+                                stmt.bindText(bindIndex++, operation)
+                                stmt.bindLong(bindIndex++, now)
                             }
+                            stmt.step()
                         }
+                    }
                 } else if (operation == "delete") {
-                    db.prepare("DELETE FROM sync_pending WHERE ck_record_id = ? AND operation = 'upload';")
-                        ?.use { stmt ->
-                            for (ckId in ckRecordIds) {
-                                stmt.bindText(1, ckId)
-                                stmt.step()
-                                stmt.reset()
-                                stmt.clearBindings()
+                    for (chunk in ckRecordIds.chunked(900)) {
+                        val placeholders = chunk.joinToString(",") { "?" }
+                        db.prepare("DELETE FROM sync_pending WHERE ck_record_id IN ($placeholders) AND operation = 'upload';")?.use { stmt ->
+                            chunk.forEachIndexed { index, id ->
+                                stmt.bindText(index + 1, id)
                             }
+                            stmt.step()
                         }
+                    }
                     val now = System.currentTimeMillis() / 1000L
-                    db.prepare("INSERT OR REPLACE INTO sync_pending (ck_record_id, operation, queued_at) VALUES (?, ?, ?);")
-                        ?.use { stmt ->
-                            for (ckId in ckRecordIds) {
-                                stmt.bindText(1, ckId)
-                                stmt.bindText(2, operation)
-                                stmt.bindLong(3, now)
-                                stmt.step()
-                                stmt.reset()
-                                stmt.clearBindings()
+                    for (chunk in ckRecordIds.chunked(300)) {
+                        val placeholders = chunk.joinToString(",") { "(?, ?, ?)" }
+                        db.prepare("INSERT OR REPLACE INTO sync_pending (ck_record_id, operation, queued_at) VALUES $placeholders;")?.use { stmt ->
+                            var bindIndex = 1
+                            for (id in chunk) {
+                                stmt.bindText(bindIndex++, id)
+                                stmt.bindText(bindIndex++, operation)
+                                stmt.bindLong(bindIndex++, now)
                             }
+                            stmt.step()
                         }
+                    }
                 }
                 db.prepare("COMMIT;")?.use { it.step() }
             } catch (e: Exception) {
@@ -1037,6 +1060,8 @@ class ResultsHandler(private val dbFile: File) {
         ckRecordId = stmt.columnText(7),
         lastModified = if (stmt.columnType(8) != SQLiteDB.SQLITE_NULL) stmt.columnLong(8) else null,
         folderCkRecordId = stmt.columnText(9),
+        searchMode = stmt.columnInt(10),
+        nearDistance = stmt.columnInt(11),
     )
 
     private fun topologicalSort(folders: List<SyncFolder>): List<SyncFolder> {
@@ -1276,21 +1301,23 @@ class ResultsHandler(private val dbFile: File) {
         db.prepare(
             """
             UPDATE results SET folder_id = ?, name = ?, query = ?, archives = ?,
-            bkId = ?, contentId = ?, lastModified = ?, folderCkRecordId = ?
+            bkId = ?, contentId = ?, lastModified = ?, folderCkRecordId = ?, searchMode = ?, nearDistance = ?
             WHERE id = ?;
             """,
         )?.use { stmt ->
             if (newFolder != null) stmt.bindLong(1, newFolder) else stmt.bindNull(1)
             stmt.bindText(2, res.name); stmt.bindText(3, res.query); stmt.bindInt(4, res.archive)
             stmt.bindInt(5, res.bkId); stmt.bindText(6, res.contentId); stmt.bindLong(
-            7,
-            res.lastModified ?: 0
-        )
+                7,
+                res.lastModified ?: 0
+            )
             if (res.folderCkRecordId != null) stmt.bindText(
                 8,
                 res.folderCkRecordId
             ) else stmt.bindNull(8)
-            stmt.bindLong(9, existingId)
+            stmt.bindInt(9, res.searchMode)
+            stmt.bindInt(10, res.nearDistance)
+            stmt.bindLong(11, existingId)
             stmt.step()
         }
     }
@@ -1305,8 +1332,8 @@ class ResultsHandler(private val dbFile: File) {
         if (isOrphan) {
             db.prepare(
                 """
-                INSERT INTO results (folder_id, name, query, archives, bkId, contentId, ckRecordId, lastModified, folderCkRecordId)
-                VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?);
+                INSERT INTO results (folder_id, name, query, archives, bkId, contentId, ckRecordId, lastModified, folderCkRecordId, searchMode, nearDistance)
+                VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
             )?.use { stmt ->
                 stmt.bindText(1, res.name); stmt.bindText(2, res.query); stmt.bindInt(
@@ -1319,6 +1346,8 @@ class ResultsHandler(private val dbFile: File) {
                     8,
                     res.folderCkRecordId
                 ) else stmt.bindNull(8)
+                stmt.bindInt(9, res.searchMode)
+                stmt.bindInt(10, res.nearDistance)
                 stmt.step()
             }
             return
@@ -1353,7 +1382,7 @@ class ResultsHandler(private val dbFile: File) {
                 db.prepare(
                     """
                     UPDATE results SET folder_id = ?, name = ?, query = ?, archives = ?,
-                    bkId = ?, contentId = ?, ckRecordId = ?, lastModified = ?, folderCkRecordId = ?
+                    bkId = ?, contentId = ?, ckRecordId = ?, lastModified = ?, folderCkRecordId = ?, searchMode = ?, nearDistance = ?
                     WHERE id = ?;
                     """,
                 )?.use { stmt ->
@@ -1371,7 +1400,9 @@ class ResultsHandler(private val dbFile: File) {
                         9,
                         res.folderCkRecordId
                     ) else stmt.bindNull(9)
-                    stmt.bindLong(10, conflictId)
+                    stmt.bindInt(10, res.searchMode)
+                    stmt.bindInt(11, res.nearDistance)
+                    stmt.bindLong(12, conflictId)
                     stmt.step()
                 }
             } else {
@@ -1382,8 +1413,8 @@ class ResultsHandler(private val dbFile: File) {
         } else {
             db.prepare(
                 """
-                INSERT INTO results (folder_id, name, query, archives, bkId, contentId, ckRecordId, lastModified, folderCkRecordId)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                INSERT INTO results (folder_id, name, query, archives, bkId, contentId, ckRecordId, lastModified, folderCkRecordId, searchMode, nearDistance)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
             )?.use { stmt ->
                 if (fLocalId != null) stmt.bindLong(1, fLocalId) else stmt.bindNull(1)
@@ -1397,6 +1428,8 @@ class ResultsHandler(private val dbFile: File) {
                     9,
                     res.folderCkRecordId
                 ) else stmt.bindNull(9)
+                stmt.bindInt(10, res.searchMode)
+                stmt.bindInt(11, res.nearDistance)
                 stmt.step()
             }
         }
@@ -1412,6 +1445,8 @@ class ResultsHandler(private val dbFile: File) {
         val archive: Int,
         val bkId: Int,
         val contentId: String,
+        val searchMode: Int,
+        val nearDistance: Int,
     )
 
     private data class Quadruple(

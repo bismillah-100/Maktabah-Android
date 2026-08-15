@@ -17,6 +17,7 @@ import com.maktabah.search.SearchEngine
 import com.maktabah.utils.convertToArabicDigits
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.snippetAround
+import com.maktabah.utils.snippetNear
 import com.maktabah.utils.stripSpanTags
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -93,6 +94,23 @@ class SearchViewModel : ViewModel() {
     private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
     val searchHistory: StateFlow<List<String>> = _searchHistory.asStateFlow()
 
+    private val _nearDistance = MutableStateFlow(10)
+    val nearDistance: StateFlow<Int> = _nearDistance.asStateFlow()
+
+    fun updateNearDistance(distance: Int, context: Context? = null) {
+        _nearDistance.value = distance
+        if (context != null && distance > 0) {
+            val prefs = context.getSharedPreferences("search_prefs", Context.MODE_PRIVATE)
+            prefs.edit { putInt("searchNearDistance", distance).apply() }
+        }
+    }
+
+    fun loadPreferences(context: Context) {
+        val prefs = context.getSharedPreferences("search_prefs", Context.MODE_PRIVATE)
+        val distance = prefs.getInt("searchNearDistance", 10)
+        _nearDistance.value = if (distance <= 0) 10 else distance
+    }
+
     private var isInitialized = false
 
     fun initialize(
@@ -103,6 +121,7 @@ class SearchViewModel : ViewModel() {
         if (isInitialized) return
         isInitialized = true
         loadHistory(context)
+        loadPreferences(context)
 
         viewModelScope.launch {
             downloadedBookIdsFlow.collect { ids ->
@@ -418,7 +437,7 @@ class SearchViewModel : ViewModel() {
                 }
 
                 else -> {
-                    query.normalizeArabic().split(" ").filter { it.isNotBlank() }
+                    query.normalizeArabic().split(",").map { it.trim() }.filter { it.isNotBlank() }
                 }
             }.map { it.convertToArabicDigits() }
 
@@ -436,12 +455,14 @@ class SearchViewModel : ViewModel() {
 
                 if (archiveFile.exists() && ftsFile.exists()) {
                     try {
+                        val effectiveDistance = if (_nearDistance.value <= 0) 10 else _nearDistance.value
                         val bookResults = searchEngine.searchInBook(
                             bookId = book.id,
                             archiveFile = archiveFile,
                             archiveFtsFile = ftsFile,
                             query = query,
                             mode = mode,
+                            nearDistance = effectiveDistance,
                             limit = 50, // Limit per book to ensure UI speed
                             onRowProgress = { current, total ->
                                 _currentBookProgress.value = Pair(current, total)
@@ -451,8 +472,11 @@ class SearchViewModel : ViewModel() {
                         val mapped = bookResults.map {
                             val stripped = it.nass.stripSpanTags()
                             val normalized = stripped.convertToArabicDigits()
-                            val snippet =
+                            val snippet = if (mode == SearchMode.NEAR) {
+                                normalized.snippetNear(searchKeywords, effectiveDistance, contextLength = 60)
+                            } else {
                                 normalized.snippetAround(searchKeywords, contextLength = 60)
+                            }
 
 
                             SearchResult(
@@ -492,7 +516,8 @@ class SearchViewModel : ViewModel() {
     fun loadSavedResults(items: List<SavedResultsItem>, context: Context, dataManager: LibraryDataManager) {
         val firstItem = items.firstOrNull() ?: return
         _lastSearchQuery.value = firstItem.query
-        _lastSearchMode.value = SearchMode.PHRASE // Saved results don't store mode, assume phrase for highlight
+        _lastSearchMode.value = SearchMode.entries.getOrElse(firstItem.searchMode) { SearchMode.PHRASE }
+        _nearDistance.value = firstItem.nearDistance
 
         viewModelScope.launch {
             _isSearching.value = true
@@ -529,18 +554,19 @@ class SearchViewModel : ViewModel() {
                                 try {
                                     bookItems.chunked(900).forEach { chunk ->
                                         val placeholders = chunk.joinToString(",") { "?" }
-                                        db.prepare("SELECT id, nass, page, part FROM b$bkId WHERE id IN ($placeholders)")?.use { stmt ->
-                                            chunk.forEachIndexed { index, item ->
-                                                stmt.bindLong(index + 1, item.bookId.toLong())
-                                            }
+                                        db.prepare("SELECT id, nass, page, part FROM b$bkId WHERE id IN ($placeholders)")
+                                            ?.use { stmt ->
+                                                chunk.forEachIndexed { index, item ->
+                                                    stmt.bindLong(index + 1, item.bookId.toLong())
+                                                }
 
-                                            val itemsById = chunk.groupBy { it.bookId.toInt() }
+                                                val itemsById = chunk.groupBy { it.bookId.toInt() }
 
-                                            while (stmt.step() == com.maktabah.database.SQLiteDB.SQLITE_ROW) {
-                                                val contentId = stmt.columnInt(0)
-                                                val nassBlob = stmt.columnBlobDirect(1)
-                                                val page = stmt.columnInt(2)
-                                                val part = stmt.columnInt(3)
+                                                while (stmt.step() == com.maktabah.database.SQLiteDB.SQLITE_ROW) {
+                                                    val contentId = stmt.columnInt(0)
+                                                    val nassBlob = stmt.columnBlobDirect(1)
+                                                    val page = stmt.columnInt(2)
+                                                    val part = stmt.columnInt(3)
 
                                                 if (nassBlob != null) {
                                                     val nassString = com.maktabah.database.decompressBlob(nassBlob, zstdCtx)
@@ -549,8 +575,18 @@ class SearchViewModel : ViewModel() {
 
                                                     itemsById[contentId]?.forEach { item ->
                                                         val queryConverted = item.query.normalizeArabic().convertToArabicDigits()
-                                                        val searchKeywords = if (queryConverted.isNotBlank()) listOf(queryConverted) else emptyList()
-                                                        val snippet = normalized.snippetAround(searchKeywords, contextLength = 60)
+                                                        val searchKeywords = queryConverted
+                                                            .split(",")
+                                                            .map { it.trim() }
+                                                            .filter { it.isNotEmpty() }
+                                                            .map { it.trim() }
+                                                            .filter { it.isNotEmpty() }
+                                                        val effectiveDistance = if (_nearDistance.value <= 0) 10 else _nearDistance.value
+                                                        val snippet = if (_lastSearchMode.value == SearchMode.NEAR) {
+                                                            normalized.snippetNear(searchKeywords, effectiveDistance, contextLength = 60)
+                                                        } else {
+                                                            normalized.snippetAround(searchKeywords, contextLength = 60)
+                                                        }
 
                                                         allResults.add(
                                                             SearchResult(

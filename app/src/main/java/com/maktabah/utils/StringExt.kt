@@ -79,6 +79,7 @@ fun String.stripSpanTags(): String = replace(SPAN_REGEX, "")
 
 // ─── Honorific replacement dengan range tracking ───────────────────────────
 
+
 val HONORIFIC_PHRASES =
     listOf(
         "صلى الله عليه وسلم" to "\uFDFA",
@@ -388,11 +389,17 @@ fun String.stemArabicLight10(): String = ArabicLightStemmer.stemText(this)
 
 // ─── Arabic Matching Ranges & Snippet Around ──────────────────────────────────
 
+data class RangeWithIndex(val range: IntRange, val keywordIndex: Int)
+
 /**
  * Returns all IntRanges in `this` string that match any of the given Arabic keywords or multi-word phrases,
  * handling Alif, Ta Marbuta/Ha, Alif Maqsura/Ya, diacritics/tatweel stripping, and prefix variations.
  */
 fun String.findArabicMatchingRanges(keywords: List<String>): List<IntRange> {
+    return findArabicMatchingRangesWithIndex(keywords).map { it.range }
+}
+
+fun String.findArabicMatchingRangesWithIndex(keywords: List<String>): List<RangeWithIndex> {
     if (keywords.isEmpty() || this.isEmpty()) return emptyList()
 
     val normalizedChars = StringBuilder(this.length)
@@ -429,7 +436,7 @@ fun String.findArabicMatchingRanges(keywords: List<String>): List<IntRange> {
     }
 
     val normalizedText = normalizedChars.toString()
-    val ranges = mutableListOf<IntRange>()
+    val ranges = mutableListOf<RangeWithIndex>()
 
     fun coreWord(s: String): String = s.stemArabicLight10()
 
@@ -483,7 +490,7 @@ fun String.findArabicMatchingRanges(keywords: List<String>): List<IntRange> {
 
     if (textWords.isEmpty()) return emptyList()
 
-    for (keyword in keywords) {
+    for ((keywordIndex, keyword) in keywords.withIndex()) {
         val trimmed = keyword.trim()
         if (trimmed.isEmpty()) continue
 
@@ -527,8 +534,8 @@ fun String.findArabicMatchingRanges(keywords: List<String>): List<IntRange> {
 
                         if (rawUtf16End > rawUtf16Start) {
                             val range = IntRange(rawUtf16Start, rawUtf16End - 1)
-                            if (!ranges.contains(range)) {
-                                ranges.add(range)
+                            if (!ranges.any { it.range == range && it.keywordIndex == keywordIndex }) {
+                                ranges.add(RangeWithIndex(range, keywordIndex))
                             }
                         }
                     }
@@ -537,7 +544,7 @@ fun String.findArabicMatchingRanges(keywords: List<String>): List<IntRange> {
         }
     }
 
-    ranges.sortBy { it.first }
+    ranges.sortBy { it.range.first }
     return ranges
 }
 
@@ -590,6 +597,129 @@ fun String.snippetAround(keywords: List<String>, contextLength: Int = 60): Strin
     }
 
     return cleanSnippet
+}
+
+fun String.snippetNear(keywords: List<String>, nearDistance: Int, contextLength: Int = 60): String {
+    val rangesWithIndex = findArabicMatchingRangesWithIndex(keywords)
+    if (rangesWithIndex.isEmpty()) {
+        val limit = minOf(this.length, contextLength * 2)
+        return this.substring(0, limit).replace(WHITESPACE_REGEX, " ").trim()
+    }
+
+    val sortedRanges = rangesWithIndex.sortedBy { it.range.first }
+    val uniqueKeywordsCount = sortedRanges.map { it.keywordIndex }.toSet().size
+    var bestStartIdx: Int? = null
+    var bestEndIdx: Int? = null
+    var foundCluster = false
+
+    if (uniqueKeywordsCount > 1) {
+        val validRanges = filterRangesForNearMode(rangesWithIndex, uniqueKeywordsCount, nearDistance)
+        if (validRanges.isNotEmpty()) {
+            val sortedValid = validRanges.sortedBy { it.first }
+            bestStartIdx = sortedValid.first().first
+            bestEndIdx = sortedValid.last().last + 1
+            foundCluster = true
+        }
+    }
+
+    if (!foundCluster) {
+        bestStartIdx = sortedRanges[0].range.first
+        bestEndIdx = sortedRanges[0].range.last + 1
+    }
+
+    val targetStart = bestStartIdx ?: 0
+    val targetEnd = bestEndIdx ?: 0
+
+    var startIdx = maxOf(0, targetStart - contextLength)
+    var endIdx = minOf(this.length, targetEnd + contextLength)
+
+    if (startIdx > 0) {
+        val spaceIdx = this.lastIndexOf(' ', startIdx)
+        if (spaceIdx != -1) {
+            startIdx = spaceIdx + 1
+        }
+    }
+    if (endIdx < this.length) {
+        val spaceIdx = this.indexOf(' ', endIdx)
+        if (spaceIdx != -1) {
+            endIdx = spaceIdx
+        }
+    }
+
+    var cleanSnippet = this.substring(startIdx, endIdx)
+        .replace("\\n", " ")
+        .replace("\n", " ")
+        .replace("\r", " ")
+        .replace(WHITESPACE_REGEX, " ")
+        .trim()
+
+    if (startIdx > 0) {
+        cleanSnippet = "...$cleanSnippet"
+    }
+    if (endIdx < this.length) {
+        cleanSnippet = "$cleanSnippet..."
+    }
+
+    return cleanSnippet
+}
+
+fun String.filterRangesForNearMode(rangesWithIndex: List<RangeWithIndex>, keywordsCount: Int, nearDistance: Int): List<IntRange> {
+    if (rangesWithIndex.size < 2 || keywordsCount <= 1) return rangesWithIndex.map { it.range }
+
+    val sortedRanges = rangesWithIndex.sortedBy { it.range.first }
+    val uniqueKeywordsCount = sortedRanges.map { it.keywordIndex }.toSet().size
+    if (uniqueKeywordsCount <= 1) return emptyList()
+
+    val maxAllowedDistance = nearDistance * (uniqueKeywordsCount - 1) + 5
+    val validRanges = mutableSetOf<IntRange>()
+
+    var left = 0
+    val countMap = mutableMapOf<Int, Int>()
+    var satisfiedTypes = 0
+
+    for (right in sortedRanges.indices) {
+        val rightKw = sortedRanges[right].keywordIndex
+        val count = countMap.getOrDefault(rightKw, 0)
+        countMap[rightKw] = count + 1
+        if (countMap[rightKw] == 1) satisfiedTypes++
+
+        while (satisfiedTypes == uniqueKeywordsCount) {
+            val leftKw = sortedRanges[left].keywordIndex
+            val leftCount = countMap.getOrDefault(leftKw, 0)
+            if (leftCount > 1) {
+                countMap[leftKw] = leftCount - 1
+                left++
+            } else {
+                break
+            }
+        }
+
+        if (satisfiedTypes != uniqueKeywordsCount) continue
+
+        val startRange = sortedRanges[left].range
+        val endRange = sortedRanges[right].range
+
+        if (startRange == endRange) {
+            validRanges.add(startRange)
+            continue
+        }
+
+        val startBound = startRange.last + 1
+        val endBound = endRange.first
+
+        if (startBound <= endBound && endBound <= this.length) {
+            val textBetween = this.substring(startBound, endBound)
+            val wordsBetween = textBetween.split(WHITESPACE_REGEX).count { it.isNotEmpty() }
+
+            if (wordsBetween <= maxAllowedDistance) {
+                for (k in left..right) {
+                    validRanges.add(sortedRanges[k].range)
+                }
+            }
+        }
+    }
+
+    return sortedRanges.map { it.range }.filter { validRanges.contains(it) }
 }
 
 

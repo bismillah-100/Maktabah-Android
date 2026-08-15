@@ -53,6 +53,8 @@ constructor(
     var contentId: Int = -1
     var lastAnnotations: List<Annotation>? = null
     var lastSearchQuery: String? = null
+    var lastSearchMode: Int = -1
+    var lastNearDistance: Int = -1
     var lastTextColor: Int = 0
     var lastBackgroundColor: Int = 0
     var lastHighlightColor: Int = 0

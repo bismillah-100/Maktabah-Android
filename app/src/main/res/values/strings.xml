@@ -102,11 +102,14 @@
     <string name="search_help_action_close">Close</string>
     <string name="search_help_title">Search Options</string>
     <string name="search_help_phrase_title">Exact Phrase</string>
-    <string name="search_help_phrase_desc">Search for the exact sentence as written.</string>
+    <string name="search_help_phrase_desc">Ensures all typed words are found adjacently and in the exact order in the data. (e.g., عقيدة الإمام الشافعي)</string>
     <string name="search_help_and_title">All Words (AND)</string>
-    <string name="search_help_and_desc">Search for pages containing all entered words, in any order.</string>
+    <string name="search_help_and_desc">Searches for words separated by a comma (,). The words do not need to be adjacent or in the order specified. (e.g., صلاة الجماعة, المأموم المسبوق)</string>
     <string name="search_help_or_title">Any Word (OR)</string>
-    <string name="search_help_or_desc">Search for pages containing at least one of the entered words.</string>
+    <string name="search_help_or_desc">Searches for records containing at least one of the words or phrases separated by a comma (,). Records matching any of the entries will be included in the results. (e.g., زكاة ,الصوم)</string>
+    <string name="search_help_near_title">Near Words (NEAR)</string>
+    <string name="search_help_near_desc">Searches for words separated by a comma (,) that appear near each other within the maximum word distance set in the number field. (e.g., الإيمان, العمل)</string>
+    <string name="search_near_distance_label">Max Distance (Words):</string>
     <string name="search_action_help">Help</string>
     <string name="search_action_start">Start Search</string>
     <string name="search_action_clear_query">Clear query</string>

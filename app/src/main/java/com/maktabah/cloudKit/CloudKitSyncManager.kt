@@ -198,6 +198,8 @@ class CloudKitSyncManager {
                             val v = it.opt("value")
                             if (v == null || v == JSONObject.NULL) null else v.toString()
                         }
+                        val searchMode = fields.optJSONObject("searchMode")?.optInt("value", 0) ?: 0
+                        val nearDistance = fields.optJSONObject("nearDistance")?.optInt("value", 10) ?: 10
                         resultsToSave.add(SyncResult(
                             name = name,
                             query = query,
@@ -206,7 +208,9 @@ class CloudKitSyncManager {
                             contentId = contentId,
                             ckRecordId = ckRecordId,
                             lastModified = lastModifiedVal,
-                            folderCkRecordId = folderCkRecordId
+                            folderCkRecordId = folderCkRecordId,
+                            searchMode = searchMode,
+                            nearDistance = nearDistance
                         ))
                         return@fetchChanges
                     }
@@ -593,6 +597,8 @@ class CloudKitSyncManager {
                         if (res.folderCkRecordId != null) {
                             put("folderCkRecordId", JSONObject().apply { put("value", res.folderCkRecordId) })
                         }
+                        put("searchMode", JSONObject().apply { put("value", res.searchMode) })
+                        put("nearDistance", JSONObject().apply { put("value", res.nearDistance) })
                     })
                 }
                 recordsToSave.put(record)

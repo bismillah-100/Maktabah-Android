@@ -63,6 +63,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -106,6 +108,7 @@ fun SearchScreen(
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+    val focusRequester = remember { FocusRequester() }
 
     val results by viewModel.searchResults.collectAsState()
     val filteredResults by viewModel.filteredSearchResults.collectAsState()
@@ -113,6 +116,7 @@ fun SearchScreen(
     val lastSearchQuery by viewModel.lastSearchQuery.collectAsState()
     val lastSearchMode by viewModel.lastSearchMode.collectAsState()
     val searchHistory by viewModel.searchHistory.collectAsState()
+    val nearDistance by viewModel.nearDistance.collectAsState()
 
     var query by remember(lastSearchQuery) { mutableStateOf(lastSearchQuery) }
     var activeSearchMode by remember(lastSearchMode) { mutableStateOf(lastSearchMode) }
@@ -275,57 +279,73 @@ fun SearchScreen(
                             }
                         )
 
-                        QueryInputBar(
-                            query = query,
-                            onQueryChange = { newQuery ->
-                                query = newQuery
-                                if (newQuery.isEmpty()) {
-                                    viewModel.clearResults()
-                                    onClearContentSearchQuery()
-                                }
-                            },
-                            onSearch = {
-                                focusManager.clearFocus()
-                                viewModel.performSearch(
-                                    context,
-                                    query,
-                                    activeSearchMode,
-                                    libraryViewModel.dataManager
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .onFocusChanged { isFocused = it.hasFocus }
+                                .padding(
+                                    bottom = androidx.compose.ui.unit.max(
+                                        bottomPadding,
+                                        imeBottom
+                                    ) + 8.dp
                                 )
-                            },
-                            canSearch = query.isNotBlank(),
-                            placeholder = stringResource(R.string.search_query_placeholder),
-                            modifier =
-                                Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = androidx.compose.ui.unit.max(bottomPadding, imeBottom) + 8.dp),
-                            onFocusChanged = { isFocused = it }
-                        )
-
-                        if (isFocused) {
-                            SearchHistoryOverlay(
-                                searchHistory = searchHistory,
-                                onClearAll = { viewModel.clearHistory(context) },
-                                onHistoryClick = { historyQuery ->
-                                    query = historyQuery
-                                    focusManager.clearFocus()
-                                    viewModel.performSearch(
-                                        context,
-                                        historyQuery,
-                                        activeSearchMode,
-                                        libraryViewModel.dataManager
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                if (isFocused) {
+                                    SearchHistoryOverlay(
+                                        searchHistory = searchHistory,
+                                        onClearAll = { viewModel.clearHistory(context) },
+                                        onHistoryClick = { historyQuery ->
+                                            query = historyQuery
+                                            focusManager.clearFocus()
+                                            viewModel.performSearch(
+                                                context,
+                                                historyQuery,
+                                                activeSearchMode,
+                                                libraryViewModel.dataManager
+                                            )
+                                        },
+                                        onRemoveHistory = { historyQuery ->
+                                            viewModel.removeFromHistory(context, historyQuery)
+                                        },
+                                        activeMode = activeSearchMode,
+                                        onModeSelect = {
+                                            activeSearchMode = it
+                                            focusRequester.requestFocus()
+                                        },
+                                        nearDistance = nearDistance,
+                                        onNearDistanceChange = { viewModel.updateNearDistance(it, context) },
+                                        onHelpClick = { showHelpDialog = true }
                                     )
-                                },
-                                onRemoveHistory = { historyQuery ->
-                                    viewModel.removeFromHistory(context, historyQuery)
-                                },
-                                activeMode = activeSearchMode,
-                                onModeSelect = { activeSearchMode = it },
-                                onHelpClick = { showHelpDialog = true },
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = androidx.compose.ui.unit.max(bottomPadding, imeBottom) + 88.dp)
-                            )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                }
+
+                                QueryInputBar(
+                                    query = query,
+                                    onQueryChange = { newQuery ->
+                                        query = newQuery
+                                        if (newQuery.isEmpty()) {
+                                            viewModel.clearResults()
+                                            onClearContentSearchQuery()
+                                        }
+                                    },
+                                    onSearch = {
+                                        focusManager.clearFocus()
+                                        viewModel.performSearch(
+                                            context,
+                                            query,
+                                            activeSearchMode,
+                                            libraryViewModel.dataManager
+                                        )
+                                    },
+                                    canSearch = query.isNotBlank(),
+                                    placeholder = stringResource(R.string.search_query_placeholder),
+                                    onFocusChanged = { /* Handled by parent Box */ },
+                                    focusRequester = focusRequester
+                                )
+                            }
                         }
 
                         if (showHelpDialog) {
@@ -349,7 +369,8 @@ fun SearchScreen(
                             SearchResultsOverlay(
                                 filteredResults = filteredResults,
                                 query = lastSearchQuery,
-                                searchMode = activeSearchMode,
+                                searchMode = lastSearchMode,
+                                nearDistance = nearDistance,
                                 bookFilter = bookFilter,
                                 onBookFilterChange = { viewModel.updateBookFilter(it, libraryViewModel.dataManager) },
                                 onClearResults = {
@@ -414,6 +435,7 @@ fun SearchScreen(
                         )
                     }
                 }
+
                 1 -> {
                     SavedResultsScreen(
                         resultsViewModel = resultsViewModel,
@@ -434,6 +456,8 @@ fun SearchScreen(
         ResultWriterSheet(
             results = results,
             query = lastSearchQuery,
+            searchMode = lastSearchMode,
+            nearDistance = if (nearDistance <= 0) 10 else nearDistance,
             resultsViewModel = resultsViewModel,
             dataManager = libraryViewModel.dataManager,
             onDismiss = { showResultWriter = false }
@@ -560,9 +584,9 @@ private fun SearchFilterTopBar(
                 placeholder = stringResource(R.string.library_search_books_placeholder),
                 modifier = Modifier
                     .padding(end = searchPaddingEnd)
-                    .fillMaxWidth(),
-                onClearClick = { onQueryChange("") },
-                onFocusChanged = { isSearchFocused = it }
+                    .fillMaxWidth()
+                    .onFocusChanged { isSearchFocused = it.isFocused },
+                onClearClick = { onQueryChange("") }
             )
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -703,6 +727,7 @@ private fun SearchResultsOverlay(
     filteredResults: List<SearchResult>,
     query: String,
     searchMode: SearchMode,
+    nearDistance: Int,
     bookFilter: String,
     onBookFilterChange: (String) -> Unit,
     onClearResults: () -> Unit,
@@ -769,9 +794,9 @@ private fun SearchResultsOverlay(
                         placeholder = stringResource(R.string.search_filter_placeholder),
                         modifier = Modifier
                             .padding(end = searchPaddingEnd)
-                            .fillMaxWidth(),
-                        onClearClick = { onBookFilterChange("") },
-                        onFocusChanged = { isSearchFocused = it }
+                            .fillMaxWidth()
+                            .onFocusChanged { isSearchFocused = it.isFocused },
+                        onClearClick = { onBookFilterChange("") }
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -830,6 +855,7 @@ private fun SearchResultsOverlay(
             if (normalized.isBlank()) emptyList()
             else when (searchMode) {
                 SearchMode.PHRASE -> listOf(normalized)
+                SearchMode.NEAR -> normalized.split(",").map { it.trim() }.filter { it.isNotBlank() }
                 else -> normalized.split(" ").filter { it.isNotBlank() }
             }.map { it.convertToArabicDigits() }
         }
@@ -849,6 +875,12 @@ private fun SearchResultsOverlay(
                 key = { "${filteredResults[it].bookId}_${filteredResults[it].contentId}" },
             ) { index ->
                 val result = filteredResults[index]
+                val effectiveNearDistance = if (nearDistance <= 0) 10 else nearDistance
+                val finalQuery = if (searchMode == SearchMode.NEAR) {
+                    "NEAR:$effectiveNearDistance:$query"
+                } else {
+                    query
+                }
                 val bookName =
                     libraryViewModel.dataManager.booksById[result.bookId]?.name
                         ?: stringResource(R.string.library_fallback_book_name)
@@ -856,7 +888,7 @@ private fun SearchResultsOverlay(
                 InsetGroupedItem(
                     index = index,
                     lastIndex = filteredResults.lastIndex,
-                    onClick = { onSelect(result.bookId, result.contentId, null, null, query) },
+                    onClick = { onSelect(result.bookId, result.contentId, null, null, finalQuery) },
                     color = MaterialTheme.colorScheme.surface,
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                     dividerStartPadding = Dp.Hairline,
@@ -889,7 +921,9 @@ private fun SearchResultsOverlay(
                             Spacer(modifier = Modifier.height(4.dp))
                             val highlightedText = buildHighlightedText(
                                 text = result.text,
-                                searchKeywords = searchKeywords
+                                searchKeywords = searchKeywords,
+                                searchMode = searchMode,
+                                nearDistance = effectiveNearDistance
                             )
                             Text(
                                 text = highlightedText,

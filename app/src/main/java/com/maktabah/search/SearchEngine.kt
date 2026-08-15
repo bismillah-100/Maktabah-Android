@@ -23,6 +23,7 @@ class SearchEngine {
         archiveFtsFile: File,
         query: String,
         mode: SearchMode = SearchMode.PHRASE,
+        nearDistance: Int = 10,
         limit: Int = 100,
         offset: Int = 0,
         onRowProgress: (current: Int, total: Int) -> Unit = { _, _ -> }
@@ -47,16 +48,35 @@ class SearchEngine {
             val ftsTableName = "${tableName}_fts"
 
             // Normalize & stem keywords using Lucene Light10 Stemmer
-            val stemmedKeywords = query.normalizeArabic()
-                .split(" ")
-                .filter { it.isNotBlank() }
-                .map { it.stemArabicLight10() }
+            val stemmedKeywords = if (mode == SearchMode.PHRASE) {
+                query.normalizeArabic()
+                    .split(" ")
+                    .filter { it.isNotBlank() }
+                    .map { it.stemArabicLight10() }
+            } else {
+                query.normalizeArabic()
+                    .split(",")
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .map { phrase ->
+                        phrase.split(" ").filter { it.isNotBlank() }
+                            .joinToString(" ") { it.stemArabicLight10() }
+                    }
+            }
 
             // Build FTS query
-            val ftsQuery = when (mode) {
-                SearchMode.PHRASE -> "\"${stemmedKeywords.joinToString(" ")}\""
-                SearchMode.CONTAINS -> stemmedKeywords.joinToString(" AND ")
-                SearchMode.OR -> stemmedKeywords.joinToString(" OR ")
+            val ftsQuery = if (mode == SearchMode.PHRASE) {
+                "\"${stemmedKeywords.joinToString(" ")}\""
+            } else if (stemmedKeywords.size == 1) {
+                "\"${stemmedKeywords.first()}\""
+            } else {
+                val quoted = stemmedKeywords.map { "\"$it\"" }
+                when (mode) {
+                    SearchMode.CONTAINS -> quoted.joinToString(" AND ")
+                    SearchMode.OR -> quoted.joinToString(" OR ")
+                    SearchMode.NEAR -> "NEAR(${quoted.joinToString(" ")}, $nearDistance)"
+                    SearchMode.PHRASE -> quoted.joinToString(" ") // Should not reach here
+                }
             }
 
 

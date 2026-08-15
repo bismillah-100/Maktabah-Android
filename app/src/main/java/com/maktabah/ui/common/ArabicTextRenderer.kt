@@ -18,6 +18,10 @@ import com.maktabah.models.Annotation
 import com.maktabah.utils.HonorificReplacementResult
 import com.maktabah.utils.convertToArabicDigits
 import com.maktabah.utils.findArabicMatchingRanges
+import com.maktabah.utils.findArabicMatchingRangesWithIndex
+import com.maktabah.utils.filterRangesForNearMode
+import com.maktabah.utils.isArabicHarakat
+import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.removingHarakat
 import com.maktabah.utils.replacingHonorificPhrasesWithEvents
 import java.text.Bidi
@@ -270,6 +274,8 @@ object ArabicTextRenderer {
         showHarakat: Boolean = true,
         annotations: List<Annotation> = emptyList(),
         searchQuery: String? = null,
+        searchMode: Int = 0,
+        nearDistance: Int = 10,
         isImported: Boolean = true,
         isMultiLanguage: Boolean = false,
         typeface: Typeface? = null,
@@ -364,17 +370,52 @@ object ArabicTextRenderer {
         if (!searchQuery.isNullOrBlank()) {
             val searchResult = honorific // honorific contains the final rendered text
             val renderedStr = searchResult.text
-            val ranges = renderedStr.findArabicMatchingRanges(listOf(searchQuery))
-            val searchQueryColor = android.graphics.Color.argb(64, 255, 213, 79)
+            val searchTerms = searchQuery
+                .replace("،", ",")
+                .split(",")
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .map { it.replacingHonorificPhrasesWithEvents().text }
 
-            for (r in ranges) {
-                if (r.first >= 0 && r.last < spannable.length && r.first <= r.last) {
-                    spannable.setSpan(
-                        BackgroundColorSpan(searchQueryColor),
-                        r.first,
-                        r.last + 1,
-                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                    )
+            if (searchTerms.isNotEmpty()) {
+                val colors = listOf(
+                    android.graphics.Color.argb(64, 255, 213, 79), // Yellow
+                    android.graphics.Color.argb(102, 255, 0, 255), // Magenta
+                    android.graphics.Color.argb(102, 255, 105, 180), // Pink
+                    android.graphics.Color.argb(102, 128, 0, 128), // Purple
+                    android.graphics.Color.argb(102, 75, 0, 130)  // Indigo
+                )
+
+                if (searchMode == 3 && searchTerms.size > 1) { // 3 is NEAR mode
+                    val rangesWithIndex = renderedStr.findArabicMatchingRangesWithIndex(searchTerms)
+                    val filteredRanges = renderedStr.filterRangesForNearMode(rangesWithIndex, searchTerms.size, nearDistance)
+                    for ((i, r) in filteredRanges.withIndex()) {
+                        val color = colors[i % colors.size]
+                        if (r.first >= 0 && r.last < spannable.length && r.first <= r.last) {
+                            spannable.setSpan(
+                                BackgroundColorSpan(color),
+                                r.first,
+                                r.last + 1,
+                                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                            )
+                        }
+                    }
+                } else {
+                    for ((index, term) in searchTerms.withIndex()) {
+                        val ranges = renderedStr.findArabicMatchingRanges(listOf(term))
+                        val color = colors[index % colors.size]
+
+                        for (r in ranges) {
+                            if (r.first >= 0 && r.last < spannable.length && r.first <= r.last) {
+                                spannable.setSpan(
+                                    BackgroundColorSpan(color),
+                                    r.first,
+                                    r.last + 1,
+                                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

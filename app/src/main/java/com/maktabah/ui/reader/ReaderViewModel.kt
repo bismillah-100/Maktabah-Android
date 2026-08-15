@@ -109,6 +109,12 @@ class ReaderViewModel : ViewModel() {
     private val _searchQuery = MutableStateFlow<String?>(null)
     val searchQuery: StateFlow<String?> = _searchQuery.asStateFlow()
 
+    private val _searchMode = MutableStateFlow<Int>(0)
+    val searchMode: StateFlow<Int> = _searchMode.asStateFlow()
+
+    private val _nearDistance = MutableStateFlow<Int>(10)
+    val nearDistance: StateFlow<Int> = _nearDistance.asStateFlow()
+
     private val _totalParts = MutableStateFlow(0)
     val totalParts: StateFlow<Int> = _totalParts.asStateFlow()
 
@@ -374,6 +380,13 @@ class ReaderViewModel : ViewModel() {
     }
 
     fun setFlashTarget(target: FlashTarget?) {
+        if (target?.query != null && target.query.startsWith("NEAR:")) {
+            val parts = target.query.split(":", limit = 3)
+            if (parts.size == 3) {
+                _flashTarget.value = target.copy(query = parts[2])
+                return
+            }
+        }
         _flashTarget.value = target
     }
 
@@ -381,8 +394,19 @@ class ReaderViewModel : ViewModel() {
         _flashTarget.value = null
     }
 
-    fun setSearchQuery(query: String?) {
+    fun setSearchQuery(query: String?, mode: Int = 0, distance: Int = 10) {
+        if (query != null && query.startsWith("NEAR:")) {
+            val parts = query.split(":", limit = 3)
+            if (parts.size == 3) {
+                _searchMode.value = 3 // SearchMode.NEAR ordinal
+                _nearDistance.value = parts[1].toIntOrNull() ?: distance
+                _searchQuery.value = parts[2]
+                return
+            }
+        }
         _searchQuery.value = query
+        _searchMode.value = mode
+        _nearDistance.value = distance
     }
 
     fun addAnnotationDirectly(

@@ -52,6 +52,8 @@ import com.maktabah.ui.common.ArabicTextRenderer
 import com.maktabah.ui.common.drawGenericVerticalScrollbar
 import com.maktabah.utils.HONORIFIC_PHRASES
 import com.maktabah.utils.findArabicMatchingRanges
+import com.maktabah.utils.findArabicMatchingRangesWithIndex
+import com.maktabah.utils.filterRangesForNearMode
 import com.maktabah.utils.isArabicHarakat
 import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.Job
@@ -78,6 +80,8 @@ fun IbarotReaderContentView(
     botPadPx: Float,
     paddingValues: PaddingValues,
     searchQuery: String?,
+    searchMode: Int = 0,
+    nearDistance: Int = 10,
     tabManager: ReaderTabManager? = null,
     tabId: String? = null,
     isMultiLanguage: Boolean = false,
@@ -223,6 +227,8 @@ fun IbarotReaderContentView(
                             showHarakat = showHarakat,
                             annotations = annotations,
                             searchQuery = searchQuery,
+                            searchMode = searchMode,
+                            nearDistance = nearDistance,
                             isMultiLanguage = isMultiLanguage,
                             typeface = typeface,
                             lateefTypeface = lateefTypeface,
@@ -232,6 +238,8 @@ fun IbarotReaderContentView(
                     this.contentId = contentId
                     this.lastAnnotations = annotations
                     this.lastSearchQuery = searchQuery
+                    this.lastSearchMode = searchMode
+                    this.lastNearDistance = nearDistance
                     this.lastTextColor = textColorInt
                     this.lastBackgroundColor = bgColorInt
                     this.lastHighlightColor = highlightColorInt
@@ -321,6 +329,8 @@ fun IbarotReaderContentView(
                                  textView.currentShowHarakat != showHarakat ||
                                  textView.lastAnnotations != annotations ||
                                  textView.lastSearchQuery != searchQuery ||
+                                 textView.lastSearchMode != searchMode ||
+                                 textView.lastNearDistance != nearDistance ||
                                  textView.lastTextColor != currentTextColorInt ||
                                  textView.lastBackgroundColor != currentBgColorInt ||
                                  textView.lastHighlightColor != currentHighlightColorInt
@@ -341,6 +351,8 @@ fun IbarotReaderContentView(
                         showHarakat = showHarakat,
                         annotations = annotations,
                         searchQuery = searchQuery,
+                        searchMode = searchMode,
+                        nearDistance = nearDistance,
                         isMultiLanguage = isMultiLanguage,
                         typeface = typeface,
                         lateefTypeface = lateefTypeface,
@@ -364,6 +376,8 @@ fun IbarotReaderContentView(
 
                 textView.lastAnnotations = annotations
                 textView.lastSearchQuery = searchQuery
+                textView.lastSearchMode = searchMode
+                textView.lastNearDistance = nearDistance
                 textView.currentShowHarakat = showHarakat
                 textView.lastTextColor = currentTextColorInt
                 textView.lastBackgroundColor = currentBgColorInt
@@ -432,9 +446,11 @@ fun IbarotReaderContentView(
                     }
                 } else if (flashTarget.query != null) {
                     val range = findQueryRange(
-                        textView.text,
-                        flashTarget.query,
-                        onlyParagraphStart = flashTarget.isParagraphStart
+                        text = textView.text,
+                        query = flashTarget.query,
+                        onlyParagraphStart = flashTarget.isParagraphStart,
+                        searchMode = searchMode,
+                        nearDistance = nearDistance
                     )
                     if (range != null) {
                         targetStart = range.first
@@ -541,6 +557,8 @@ private fun renderContent(
     showHarakat: Boolean,
     annotations: List<Annotation>,
     searchQuery: String?,
+    searchMode: Int,
+    nearDistance: Int,
     isMultiLanguage: Boolean,
     typeface: Typeface? = null,
     lateefTypeface: Typeface? = null,
@@ -561,6 +579,8 @@ private fun renderContent(
         showHarakat = showHarakat,
         annotations = annotations,
         searchQuery = searchQuery,
+        searchMode = searchMode,
+        nearDistance = nearDistance,
         isMultiLanguage = isMultiLanguage,
         typeface = typeface,
         lateefTypeface = lateefTypeface,
@@ -588,11 +608,26 @@ private fun findQueryRange(
     text: CharSequence,
     query: String,
     onlyParagraphStart: Boolean = false,
+    searchMode: Int = 0,
+    nearDistance: Int = 10,
 ): Pair<Int, Int>? {
+    val renderedStr = text.toString()
+    
+    if (searchMode == 3) {
+        val keywords = query.replace("،", ",").split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        if (keywords.size > 1) {
+            val rangesWithIndex = renderedStr.findArabicMatchingRangesWithIndex(keywords)
+            val filteredRanges = renderedStr.filterRangesForNearMode(rangesWithIndex, keywords.size, nearDistance)
+            val firstRange = filteredRanges.firstOrNull()
+            if (firstRange != null) {
+                return firstRange.first to firstRange.last + 1
+            }
+            return null
+        }
+    }
+
     val fuzzyQuery = buildFuzzyQuery(query)
     if (fuzzyQuery.isEmpty()) return null
-
-    val renderedStr = text.toString()
     val cleanToOrig = IntArray(renderedStr.length * 2)
     val fuzzyText = StringBuilder()
     var cleanIdx = 0
