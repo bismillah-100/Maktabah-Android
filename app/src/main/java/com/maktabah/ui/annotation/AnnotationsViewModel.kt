@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -90,6 +91,30 @@ class AnnotationsViewModel : ViewModel() {
         _selectedAnnotationIds.value = current
     }
 
+    private val _selectedTags = MutableStateFlow<Set<String>>(emptySet())
+    val selectedTags: StateFlow<Set<String>> = _selectedTags.asStateFlow()
+
+    val allTags: StateFlow<List<String>> = _annotations.map { annotations ->
+        val tagsSet = mutableSetOf<String>()
+        annotations.forEach { ann ->
+            ann.tags.split(",").forEach { tag ->
+                val trimmed = tag.trim()
+                if (trimmed.isNotEmpty()) tagsSet.add(trimmed)
+            }
+        }
+        tagsSet.toList().sortedWith(String.CASE_INSENSITIVE_ORDER)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun toggleTagSelection(tag: String) {
+        val current = _selectedTags.value.toMutableSet()
+        if (current.contains(tag)) {
+            current.remove(tag)
+        } else {
+            current.add(tag)
+        }
+        _selectedTags.value = current
+    }
+
     fun toggleGroupExpanded(key: String) {
         val current = _expandedGroups.value.toMutableMap()
         val isExpanded = current[key] ?: false
@@ -104,6 +129,9 @@ class AnnotationsViewModel : ViewModel() {
 
     fun setGroupingMode(mode: AnnotationGroupingMode) {
         _groupingMode.value = mode
+        if (mode != AnnotationGroupingMode.TAG) {
+            _selectedTags.value = emptySet()
+        }
     }
 
     fun setSortField(field: AnnotationSortField) {
@@ -264,13 +292,10 @@ class AnnotationsViewModel : ViewModel() {
 
     private val filterAndSortParams: Flow<FilterAndSortParams> =
         combine(
-            searchQuery,
-            _searchScope,
-            _groupingMode,
-            sortState,
-            _bookIdFilter
-        ) { query, scope, grouping, sort, bookFilter ->
-            FilterAndSortParams(query, scope, grouping, sort, bookFilter)
+            combine(searchQuery, _searchScope, _groupingMode) { q, s, g -> Triple(q, s, g) },
+            combine(sortState, _bookIdFilter, _selectedTags) { so, b, t -> Triple(so, b, t) }
+        ) { (query, scope, grouping), (sort, bookFilter, tags) ->
+            FilterAndSortParams(query, scope, grouping, sort, bookFilter, tags)
         }.debounce { params ->
             if (params.query.isEmpty()) 0L else 500L
         }
@@ -288,6 +313,13 @@ class AnnotationsViewModel : ViewModel() {
                 } else {
                     annotationsList
                 }
+
+            if (params.selectedTags.isNotEmpty()) {
+                filtered = filtered.filter { ann ->
+                    val annTags = ann.tags.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+                    params.selectedTags.any { tag -> annTags.contains(tag) }
+                }
+            }
 
             if (query.isNotBlank()) {
                 val normalizedQuery = query.normalizeArabic()
@@ -433,5 +465,6 @@ private data class FilterAndSortParams(
     val scope: AnnotationSearchScope,
     val grouping: AnnotationGroupingMode,
     val sort: Pair<AnnotationSortField, Boolean>,
-    val bookFilter: Int?
+    val bookFilter: Int?,
+    val selectedTags: Set<String>
 )

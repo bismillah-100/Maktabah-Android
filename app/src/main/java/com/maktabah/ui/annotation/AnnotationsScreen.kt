@@ -92,6 +92,10 @@ import com.maktabah.ui.search.AnnotationSearchScopeSegmentedRow
 import com.maktabah.ui.search.SearchTextField
 import com.maktabah.utils.GroupedCardDecoration
 import kotlinx.coroutines.Dispatchers
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.layout.Arrangement
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -122,6 +126,8 @@ fun AnnotationsScreen(
     val sortAscending by viewModel.sortAscending.collectAsState()
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedAnnotationIds by viewModel.selectedAnnotationIds.collectAsState()
+    val allTags by viewModel.allTags.collectAsState()
+    val selectedTags by viewModel.selectedTags.collectAsState()
     val focusManager = LocalFocusManager.current
 
     LaunchedEffect(viewModel, annotationManager, libraryViewModel) {
@@ -306,6 +312,9 @@ fun AnnotationsScreen(
                             )
                         )
                     },
+                    allTags = allTags,
+                    selectedTags = selectedTags,
+                    onToggleTagSelection = { viewModel.toggleTagSelection(it) }
                 )
             },
         ) { padding ->
@@ -487,6 +496,9 @@ private fun AnnotationsTopBar(
     dataManager: com.maktabah.manager.LibraryDataManager,
     onExportJsonRequested: (Boolean) -> Unit,
     onImportJsonRequested: () -> Unit,
+    allTags: List<String>,
+    selectedTags: Set<String>,
+    onToggleTagSelection: (String) -> Unit,
 ) {
     var isSyncing by remember { mutableStateOf(false) }
     var isSearchFocused by remember { mutableStateOf(false) }
@@ -861,6 +873,23 @@ private fun AnnotationsTopBar(
                     .height(38.dp)
                     .padding(start = 16.dp, end = 16.dp, bottom = 6.dp)
             )
+        }
+
+        if (groupingMode == AnnotationGroupingMode.TAG && allTags.isNotEmpty()) {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(allTags) { tag ->
+                    FilterChip(
+                        selected = selectedTags.contains(tag),
+                        onClick = { onToggleTagSelection(tag) },
+                        label = { Text(tag) }
+                    )
+                }
+            }
         }
     }
 }
