@@ -83,6 +83,7 @@ fun BookSearchSheet(
 
     LaunchedEffect(Unit) {
         bookSearchViewModel.loadHistory(context)
+        bookSearchViewModel.loadPreferences(context)
     }
 
     LaunchedEffect(isFocused) {
@@ -179,18 +180,19 @@ fun BookSearchSheet(
                                 index = index,
                                 lastIndex = results.lastIndex,
                                 onClick = {
+                                    val effectiveNearDistance = if (nearDistance <= 0) 10 else nearDistance
                                     if (viewModel.currentContent.value?.id != contentItem.id) {
                                         viewModel.loadContentById(contentItem.id)
                                     }
                                     viewModel.setSearchQuery(
                                         query = lastSearchQuery,
                                         mode = searchMode.ordinal,
-                                        distance = nearDistance
+                                        distance = effectiveNearDistance
                                     )
                                     viewModel.setFlashTarget(
                                         FlashTarget(
                                             query = if (searchMode == SearchMode.NEAR) {
-                                                "NEAR:$nearDistance:$lastSearchQuery"
+                                                "NEAR:$effectiveNearDistance:$lastSearchQuery"
                                             } else {
                                                 lastSearchQuery
                                             },
@@ -351,7 +353,7 @@ fun BookSearchSheet(
                         focusRequester.requestFocus()
                     },
                     nearDistance = nearDistance,
-                    onNearDistanceChange = { bookSearchViewModel.updateNearDistance(it) },
+                    onNearDistanceChange = { bookSearchViewModel.updateNearDistance(it, context) },
                     onHelpClick = { showHelpDialog = true }
                 )
             }

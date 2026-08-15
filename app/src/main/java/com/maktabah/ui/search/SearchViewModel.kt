@@ -94,11 +94,21 @@ class SearchViewModel : ViewModel() {
     private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
     val searchHistory: StateFlow<List<String>> = _searchHistory.asStateFlow()
 
-    private val _nearDistance = MutableStateFlow(5)
+    private val _nearDistance = MutableStateFlow(10)
     val nearDistance: StateFlow<Int> = _nearDistance.asStateFlow()
 
-    fun updateNearDistance(distance: Int) {
+    fun updateNearDistance(distance: Int, context: Context? = null) {
         _nearDistance.value = distance
+        if (context != null && distance > 0) {
+            val prefs = context.getSharedPreferences("search_prefs", Context.MODE_PRIVATE)
+            prefs.edit { putInt("searchNearDistance", distance).apply() }
+        }
+    }
+
+    fun loadPreferences(context: Context) {
+        val prefs = context.getSharedPreferences("search_prefs", Context.MODE_PRIVATE)
+        val distance = prefs.getInt("searchNearDistance", 10)
+        _nearDistance.value = if (distance <= 0) 10 else distance
     }
 
     private var isInitialized = false
@@ -111,6 +121,7 @@ class SearchViewModel : ViewModel() {
         if (isInitialized) return
         isInitialized = true
         loadHistory(context)
+        loadPreferences(context)
 
         viewModelScope.launch {
             downloadedBookIdsFlow.collect { ids ->
@@ -444,13 +455,14 @@ class SearchViewModel : ViewModel() {
 
                 if (archiveFile.exists() && ftsFile.exists()) {
                     try {
+                        val effectiveDistance = if (_nearDistance.value <= 0) 10 else _nearDistance.value
                         val bookResults = searchEngine.searchInBook(
                             bookId = book.id,
                             archiveFile = archiveFile,
                             archiveFtsFile = ftsFile,
                             query = query,
                             mode = mode,
-                            nearDistance = _nearDistance.value,
+                            nearDistance = effectiveDistance,
                             limit = 50, // Limit per book to ensure UI speed
                             onRowProgress = { current, total ->
                                 _currentBookProgress.value = Pair(current, total)
@@ -461,7 +473,7 @@ class SearchViewModel : ViewModel() {
                             val stripped = it.nass.stripSpanTags()
                             val normalized = stripped.convertToArabicDigits()
                             val snippet = if (mode == SearchMode.NEAR) {
-                                normalized.snippetNear(searchKeywords, _nearDistance.value, contextLength = 60)
+                                normalized.snippetNear(searchKeywords, effectiveDistance, contextLength = 60)
                             } else {
                                 normalized.snippetAround(searchKeywords, contextLength = 60)
                             }
@@ -569,8 +581,9 @@ class SearchViewModel : ViewModel() {
                                                             .filter { it.isNotEmpty() }
                                                             .map { it.trim() }
                                                             .filter { it.isNotEmpty() }
+                                                        val effectiveDistance = if (_nearDistance.value <= 0) 10 else _nearDistance.value
                                                         val snippet = if (_lastSearchMode.value == SearchMode.NEAR) {
-                                                            normalized.snippetNear(searchKeywords, _nearDistance.value, contextLength = 60)
+                                                            normalized.snippetNear(searchKeywords, effectiveDistance, contextLength = 60)
                                                         } else {
                                                             normalized.snippetAround(searchKeywords, contextLength = 60)
                                                         }

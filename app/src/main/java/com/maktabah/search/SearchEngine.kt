@@ -23,7 +23,7 @@ class SearchEngine {
         archiveFtsFile: File,
         query: String,
         mode: SearchMode = SearchMode.PHRASE,
-        nearDistance: Int = 5,
+        nearDistance: Int = 10,
         limit: Int = 100,
         offset: Int = 0,
         onRowProgress: (current: Int, total: Int) -> Unit = { _, _ -> }

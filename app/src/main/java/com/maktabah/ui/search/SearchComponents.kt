@@ -397,7 +397,7 @@ fun SearchHistoryOverlay(
                                 ) {
                                     if (nearDistance == 0) {
                                         Text(
-                                            text = "0",
+                                            text = "10",
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
                                                 alpha = 0.5f
@@ -510,7 +510,8 @@ fun buildHighlightedText(
 
             val ranges = if (searchMode == SearchMode.NEAR && searchKeywords.size > 1) {
                 val rangesWithIndex = text.findArabicMatchingRangesWithIndex(searchKeywords)
-                text.filterRangesForNearMode(rangesWithIndex, searchKeywords.size, nearDistance)
+                val effectiveDistance = if (nearDistance <= 0) 10 else nearDistance
+                text.filterRangesForNearMode(rangesWithIndex, searchKeywords.size, effectiveDistance)
             } else {
                 text.findArabicMatchingRanges(searchKeywords)
             }

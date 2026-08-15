@@ -43,11 +43,21 @@ class BookSearchViewModel : ViewModel() {
         _searchMode.value = mode
     }
 
-    private val _nearDistance = MutableStateFlow(5)
+    private val _nearDistance = MutableStateFlow(10)
     val nearDistance: StateFlow<Int> = _nearDistance.asStateFlow()
 
-    fun updateNearDistance(distance: Int) {
+    fun updateNearDistance(distance: Int, context: Context? = null) {
         _nearDistance.value = distance
+        if (context != null && distance > 0) {
+            val prefs = context.getSharedPreferences("search_prefs", Context.MODE_PRIVATE)
+            prefs.edit { putInt("searchNearDistance", distance).apply() }
+        }
+    }
+
+    fun loadPreferences(context: Context) {
+        val prefs = context.getSharedPreferences("search_prefs", Context.MODE_PRIVATE)
+        val distance = prefs.getInt("searchNearDistance", 10)
+        _nearDistance.value = if (distance <= 0) 10 else distance
     }
 
     private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
@@ -115,6 +125,7 @@ class BookSearchViewModel : ViewModel() {
             val ftsFile = File(ftsPath)
 
             try {
+                val effectiveDistance = if (_nearDistance.value <= 0) 10 else _nearDistance.value
                 val searchResults =
                     searchEngine.searchInBook(
                         bookId = bookId,
@@ -122,7 +133,7 @@ class BookSearchViewModel : ViewModel() {
                         archiveFtsFile = ftsFile,
                         query = currentQuery,
                         mode = currentMode,
-                        nearDistance = _nearDistance.value,
+                        nearDistance = effectiveDistance,
                         onRowProgress = { current, total ->
                             _searchProgress.value = Pair(current, total)
                         }

@@ -316,7 +316,7 @@ fun SearchScreen(
                                             focusRequester.requestFocus()
                                         },
                                         nearDistance = nearDistance,
-                                        onNearDistanceChange = { viewModel.updateNearDistance(it) },
+                                        onNearDistanceChange = { viewModel.updateNearDistance(it, context) },
                                         onHelpClick = { showHelpDialog = true }
                                     )
                                     Spacer(modifier = Modifier.height(8.dp))
@@ -370,7 +370,7 @@ fun SearchScreen(
                                 filteredResults = filteredResults,
                                 query = lastSearchQuery,
                                 searchMode = lastSearchMode,
-                                nearDistance = viewModel.nearDistance.collectAsState().value,
+                                nearDistance = nearDistance,
                                 bookFilter = bookFilter,
                                 onBookFilterChange = { viewModel.updateBookFilter(it, libraryViewModel.dataManager) },
                                 onClearResults = {
@@ -457,7 +457,7 @@ fun SearchScreen(
             results = results,
             query = lastSearchQuery,
             searchMode = lastSearchMode,
-            nearDistance = nearDistance,
+            nearDistance = if (nearDistance <= 0) 10 else nearDistance,
             resultsViewModel = resultsViewModel,
             dataManager = libraryViewModel.dataManager,
             onDismiss = { showResultWriter = false }
@@ -875,8 +875,9 @@ private fun SearchResultsOverlay(
                 key = { "${filteredResults[it].bookId}_${filteredResults[it].contentId}" },
             ) { index ->
                 val result = filteredResults[index]
+                val effectiveNearDistance = if (nearDistance <= 0) 10 else nearDistance
                 val finalQuery = if (searchMode == SearchMode.NEAR) {
-                    "NEAR:$nearDistance:$query"
+                    "NEAR:$effectiveNearDistance:$query"
                 } else {
                     query
                 }
@@ -922,7 +923,7 @@ private fun SearchResultsOverlay(
                                 text = result.text,
                                 searchKeywords = searchKeywords,
                                 searchMode = searchMode,
-                                nearDistance = nearDistance
+                                nearDistance = effectiveNearDistance
                             )
                             Text(
                                 text = highlightedText,
