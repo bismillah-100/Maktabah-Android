@@ -154,12 +154,11 @@ class CloudKitSyncManager {
 
     // endregion
 
-    suspend fun fetchChanges(
+    private suspend fun fetchChangesInternal(
         context: Context,
         annotationManager: AnnotationManager,
         historyViewModel: HistoryViewModel
-    ): String? = syncMutex.withLock {
-        withContext(Dispatchers.IO) {
+    ): String? = withContext(Dispatchers.IO) {
             val annotationsToSave = mutableListOf<Annotation>()
             val entriesToSave = mutableListOf<ReadingEntry>()
             val foldersToSave = mutableListOf<SyncFolder>()
@@ -397,13 +396,22 @@ class CloudKitSyncManager {
                     return@withContext "Sync failed: ${it.localizedMessage ?: it.message}"
                 }
             )
-        } }
+        }
 
-    suspend fun syncAnnotations(context: Context, annotationManager: AnnotationManager): String? =
-        syncMutex.withLock {
-            withContext(Dispatchers.IO) {
+    suspend fun fetchChanges(
+        context: Context,
+        annotationManager: AnnotationManager,
+        historyViewModel: HistoryViewModel
+    ): String? = syncMutex.withLock {
+        fetchChangesInternal(context, annotationManager, historyViewModel)
+    }
+
+    private suspend fun syncAnnotationsInternal(context: Context, annotationManager: AnnotationManager): String? =
+        withContext(Dispatchers.IO) {
             val annotations = annotationManager.getUnsyncedAnnotations()
             val deletedIds = annotationManager.getDeletedRecordIds()
+
+            if (annotations.isEmpty() && deletedIds.isEmpty()) return@withContext "Success"
 
             val recordsToSave = JSONArray()
             for (annotation in annotations) {
@@ -479,7 +487,12 @@ class CloudKitSyncManager {
                     "Failed: ${ex?.localizedMessage ?: msg}"
                 }
             }
-        } }
+        }
+
+    suspend fun syncAnnotations(context: Context, annotationManager: AnnotationManager): String? =
+        syncMutex.withLock {
+            syncAnnotationsInternal(context, annotationManager)
+        }
 
     /** Manual sync — dipakai oleh onSyncHistoryRequested di ReaderScreen. */
     suspend fun syncHistoryAndFavorites(context: Context, entries: List<ReadingEntry>): String? =
@@ -570,7 +583,7 @@ class CloudKitSyncManager {
 
     // region Search Results Sync
 
-    suspend fun syncResults(context: Context): String? = syncMutex.withLock {
+    private suspend fun syncResultsInternal(context: Context): String? =
         withContext(Dispatchers.IO) {
             val handler = getResultsHandler(context)
             val folders = handler.fetchAllSyncFolders()
@@ -649,6 +662,39 @@ class CloudKitSyncManager {
                     "Failed: ${ex?.localizedMessage ?: msg}"
                 }
             }
+        }
+
+    suspend fun syncResults(context: Context): String? = syncMutex.withLock {
+        syncResultsInternal(context)
+    }
+
+    /**
+     * Retry semua operasi pending (Anotasi, History & Favorit, Hasil Pencarian) dan tarik perubahan terbaru.
+     * Dipanggil saat aplikasi resume (ON_RESUME) dan saat koneksi internet pulih.
+     */
+    suspend fun retryAllPendingOperations(
+        context: Context,
+        annotationManager: AnnotationManager,
+        historyViewModel: HistoryViewModel,
+    ) = syncMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
+            if (prefs.getString("ckWebAuthToken", null) == null) return@withContext
+
+            // 1. Periksa perubahan akun user CloudKit
+            checkAccountChangeAndSync(context, annotationManager, historyViewModel)
+
+            // 2. Retry upload & delete Anotasi
+            syncAnnotationsInternal(context, annotationManager)
+
+            // 3. Retry upload & delete History & Favorit
+            retryPendingSyncs(context, historyViewModel)
+
+            // 4. Retry upload & delete Hasil Pencarian
+            syncResultsInternal(context)
+
+            // 5. Tarik perubahan terbaru dari CloudKit
+            fetchChangesInternal(context, annotationManager, historyViewModel)
         }
     }
 
