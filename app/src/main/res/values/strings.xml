@@ -201,6 +201,14 @@
     <string name="annotations_search_context">Context</string>
     <string name="annotations_search_note">Note</string>
     <string name="annotations_search_tag">Tag</string>
+    <string name="annotations_filter_tags_title">Filter Tags</string>
+    <string name="annotations_filter_tags_search">Search tags…</string>
+    <string name="annotations_filter_tags_clear">Clear All</string>
+    <string name="annotations_filter_tags_empty">No tags found</string>
+    <string name="annotations_filter_tags_done">Done</string>
+    <string name="annotations_tag_filter_mode_or">Filter Mode: OR (Any tag)</string>
+    <string name="annotations_tag_filter_mode_and">Filter Mode: AND (All tags)</string>
+    <string name="annotations_tag_filter_mode_desc">Toggle Filter Mode</string>
     <string name="history_title">History</string>
     <string name="history_search_placeholder">Search History…</string>
     <string name="history_empty">No history available</string>
