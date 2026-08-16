@@ -121,6 +121,7 @@ fun AnnotationsScreen(
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedAnnotationIds by viewModel.selectedAnnotationIds.collectAsState()
     val allTags by viewModel.allTags.collectAsState()
+    val availableTags by viewModel.availableTags.collectAsState()
     val selectedTags by viewModel.selectedTags.collectAsState()
     val tagFilterMode by viewModel.tagFilterMode.collectAsState()
     val focusManager = LocalFocusManager.current
@@ -343,7 +344,7 @@ fun AnnotationsScreen(
                     groupedAnnotations = groupedAnnotations,
                     expandedGroups = expandedGroups,
                     groupingMode = groupingMode,
-                    allTags = allTags,
+                    allTags = availableTags,
                     selectedTags = selectedTags,
                     tagFilterMode = tagFilterMode,
                     onToggleTagFilter = { viewModel.toggleTagSelection(it) },
@@ -480,6 +481,8 @@ fun AnnotationsScreen(
         TagFilterSelectionDialog(
             allTags = allTags,
             initialSelectedTags = selectedTags,
+            tagFilterMode = tagFilterMode,
+            availableTagsProvider = { viewModel.getAvailableTags(it) },
             onApplyTags = { viewModel.setSelectedTags(it) },
             onDismissRequest = { showTagFilterDialog = false }
         )

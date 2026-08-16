@@ -109,6 +109,45 @@ class AnnotationsViewModel : ViewModel() {
         tagsSet.toList().sortedWith(String.CASE_INSENSITIVE_ORDER)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val availableTags: StateFlow<List<String>> =
+        combine(_annotations, _selectedTags, _tagFilterMode) { annotations, selectedTags, mode ->
+            if (mode == TagFilterMode.AND && selectedTags.isNotEmpty()) {
+                val coOccurring = selectedTags.toMutableSet()
+                annotations.forEach { ann ->
+                    val annTags =
+                        ann.tags.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+                    if (selectedTags.all { annTags.contains(it) }) {
+                        coOccurring.addAll(annTags)
+                    }
+                }
+                coOccurring.toList().sortedWith(String.CASE_INSENSITIVE_ORDER)
+            } else {
+                val tagsSet = mutableSetOf<String>()
+                annotations.forEach { ann ->
+                    ann.tags.split(",").forEach { tag ->
+                        val trimmed = tag.trim()
+                        if (trimmed.isNotEmpty()) tagsSet.add(trimmed)
+                    }
+                }
+                tagsSet.toList().sortedWith(String.CASE_INSENSITIVE_ORDER)
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun getAvailableTags(selected: Set<String>): List<String> {
+        if (tagFilterMode.value == TagFilterMode.AND && selected.isNotEmpty()) {
+            val coOccurring = selected.toMutableSet()
+            _annotations.value.forEach { ann ->
+                val annTags =
+                    ann.tags.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+                if (selected.all { annTags.contains(it) }) {
+                    coOccurring.addAll(annTags)
+                }
+            }
+            return coOccurring.toList().sortedWith(String.CASE_INSENSITIVE_ORDER)
+        }
+        return allTags.value
+    }
+
     fun toggleTagSelection(tag: String) {
         val current = _selectedTags.value.toMutableSet()
         if (current.contains(tag)) {

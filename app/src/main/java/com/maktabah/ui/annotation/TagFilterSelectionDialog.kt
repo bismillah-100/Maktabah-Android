@@ -37,6 +37,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.maktabah.R
+import com.maktabah.models.TagFilterMode
 import com.maktabah.ui.search.SearchTextField
 import com.maktabah.utils.normalizeArabic
 
@@ -44,18 +45,28 @@ import com.maktabah.utils.normalizeArabic
 fun TagFilterSelectionDialog(
     allTags: List<String>,
     initialSelectedTags: Set<String>,
+    tagFilterMode: TagFilterMode = TagFilterMode.OR,
+    availableTagsProvider: ((Set<String>) -> List<String>)? = null,
     onApplyTags: (Set<String>) -> Unit,
     onDismissRequest: () -> Unit,
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var selectedTags by remember(initialSelectedTags) { mutableStateOf(initialSelectedTags) }
 
-    val filteredTags = remember(allTags, searchQuery) {
-        if (searchQuery.isBlank()) {
+    val baseTags = remember(allTags, selectedTags, tagFilterMode) {
+        if (tagFilterMode == TagFilterMode.AND && availableTagsProvider != null) {
+            availableTagsProvider(selectedTags)
+        } else {
             allTags
+        }
+    }
+
+    val filteredTags = remember(baseTags, searchQuery) {
+        if (searchQuery.isBlank()) {
+            baseTags
         } else {
             val normalizedQuery = searchQuery.normalizeArabic().trim().lowercase()
-            allTags.filter { tag ->
+            baseTags.filter { tag ->
                 tag.normalizeArabic().lowercase().contains(normalizedQuery) || tag.lowercase()
                     .contains(searchQuery.trim().lowercase())
             }
