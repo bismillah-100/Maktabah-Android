@@ -83,6 +83,16 @@ class ResultsHandler(private val dbFile: File) {
                 ?.use { it.step() }
             db.prepare("CREATE INDEX IF NOT EXISTS idx_sync_pending_op_queued ON sync_pending (operation, queued_at);")
                 ?.use { it.step() }
+            db.prepare("CREATE INDEX IF NOT EXISTS idx_folders_ck_record_id ON folders (ckRecordId);")
+                ?.use { it.step() }
+            db.prepare("CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders (parent);")
+                ?.use { it.step() }
+            db.prepare("CREATE INDEX IF NOT EXISTS idx_results_ck_record_id ON results (ckRecordId);")
+                ?.use { it.step() }
+            db.prepare("CREATE INDEX IF NOT EXISTS idx_results_folder_id ON results (folder_id);")
+                ?.use { it.step() }
+            db.prepare("CREATE INDEX IF NOT EXISTS idx_results_bk_id ON results (bkId);")
+                ?.use { it.step() }
             db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_parent_name ON folders (COALESCE(parent, 0), name);")
                 ?.use { it.step() }
             db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_results_folder_name_bk ON results (COALESCE(folder_id, 0), name, bkId);")
@@ -163,8 +173,9 @@ class ResultsHandler(private val dbFile: File) {
 
         for ((id, parent) in parentMap) {
             val node = nodes[id] ?: continue
-            if (parent != null && nodes.containsKey(parent)) {
-                nodes[parent]!!.children.add(node)
+            val parentNode = if (parent != null) nodes[parent] else null
+            if (parentNode != null) {
+                parentNode.children.add(node)
             } else {
                 roots.add(node)
             }
@@ -267,22 +278,23 @@ class ResultsHandler(private val dbFile: File) {
     }
 
     fun getAllDescendantIds(db: SQLiteDB, folderId: Long): List<Long> {
-        val ids = mutableListOf(folderId)
-        fun recurse(parentId: Long) {
-            db.prepare("SELECT id FROM folders WHERE parent = ?")?.use { stmt ->
-                stmt.bindLong(1, parentId)
-                val children = mutableListOf<Long>()
-                while (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                    children.add(stmt.columnLong(0))
-                }
-                for (childId in children) {
-                    ids.add(childId)
-                    recurse(childId)
-                }
+        val ids = mutableListOf<Long>()
+        val sql = """
+            WITH RECURSIVE subordinates AS (
+                SELECT id FROM folders WHERE id = ?
+                UNION ALL
+                SELECT f.id FROM folders f
+                JOIN subordinates s ON f.parent = s.id
+            )
+            SELECT id FROM subordinates;
+        """.trimIndent()
+        db.prepare(sql)?.use { stmt ->
+            stmt.bindLong(1, folderId)
+            while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                ids.add(stmt.columnLong(0))
             }
         }
-        recurse(folderId)
-        return ids
+        return ids.ifEmpty { listOf(folderId) }
     }
 
     // endregion
