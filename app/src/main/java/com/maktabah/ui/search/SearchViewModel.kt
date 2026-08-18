@@ -144,7 +144,7 @@ class SearchViewModel : ViewModel() {
         }
         _searchHistory.value = current
         val prefs = context.getSharedPreferences("search_prefs", Context.MODE_PRIVATE)
-        prefs.edit { putString("search_history_list", current.joinToString("\n")).apply() }
+        prefs.edit { putString("search_history_list", current.joinToString("\n")) }
     }
 
     fun removeFromHistory(context: Context, query: String) {
@@ -152,13 +152,13 @@ class SearchViewModel : ViewModel() {
         current.remove(query)
         _searchHistory.value = current
         val prefs = context.getSharedPreferences("search_prefs", Context.MODE_PRIVATE)
-        prefs.edit { putString("search_history_list", current.joinToString("\n")).apply() }
+        prefs.edit { putString("search_history_list", current.joinToString("\n")) }
     }
 
     fun clearHistory(context: Context) {
         _searchHistory.value = emptyList()
         val prefs = context.getSharedPreferences("search_prefs", Context.MODE_PRIVATE)
-        prefs.edit { remove("search_history_list").apply() }
+        prefs.edit { remove("search_history_list") }
     }
 
 
@@ -444,24 +444,27 @@ class SearchViewModel : ViewModel() {
                             mode = mode,
                             limit = 50, // Limit per book to ensure UI speed
                             onRowProgress = { current, total ->
-                                _currentBookProgress.value = Pair(current, total)
+                                if (current % 10 == 0 || current == total) {
+                                    _currentBookProgress.value = Pair(current, total)
+                                }
                             }
                         )
 
-                        val mapped = bookResults.map {
-                            val stripped = it.nass.stripSpanTags()
-                            val normalized = stripped.convertToArabicDigits()
-                            val snippet =
-                                normalized.snippetAround(searchKeywords, contextLength = 60)
+                        val mapped = withContext(Dispatchers.Default) {
+                            bookResults.map {
+                                val stripped = it.nass.stripSpanTags()
+                                val normalized = stripped.convertToArabicDigits()
+                                val snippet =
+                                    normalized.snippetAround(searchKeywords, contextLength = 60)
 
-
-                            SearchResult(
-                                bookId = bookId,
-                                contentId = it.id,
-                                text = snippet,
-                                page = it.page,
-                                part = it.part
-                            )
+                                SearchResult(
+                                    bookId = bookId,
+                                    contentId = it.id,
+                                    text = snippet,
+                                    page = it.page,
+                                    part = it.part
+                                )
+                            }
                         }
                         allResults.addAll(mapped)
                     } catch (e: Exception) {
@@ -534,7 +537,7 @@ class SearchViewModel : ViewModel() {
                                                 stmt.bindLong(index + 1, item.bookId.toLong())
                                             }
 
-                                            val itemsById = chunk.groupBy { it.bookId.toInt() }
+                                            val itemsById = chunk.groupBy { it.bookId }
 
                                             while (stmt.step() == com.maktabah.database.SQLiteDB.SQLITE_ROW) {
                                                 val contentId = stmt.columnInt(0)
