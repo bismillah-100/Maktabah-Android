@@ -2,7 +2,6 @@
 
 package com.maktabah.ui.common
 
-import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.core.Spring
@@ -168,6 +167,7 @@ fun MainScreen(
         remember { prefs.getString("last_tab_route", Tab.Library.route) ?: Tab.Library.route }
     var hasDonated by remember { mutableStateOf(prefs.getBoolean("has_donated", false)) }
     var hideTabsOnScroll by remember { mutableStateOf(prefs.getBoolean("hide_tabs_on_scroll", true)) }
+    var recordSearchHistory by remember { mutableStateOf(prefs.getBoolean("record_search_history", true)) }
     var showBookNotFoundPopover by remember { mutableStateOf(false) }
 
     DisposableEffect(prefs) {
@@ -177,6 +177,8 @@ fun MainScreen(
                     hasDonated = prefs.getBoolean("has_donated", false)
                 } else if (key == "hide_tabs_on_scroll") {
                     hideTabsOnScroll = prefs.getBoolean("hide_tabs_on_scroll", true)
+                } else if (key == "record_search_history") {
+                    recordSearchHistory = prefs.getBoolean("record_search_history", true)
                 }
             }
         prefs.registerOnSharedPreferenceChangeListener(listener)
@@ -393,6 +395,7 @@ fun MainScreen(
                 tabManager = tabManager,
                 handleNavigateToReader = handleNavigateToReader,
                 hasDonated = hasDonated,
+                recordSearchHistory = recordSearchHistory,
                 onCheckForUpdates = onCheckForUpdates,
             )
 
@@ -755,6 +758,7 @@ private fun AppNavHost(
     tabManager: ReaderTabManager,
     handleNavigateToReader: (Int, Int?, Int?, Int?, String?, Boolean) -> Unit,
     hasDonated: Boolean,
+    recordSearchHistory: Boolean,
     onCheckForUpdates: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -856,9 +860,7 @@ private fun AppNavHost(
                 libraryViewModel = libraryViewModel,
                 bottomPadding = innerPadding.calculateBottomPadding(),
                 onNavigateToReader = { bookId, contentId, loc, len, query ->
-                    val mainPrefs = context.getSharedPreferences("main_prefs", Context.MODE_PRIVATE)
-                    val shouldRecord = mainPrefs.getBoolean("record_search_history", true)
-                    handleNavigateToReader(bookId, contentId, loc, len, query, shouldRecord)
+                    handleNavigateToReader(bookId, contentId, loc, len, query, recordSearchHistory)
                 },
                 hasDonated = hasDonated,
                 onClearContentSearchQuery = {
