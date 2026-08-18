@@ -156,30 +156,30 @@ class ReaderViewModel : ViewModel() {
 
     fun updateTextSize(size: Float) {
         _textSize.value = size
-        sharedPreferences?.edit { putFloat("text_size", size)?.apply() }
+        sharedPreferences?.edit { putFloat("text_size", size) }
     }
 
     fun toggleHarakat() {
         _showHarakat.value = !_showHarakat.value
-        sharedPreferences?.edit { putBoolean("show_harakat", _showHarakat.value)?.apply() }
+        sharedPreferences?.edit { putBoolean("show_harakat", _showHarakat.value) }
     }
 
     fun setBackgroundColorIndex(index: Int) {
         _backgroundColorIndex.value = index
-        sharedPreferences?.edit { putInt("bg_color_index", index)?.apply() }
+        sharedPreferences?.edit { putInt("bg_color_index", index) }
 
         // Auto dark mode based on background color
         // 2: Dark Sepia, 4: Black are dark colors
         val shouldBeDark = index == 2 || index == 4
         if (_isDarkMode.value != shouldBeDark) {
             _isDarkMode.value = shouldBeDark
-            sharedPreferences?.edit { putBoolean("is_dark_mode", shouldBeDark)?.apply() }
+            sharedPreferences?.edit { putBoolean("is_dark_mode", shouldBeDark) }
         }
     }
 
     fun setFontIndex(index: Int) {
         _fontIndex.value = index
-        sharedPreferences?.edit { putInt("font_index", index)?.apply() }
+        sharedPreferences?.edit { putInt("font_index", index) }
     }
 
     private fun loadCustomFonts(context: Context) {
@@ -447,38 +447,40 @@ class ReaderViewModel : ViewModel() {
     fun importFont(uri: Uri, context: Context, onSuccess: () -> Unit) {
         viewModelScope.launch {
             try {
-                val contentResolver = context.contentResolver
-                var fileName: String? = null
-                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (cursor.moveToFirst()) {
-                        fileName = cursor.getString(nameIndex)
+                withContext(Dispatchers.IO) {
+                    val contentResolver = context.contentResolver
+                    var fileName: String? = null
+                    contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (cursor.moveToFirst()) {
+                            fileName = cursor.getString(nameIndex)
+                        }
                     }
-                }
 
-                if (fileName == null) {
-                    fileName = uri.lastPathSegment ?: "custom_font_${System.currentTimeMillis()}.ttf"
-                }
-
-                val fontsDir = File(context.filesDir, "fonts")
-                if (!fontsDir.exists()) {
-                    fontsDir.mkdirs()
-                }
-
-                val destFile = File(fontsDir, fileName)
-                contentResolver.openInputStream(uri)?.use { inputStream ->
-                    FileOutputStream(destFile).use { outputStream ->
-                        inputStream.copyTo(outputStream)
+                    if (fileName == null) {
+                        fileName = uri.lastPathSegment ?: "custom_font_${System.currentTimeMillis()}.ttf"
                     }
-                }
 
-                // Update custom fonts list in preferences
-                // Use MaktabahPrefs for global sync, or reader_prefs if specific to reader.
-                // Settings used MaktabahPrefs, keeping it for consistency.
-                val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
-                val currentFonts = prefs.getStringSet("custom_fonts", emptySet())?.toMutableSet() ?: mutableSetOf()
-                currentFonts.add(destFile.absolutePath)
-                prefs.edit { putStringSet("custom_fonts", currentFonts).apply() }
+                    val fontsDir = File(context.filesDir, "fonts")
+                    if (!fontsDir.exists()) {
+                        fontsDir.mkdirs()
+                    }
+
+                    val destFile = File(fontsDir, fileName)
+                    contentResolver.openInputStream(uri)?.use { inputStream ->
+                        FileOutputStream(destFile).use { outputStream ->
+                            inputStream.copyTo(outputStream)
+                        }
+                    }
+
+                    // Update custom fonts list in preferences
+                    // Use MaktabahPrefs for global sync, or reader_prefs if specific to reader.
+                    // Settings used MaktabahPrefs, keeping it for consistency.
+                    val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
+                    val currentFonts = prefs.getStringSet("custom_fonts", emptySet())?.toMutableSet() ?: mutableSetOf()
+                    currentFonts.add(destFile.absolutePath)
+                    prefs.edit { putStringSet("custom_fonts", currentFonts) }
+                }
 
                 loadCustomFonts(context)
                 onSuccess()
@@ -491,14 +493,16 @@ class ReaderViewModel : ViewModel() {
     fun deleteFont(font: File, context: Context) {
         viewModelScope.launch {
             try {
-                if (font.exists()) {
-                    font.delete()
+                withContext(Dispatchers.IO) {
+                    if (font.exists()) {
+                        font.delete()
+                    }
+                    val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
+                    val currentFonts =
+                        prefs.getStringSet("custom_fonts", emptySet())?.toMutableSet() ?: mutableSetOf()
+                    currentFonts.remove(font.absolutePath)
+                    prefs.edit { putStringSet("custom_fonts", currentFonts) }
                 }
-                val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
-                val currentFonts =
-                    prefs.getStringSet("custom_fonts", emptySet())?.toMutableSet() ?: mutableSetOf()
-                currentFonts.remove(font.absolutePath)
-                prefs.edit { putStringSet("custom_fonts", currentFonts).apply() }
 
                 loadCustomFonts(context)
 
@@ -507,7 +511,7 @@ class ReaderViewModel : ViewModel() {
                 val builtInCount = 4 // Matches builtInFontNames.size in ReaderOptions.kt
                 if (_fontIndex.value >= builtInCount) {
                     _fontIndex.value = 1
-                    sharedPreferences?.edit { putInt("font_index", 1).apply() }
+                    sharedPreferences?.edit { putInt("font_index", 1) }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
