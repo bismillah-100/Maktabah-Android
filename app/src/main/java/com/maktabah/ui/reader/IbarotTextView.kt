@@ -75,8 +75,7 @@ constructor(
     private var canTriggerTopOverscroll = false
     private var canTriggerBottomOverscroll = false
     private var isInternalCancel = false
-    private val pullThreshold: Float
-        get() = 120f * context.resources.displayMetrics.density
+    private val pullThreshold: Float = 120f * context.resources.displayMetrics.density
 
     fun resetTouchState() {
         isTrackingTouch = false
@@ -250,7 +249,7 @@ constructor(
         scrollToOffset(start)
     }
 
-    private fun scrollToOffset(offset: Int) {
+    private fun scrollToOffset(offset: Int, retryCount: Int = 0) {
         post {
             val layout = layout
             if (layout != null) {
@@ -258,9 +257,9 @@ constructor(
                 val y = layout.getLineTop(line)
                 val scrollView = parent as? NestedScrollView
                 scrollView?.smoothScrollTo(0, y - 100)
-            } else {
-                // Jika layout belum siap, coba lagi nanti
-                scrollToOffset(offset)
+            } else if (retryCount < 5 && isAttachedToWindow) {
+                // Jika layout belum siap, coba lagi maksimal 5 kali saat masih terpasang
+                scrollToOffset(offset, retryCount + 1)
             }
         }
     }

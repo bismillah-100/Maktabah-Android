@@ -35,7 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
@@ -99,21 +99,25 @@ fun BookTOCSheet(
         if (cleanQuery.isBlank()) {
             filteredTOC = tocList
         } else {
-            val result = withContext(Dispatchers.Default) {
+            val (result, uuids) = withContext(Dispatchers.Default) {
+                val allUuids = mutableSetOf<String>()
                 fun filterNodes(nodes: List<TOCNode>): List<TOCNode> {
                     return nodes.mapNotNull { node ->
                         val filteredChildren = filterNodes(node.children)
                         val matches = node.title.normalizeArabic().contains(cleanQuery, ignoreCase = true)
                         if (matches || filteredChildren.isNotEmpty()) {
+                            allUuids.add(node.uuid)
                             node.copy(children = filteredChildren.toMutableList())
                         } else {
                             null
                         }
                     }
                 }
-                filterNodes(tocList)
+                val filtered = filterNodes(tocList)
+                filtered to allUuids
             }
             filteredTOC = result
+            expandedTOCNodes.value = uuids
         }
     }
 
@@ -135,30 +139,7 @@ fun BookTOCSheet(
     val visibleNodesState = remember(filteredTOC, selectedNodeUuid) {
         derivedStateOf {
             val list = mutableListOf<VisibleTOCNode>()
-
-            fun buildList(nodes: List<TOCNode>, depth: Int) {
-                nodes.forEach { node ->
-                    val hasChildren = node.children.isNotEmpty()
-                    val isExpanded = expandedTOCNodes.value.contains(node.uuid)
-                    val isSelected = selectedNodeUuid != null && node.uuid == selectedNodeUuid
-
-                    list.add(
-                        VisibleTOCNode(
-                            node = node,
-                            depth = depth,
-                            hasChildren = hasChildren,
-                            isExpanded = isExpanded,
-                            isSelected = isSelected
-                        )
-                    )
-
-                    if (isExpanded) {
-                        buildList(node.children, depth + 1)
-                    }
-                }
-            }
-
-            buildList(filteredTOC, 0)
+            buildVisibleNodeList(filteredTOC, 0, expandedTOCNodes.value, selectedNodeUuid, list)
             list
         }
     }
@@ -229,21 +210,6 @@ fun BookTOCSheet(
                 }
                 lastScrolledToUuid = targetUuid
             }
-        }
-    }
-
-    // Auto-expand all nodes when searching
-    LaunchedEffect(searchQuery) {
-        if (searchQuery.isNotBlank()) {
-            val allUuids = mutableSetOf<String>()
-            fun collectUuids(nodes: List<TOCNode>) {
-                nodes.forEach {
-                    allUuids.add(it.uuid)
-                    collectUuids(it.children)
-                }
-            }
-            collectUuids(filteredTOC)
-            expandedTOCNodes.value = allUuids
         }
     }
 
@@ -355,7 +321,9 @@ fun BookTOCSheet(
                                                 contentDescription = stringResource(R.string.reader_toc_expand_collapse),
                                                 modifier = Modifier
                                                     .size(24.dp)
-                                                    .rotate(rotationAngle)
+                                                    .graphicsLayer {
+                                                        rotationZ = rotationAngle
+                                                    }
                                             )
                                         }
                                     } else {
@@ -382,6 +350,34 @@ fun BookTOCSheet(
                     onClearClick = { searchQuery = "" }
                 )
             }
+        }
+    }
+}
+
+private fun buildVisibleNodeList(
+    nodes: List<TOCNode>,
+    depth: Int,
+    expandedNodes: Set<String>,
+    selectedNodeUuid: String?,
+    output: MutableList<VisibleTOCNode>
+) {
+    for (node in nodes) {
+        val hasChildren = node.children.isNotEmpty()
+        val isExpanded = expandedNodes.contains(node.uuid)
+        val isSelected = selectedNodeUuid != null && node.uuid == selectedNodeUuid
+
+        output.add(
+            VisibleTOCNode(
+                node = node,
+                depth = depth,
+                hasChildren = hasChildren,
+                isExpanded = isExpanded,
+                isSelected = isSelected
+            )
+        )
+
+        if (isExpanded) {
+            buildVisibleNodeList(node.children, depth + 1, expandedNodes, selectedNodeUuid, output)
         }
     }
 }

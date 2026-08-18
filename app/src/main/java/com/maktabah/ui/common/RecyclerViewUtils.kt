@@ -56,6 +56,17 @@ fun rememberGroupedListColors(): GroupedListColors {
     }
 }
 
+private val topGradientColorStops = arrayOf(
+    0.0f to Color.Transparent,
+    0.8f to Color.Black.copy(alpha = 0.15f),
+    1.0f to Color.Black,
+)
+
+private val bottomGradientColorStops = arrayOf(
+    0.0f to Color.Black,
+    1.0f to Color.Transparent,
+)
+
 /**
  * Adds a fading edge effect to the top and bottom of a composable.
  *
@@ -78,9 +89,7 @@ fun Modifier.fadingEdge(
         if (topPadPx > 0f) {
             drawRect(
                 brush = Brush.verticalGradient(
-                    0.0f to Color.Transparent,
-                    0.8f to Color.Black.copy(alpha = 0.15f),
-                    1.0f to Color.Black,
+                    colorStops = topGradientColorStops,
                     startY = 0f,
                     endY = topPadPx,
                 ),
@@ -91,7 +100,7 @@ fun Modifier.fadingEdge(
         if (canScrollForward) {
             drawRect(
                 brush = Brush.verticalGradient(
-                    colors = listOf(Color.Black, Color.Transparent),
+                    colorStops = bottomGradientColorStops,
                     startY = size.height - bottomFadePx,
                     endY = size.height,
                 ),
@@ -117,9 +126,7 @@ fun Modifier.fadingEdge(
         if (topPadPx > 0f) {
             drawRect(
                 brush = Brush.verticalGradient(
-                    0.0f to Color.Transparent,
-                    0.8f to Color.Black.copy(alpha = 0.15f),
-                    1.0f to Color.Black,
+                    colorStops = topGradientColorStops,
                     startY = 0f,
                     endY = topPadPx,
                 ),
@@ -130,7 +137,7 @@ fun Modifier.fadingEdge(
         if (listState.canScrollForward) {
             drawRect(
                 brush = Brush.verticalGradient(
-                    colors = listOf(Color.Black, Color.Transparent),
+                    colorStops = bottomGradientColorStops,
                     startY = size.height - bottomFadePx,
                     endY = size.height,
                 ),

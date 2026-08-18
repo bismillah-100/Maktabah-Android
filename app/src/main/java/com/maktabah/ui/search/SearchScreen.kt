@@ -860,41 +860,41 @@ private fun SearchResultsOverlay(
             }.map { it.convertToArabicDigits() }
         }
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .fadingEdge(listState, padding.calculateTopPadding()),
-            contentPadding = PaddingValues(
-                top = padding.calculateTopPadding() + 8.dp,
-                bottom = bottomPadding + 16.dp
-            ),
+        CompositionLocalProvider(
+            LocalLayoutDirection provides LayoutDirection.Rtl,
         ) {
-            items(
-                count = filteredResults.size,
-                key = { "${filteredResults[it].bookId}_${filteredResults[it].contentId}" },
-            ) { index ->
-                val result = filteredResults[index]
-                val effectiveNearDistance = if (nearDistance <= 0) 10 else nearDistance
-                val finalQuery = if (searchMode == SearchMode.NEAR) {
-                    "NEAR:$effectiveNearDistance:$query"
-                } else {
-                    query
-                }
-                val bookName =
-                    libraryViewModel.dataManager.booksById[result.bookId]?.name
-                        ?: stringResource(R.string.library_fallback_book_name)
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .fadingEdge(listState, padding.calculateTopPadding()),
+                contentPadding = PaddingValues(
+                    top = padding.calculateTopPadding() + 8.dp,
+                    bottom = bottomPadding + 16.dp
+                ),
+            ) {
+                items(
+                    count = filteredResults.size,
+                    key = { (filteredResults[it].bookId.toLong() shl 32) or (filteredResults[it].contentId.toLong() and 0xFFFFFFFFL) },
+                ) { index ->
+                    val result = filteredResults[index]
+                    val effectiveNearDistance = if (nearDistance <= 0) 10 else nearDistance
+                    val finalQuery = if (searchMode == SearchMode.NEAR) {
+                        "NEAR:$effectiveNearDistance:$query"
+                    } else {
+                        query
+                    }
+                    val bookName =
+                        libraryViewModel.dataManager.booksById[result.bookId]?.name
+                            ?: stringResource(R.string.library_fallback_book_name)
 
-                InsetGroupedItem(
-                    index = index,
-                    lastIndex = filteredResults.lastIndex,
-                    onClick = { onSelect(result.bookId, result.contentId, null, null, finalQuery) },
-                    color = MaterialTheme.colorScheme.surface,
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                    dividerStartPadding = Dp.Hairline,
-                ) {
-                    androidx.compose.runtime.CompositionLocalProvider(
-                        LocalLayoutDirection provides LayoutDirection.Rtl,
+                    InsetGroupedItem(
+                        index = index,
+                        lastIndex = filteredResults.lastIndex,
+                        onClick = { onSelect(result.bookId, result.contentId, null, null, finalQuery) },
+                        color = MaterialTheme.colorScheme.surface,
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                        dividerStartPadding = Dp.Hairline,
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Row(
