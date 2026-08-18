@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -107,7 +108,8 @@ class AnnotationsViewModel : ViewModel() {
             }
         }
         tagsSet.toList().sortedWith(String.CASE_INSENSITIVE_ORDER)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.flowOn(Dispatchers.Default)
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val availableTags: StateFlow<List<String>> =
         combine(_annotations, _selectedTags, _tagFilterMode) { annotations, selectedTags, mode ->
@@ -115,7 +117,7 @@ class AnnotationsViewModel : ViewModel() {
                 val coOccurring = selectedTags.toMutableSet()
                 annotations.forEach { ann ->
                     val annTags =
-                        ann.tags.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+                        ann.tags.split(",").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }.toSet()
                     if (selectedTags.all { annTags.contains(it) }) {
                         coOccurring.addAll(annTags)
                     }
@@ -131,14 +133,15 @@ class AnnotationsViewModel : ViewModel() {
                 }
                 tagsSet.toList().sortedWith(String.CASE_INSENSITIVE_ORDER)
             }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        }.flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun getAvailableTags(selected: Set<String>): List<String> {
         if (tagFilterMode.value == TagFilterMode.AND && selected.isNotEmpty()) {
             val coOccurring = selected.toMutableSet()
             _annotations.value.forEach { ann ->
                 val annTags =
-                    ann.tags.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+                    ann.tags.split(",").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }.toSet()
                 if (selected.all { annTags.contains(it) }) {
                     coOccurring.addAll(annTags)
                 }
@@ -366,7 +369,7 @@ class AnnotationsViewModel : ViewModel() {
 
             if (params.selectedTags.isNotEmpty()) {
                 filtered = filtered.filter { ann ->
-                    val annTags = ann.tags.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+                    val annTags = ann.tags.split(",").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }.toSet()
                     if (params.tagFilterMode == TagFilterMode.AND) {
                         params.selectedTags.all { tag -> annTags.contains(tag) }
                     } else {
@@ -471,8 +474,7 @@ class AnnotationsViewModel : ViewModel() {
                         val tagsList =
                             ann.tags
                                 .split(",")
-                                .map { it.trim() }
-                                .filter { it.isNotEmpty() }
+                                .mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }
 
                         if (tagsList.isEmpty()) {
                             untaggedList.add(ann)
@@ -507,7 +509,8 @@ class AnnotationsViewModel : ViewModel() {
                     tagGroups
                 }
             }
-        }.stateIn(
+        }.flowOn(Dispatchers.Default)
+        .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList(),
