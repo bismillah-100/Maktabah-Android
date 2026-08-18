@@ -49,9 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -200,7 +198,6 @@ fun MainScreen(
         }
     }
 
-    val currentRouteState = rememberUpdatedState(currentRoute)
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         var syncJob: kotlinx.coroutines.Job? = null
@@ -208,10 +205,6 @@ fun MainScreen(
             if (event == Lifecycle.Event.ON_RESUME) {
                 syncJob?.cancel()
                 syncJob = scope.launch {
-                    // Wait until currentRoute becomes a valid main screen route
-                    snapshotFlow { currentRouteState.value }
-                        .first { route -> route != null && Tab.entries.any { it.route == route } }
-
                     val ckPrefs = context.getSharedPreferences(
                         "MaktabahPrefs",
                         android.content.Context.MODE_PRIVATE
