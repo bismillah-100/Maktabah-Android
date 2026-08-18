@@ -60,7 +60,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,7 +72,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.core.content.edit
 import androidx.core.graphics.toColorInt
 import androidx.core.graphics.withClip
 import com.maktabah.R
@@ -122,6 +120,10 @@ fun AnnotationsScreen(
     val sortAscending by viewModel.sortAscending.collectAsState()
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedAnnotationIds by viewModel.selectedAnnotationIds.collectAsState()
+    val allTags by viewModel.allTags.collectAsState()
+    val availableTags by viewModel.availableTags.collectAsState()
+    val selectedTags by viewModel.selectedTags.collectAsState()
+    val tagFilterMode by viewModel.tagFilterMode.collectAsState()
     val focusManager = LocalFocusManager.current
 
     LaunchedEffect(viewModel, annotationManager, libraryViewModel) {
@@ -140,6 +142,7 @@ fun AnnotationsScreen(
     var showBookInfoId by remember { mutableStateOf<Int?>(null) }
     var popoverAnnotation by remember { mutableStateOf<com.maktabah.models.Annotation?>(null) }
     var editingAnnotation by remember { mutableStateOf<com.maktabah.models.Annotation?>(null) }
+    var showTagFilterDialog by remember { mutableStateOf(false) }
 
     val importJsonLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -169,7 +172,7 @@ fun AnnotationsScreen(
                 if (!success) {
                     Toast.makeText(
                         context,
-                        context.getString(R.string.annotations_export_failed),
+                        R.string.annotations_export_failed,
                         Toast.LENGTH_SHORT
                     ).show()
                 }
@@ -193,14 +196,17 @@ fun AnnotationsScreen(
                                     onSuccess = { count ->
                                         Toast.makeText(
                                             context,
-                                            context.getString(R.string.annotations_import_success, count),
+                                            context.resources.getString(
+                                                R.string.annotations_import_success,
+                                                count
+                                            ),
                                             Toast.LENGTH_SHORT
                                         ).show()
                                     },
                                     onFailure = {
                                         Toast.makeText(
                                             context,
-                                            context.getString(R.string.annotations_import_failed),
+                                            R.string.annotations_import_failed,
                                             Toast.LENGTH_SHORT
                                         ).show()
                                     }
@@ -222,14 +228,17 @@ fun AnnotationsScreen(
                                     onSuccess = { count ->
                                         Toast.makeText(
                                             context,
-                                            context.getString(R.string.annotations_import_success, count),
+                                            context.resources.getString(
+                                                R.string.annotations_import_success,
+                                                count
+                                            ),
                                             Toast.LENGTH_SHORT
                                         ).show()
                                     },
                                     onFailure = {
                                         Toast.makeText(
                                             context,
-                                            context.getString(R.string.annotations_import_failed),
+                                            R.string.annotations_import_failed,
                                             Toast.LENGTH_SHORT
                                         ).show()
                                     }
@@ -305,7 +314,7 @@ fun AnnotationsScreen(
                                 "text/json"
                             )
                         )
-                    },
+                    }
                 )
             },
         ) { padding ->
@@ -318,7 +327,7 @@ fun AnnotationsScreen(
                 ) {
                     CircularProgressIndicator()
                 }
-            } else if (groupedAnnotations.isEmpty()) {
+            } else if (groupedAnnotations.isEmpty() && allTags.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -335,6 +344,12 @@ fun AnnotationsScreen(
                     groupedAnnotations = groupedAnnotations,
                     expandedGroups = expandedGroups,
                     groupingMode = groupingMode,
+                    allTags = availableTags,
+                    selectedTags = selectedTags,
+                    tagFilterMode = tagFilterMode,
+                    onToggleTagFilter = { viewModel.toggleTagSelection(it) },
+                    onOpenTagFilterDialog = { showTagFilterDialog = true },
+                    onToggleTagFilterMode = { viewModel.toggleTagFilterMode() },
                     isSelectionMode = isSelectionMode,
                     selectedAnnotationIds = selectedAnnotationIds,
                     padding = padding,
@@ -459,6 +474,17 @@ fun AnnotationsScreen(
             scope = scope,
             onSyncRequested = { viewModel.forceReload(annotationManager) },
             onDismissRequest = { editingAnnotation = null }
+        )
+    }
+
+    if (showTagFilterDialog) {
+        TagFilterSelectionDialog(
+            allTags = allTags,
+            initialSelectedTags = selectedTags,
+            tagFilterMode = tagFilterMode,
+            availableTagsProvider = { viewModel.getAvailableTags(it) },
+            onApplyTags = { viewModel.setSelectedTags(it) },
+            onDismissRequest = { showTagFilterDialog = false }
         )
     }
 }
@@ -822,7 +848,7 @@ private fun AnnotationsTopBar(
                                             if (!success) {
                                                 Toast.makeText(
                                                     context,
-                                                    context.getString(R.string.annotations_export_failed),
+                                                    R.string.annotations_export_failed,
                                                     Toast.LENGTH_SHORT
                                                 ).show()
                                             }
@@ -885,6 +911,12 @@ private fun AnnotationsList(
     groupedAnnotations: List<AnnotationGroup>,
     expandedGroups: Map<String, Boolean>,
     groupingMode: AnnotationGroupingMode,
+    allTags: List<String>,
+    selectedTags: Set<String>,
+    tagFilterMode: com.maktabah.models.TagFilterMode,
+    onToggleTagFilter: (String) -> Unit,
+    onOpenTagFilterDialog: () -> Unit,
+    onToggleTagFilterMode: () -> Unit,
     isSelectionMode: Boolean,
     selectedAnnotationIds: Set<Long>,
     padding: PaddingValues,
@@ -899,14 +931,12 @@ private fun AnnotationsList(
     onAnnotationLongClick: (com.maktabah.models.Annotation, android.view.View) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-    val sharedPrefs = remember { context.getSharedPreferences("AnnotationsPrefs", android.content.Context.MODE_PRIVATE) }
-    var hasRestoredScroll by rememberSaveable { mutableStateOf(false) }
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         val colors = rememberGroupedListColors()
 
-        val flatItems = remember(groupedAnnotations, expandedGroups) {
-            groupedAnnotations.toFlatItems(expandedGroups)
+        val flatItems =
+            remember(groupedAnnotations, expandedGroups, allTags, selectedTags, tagFilterMode) {
+                groupedAnnotations.toFlatItems(expandedGroups, allTags, selectedTags, tagFilterMode)
         }
 
         val adapter = remember {
@@ -915,6 +945,9 @@ private fun AnnotationsList(
                 onAnnotationClick = onAnnotationClick,
                 onToggleGroupSelection = onToggleGroupSelection,
                 onToggleAnnotationSelection = onToggleAnnotationSelection,
+                onToggleTagFilter = onToggleTagFilter,
+                onOpenTagFilterDialog = onOpenTagFilterDialog,
+                onToggleTagFilterMode = onToggleTagFilterMode,
                 onHeaderLongClick = onHeaderLongClick,
                 onAnnotationLongClick = onAnnotationLongClick,
             ).apply {
@@ -922,6 +955,8 @@ private fun AnnotationsList(
                 this.secondaryColor = colors.secondaryColor
                 this.onSurfaceColor = colors.onSurfaceColor
                 this.onSurfaceVariantColor = colors.onSurfaceVariantColor
+                this.surfaceColor = colors.surfaceColor
+                this.onStrokeColor = colors.onStrokeColor
                 this.groupingMode = groupingMode
                 this.isSelectionMode = isSelectionMode
                 this.selectedAnnotationIds = selectedAnnotationIds
@@ -935,6 +970,8 @@ private fun AnnotationsList(
             adapter.secondaryColor = colors.secondaryColor
             adapter.onSurfaceColor = colors.onSurfaceColor
             adapter.onSurfaceVariantColor = colors.onSurfaceVariantColor
+            adapter.surfaceColor = colors.surfaceColor
+            adapter.onStrokeColor = colors.onStrokeColor
             adapter.groupingMode = groupingMode
             adapter.isSelectionMode = isSelectionMode
             adapter.selectedAnnotationIds = selectedAnnotationIds
@@ -1151,20 +1188,6 @@ private fun AnnotationsList(
             bottomContentPadding = bottomPadding,
             colors = colors,
             itemTouchHelper = itemTouchHelper,
-            onScrollStateChanged = { rv, newState ->
-                if (newState == androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) {
-                    val lm = rv.layoutManager as? androidx.recyclerview.widget.LinearLayoutManager
-                    if (lm != null) {
-                        val pos = lm.findFirstVisibleItemPosition()
-                        val view = lm.findViewByPosition(pos)
-                        val offset = (view?.top ?: 0) - rv.paddingTop
-                        sharedPrefs.edit {
-                            putInt("scroll_pos", pos)
-                                .putInt("scroll_offset", offset)
-                        }
-                    }
-                }
-            },
             decorationFactory = { rv ->
                 val ctx = rv.context
                 val cornerRadius = 30 * ctx.resources.displayMetrics.density
@@ -1177,6 +1200,8 @@ private fun AnnotationsList(
                 ) { position ->
                     if (position < 0 || position >= adapter.currentList.size) return@GroupedCardDecoration null
                     when (val item = adapter.currentList[position]) {
+                        is AnnotationFlatItem.TagFilter -> null
+                        is AnnotationFlatItem.EmptyPlaceholder -> null
                         is AnnotationFlatItem.Header -> GroupedCardDecoration.GroupInfo(
                             isFirst = true,
                             isLast = item.isLast
@@ -1186,17 +1211,6 @@ private fun AnnotationsList(
                             isLast = item.index == item.lastIndex
                         )
                         is AnnotationFlatItem.Spacer -> null
-                    }
-                }
-            },
-            update = { rv ->
-                if (!hasRestoredScroll && adapter.currentList.isNotEmpty()) {
-                    hasRestoredScroll = true
-                    val pos = sharedPrefs.getInt("scroll_pos", 0)
-                    val offset = sharedPrefs.getInt("scroll_offset", 0)
-                    if (pos != 0 || offset != 0) {
-                        (rv.layoutManager as? androidx.recyclerview.widget.LinearLayoutManager)
-                            ?.scrollToPositionWithOffset(pos, offset)
                     }
                 }
             }

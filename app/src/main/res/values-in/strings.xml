@@ -199,6 +199,14 @@
     <string name="annotations_search_context">Konteks</string>
     <string name="annotations_search_note">Catatan</string>
     <string name="annotations_search_tag">Tag</string>
+    <string name="annotations_filter_tags_title">Filter Tag</string>
+    <string name="annotations_filter_tags_search">Cari tag…</string>
+    <string name="annotations_filter_tags_clear">Hapus Semua</string>
+    <string name="annotations_filter_tags_empty">Tidak ada tag ditemukan</string>
+    <string name="annotations_filter_tags_done">Selesai</string>
+    <string name="annotations_tag_filter_mode_or">Mode Filter: ATAU (Salah satu tag)</string>
+    <string name="annotations_tag_filter_mode_and">Mode Filter: DAN (Semua tag)</string>
+    <string name="annotations_tag_filter_mode_desc">Ganti Mode Filter</string>
     <string name="history_title">Riwayat</string>
     <string name="history_search_placeholder">Cari Riwayat…</string>
     <string name="history_empty">Tidak ada riwayat</string>

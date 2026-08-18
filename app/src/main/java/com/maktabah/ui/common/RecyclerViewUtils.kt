@@ -214,13 +214,11 @@ fun GroupedRecyclerView(
         },
         update = { view ->
             val density = view.context.resources.displayMetrics.density
-            view.setPadding(
-                0,
-                ((padding.calculateTopPadding().value + 16) * density).toInt(),
-                0,
-                ((bottomContentPadding.value + 16) * density).toInt()
-            )
-            canScrollForward = view.canScrollVertically(1)
+            val topPad = ((padding.calculateTopPadding().value + 16) * density).toInt()
+            val btmPad = ((bottomContentPadding.value + 16) * density).toInt()
+            if (view.paddingTop != topPad || view.paddingBottom != btmPad) {
+                view.setPadding(0, topPad, 0, btmPad)
+            }
 
             // Auto-update decoration colors
             val decoration = view.getItemDecorationAt(0) as? GroupedCardDecoration

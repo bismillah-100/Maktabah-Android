@@ -20,10 +20,19 @@ import com.maktabah.R
 import com.maktabah.models.Annotation
 import com.maktabah.models.AnnotationGroup
 import com.maktabah.models.AnnotationGroupingMode
+import com.maktabah.models.TagFilterMode
 import com.maktabah.utils.convertToArabicDigits
 
 // Flat item types for the RecyclerView
 sealed class AnnotationFlatItem {
+    data class TagFilter(
+        val allTags: List<String>,
+        val selectedTags: Set<String>,
+        val filterMode: TagFilterMode = TagFilterMode.OR,
+    ) : AnnotationFlatItem()
+
+    data object EmptyPlaceholder : AnnotationFlatItem()
+
     data class Header(
         val group: AnnotationGroup,
         val isExpanded: Boolean,
@@ -46,6 +55,9 @@ class AnnotationsAdapter(
     private val onAnnotationClick: (Int, Int?, Int?, Int?, String?) -> Unit,
     private val onToggleGroupSelection: (AnnotationGroup) -> Unit,
     private val onToggleAnnotationSelection: (Long) -> Unit,
+    private val onToggleTagFilter: (String) -> Unit,
+    private val onOpenTagFilterDialog: () -> Unit,
+    private val onToggleTagFilterMode: () -> Unit,
     private val onHeaderLongClick: ((AnnotationGroup, View) -> Unit)? = null,
     private val onAnnotationLongClick: ((Annotation, View) -> Unit)? = null,
 ) : ListAdapter<AnnotationFlatItem, RecyclerView.ViewHolder>(DiffCallback()) {
@@ -73,6 +85,8 @@ class AnnotationsAdapter(
     var secondaryColor: Int = Color.TRANSPARENT
     var onSurfaceColor: Int = Color.TRANSPARENT
     var onSurfaceVariantColor: Int = Color.TRANSPARENT
+    var surfaceColor: Int = Color.TRANSPARENT
+    var onStrokeColor: Int = Color.TRANSPARENT
     var groupingMode: AnnotationGroupingMode = AnnotationGroupingMode.BOOK
 
     var isSelectionMode: Boolean = false
@@ -92,12 +106,16 @@ class AnnotationsAdapter(
         }
 
     companion object {
+        private const val TYPE_TAG_FILTER = 3
         private const val TYPE_HEADER = 0
         private const val TYPE_ITEM = 1
         private const val TYPE_SPACER = 2
+        private const val TYPE_EMPTY = 4
     }
 
     override fun getItemViewType(position: Int) = when (getItem(position)) {
+        is AnnotationFlatItem.TagFilter -> TYPE_TAG_FILTER
+        is AnnotationFlatItem.EmptyPlaceholder -> TYPE_EMPTY
         is AnnotationFlatItem.Header -> TYPE_HEADER
         is AnnotationFlatItem.Item -> TYPE_ITEM
         is AnnotationFlatItem.Spacer -> TYPE_SPACER
@@ -139,12 +157,19 @@ class AnnotationsAdapter(
 
     private fun applyDecorationState(view: View, item: AnnotationFlatItem) {
         view.translationZ = when (item) {
+            is AnnotationFlatItem.TagFilter -> 97f
+            is AnnotationFlatItem.EmptyPlaceholder -> 97f
             is AnnotationFlatItem.Header -> 100f
             is AnnotationFlatItem.Item -> 99f
             is AnnotationFlatItem.Spacer -> 98f
         }
 
         when (item) {
+            is AnnotationFlatItem.TagFilter,
+            is AnnotationFlatItem.EmptyPlaceholder -> {
+                view.setTag(R.id.tag_is_first, null)
+                view.setTag(R.id.tag_is_last, null)
+            }
             is AnnotationFlatItem.Header -> {
                 view.setTag(R.id.tag_is_first, item.isFirst)
                 view.setTag(R.id.tag_is_last, item.isLast)
@@ -161,22 +186,56 @@ class AnnotationsAdapter(
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+        val density = parent.context.resources.displayMetrics.density
+        val horizontalMargin = (16 * density).toInt()
+
         return when (viewType) {
+            TYPE_TAG_FILTER -> TagFilterViewHolder.create(parent)
             TYPE_HEADER -> {
                 val view = LayoutInflater.from(parent.context)
-                    .inflate(R.layout.item_annotation_header, parent, false)
+                    .inflate(R.layout.item_annotation_header, parent, false).apply {
+                        val lp = layoutParams as? ViewGroup.MarginLayoutParams
+                            ?: ViewGroup.MarginLayoutParams(layoutParams)
+                        lp.leftMargin = horizontalMargin
+                        lp.rightMargin = horizontalMargin
+                        layoutParams = lp
+                    }
                 HeaderViewHolder(view)
             }
             TYPE_ITEM -> {
                 val view = LayoutInflater.from(parent.context)
-                    .inflate(R.layout.item_annotation, parent, false)
+                    .inflate(R.layout.item_annotation, parent, false).apply {
+                        val lp = layoutParams as? ViewGroup.MarginLayoutParams
+                            ?: ViewGroup.MarginLayoutParams(layoutParams)
+                        lp.leftMargin = horizontalMargin
+                        lp.rightMargin = horizontalMargin
+                        layoutParams = lp
+                    }
                 ItemViewHolder(view)
+            }
+
+            TYPE_EMPTY -> {
+                val textView = TextView(parent.context).apply {
+                    layoutParams = ViewGroup.MarginLayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        topMargin = (32 * density).toInt()
+                        bottomMargin = (32 * density).toInt()
+                        leftMargin = horizontalMargin
+                        rightMargin = horizontalMargin
+                    }
+                    gravity = android.view.Gravity.CENTER
+                    text = parent.context.getString(R.string.annotations_filter_tags_empty)
+                    textSize = 14f
+                }
+                EmptyViewHolder(textView)
             }
             else -> {
                 val view = View(parent.context).apply {
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
-                        (16 * parent.context.resources.displayMetrics.density).toInt()
+                        (16 * density).toInt()
                     )
                 }
                 SpacerViewHolder(view)
@@ -185,19 +244,6 @@ class AnnotationsAdapter(
     }
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-        // Apply uniform 16dp horizontal margins to all items (same as LibraryAdapter)
-        val density = holder.itemView.context.resources.displayMetrics.density
-        val horizontalMargin = (16 * density).toInt()
-        val lp = holder.itemView.layoutParams as? ViewGroup.MarginLayoutParams
-            ?: ViewGroup.MarginLayoutParams(holder.itemView.layoutParams).also {
-                holder.itemView.layoutParams = it
-            }
-        if (lp.leftMargin != horizontalMargin || lp.rightMargin != horizontalMargin) {
-            lp.leftMargin = horizontalMargin
-            lp.rightMargin = horizontalMargin
-            holder.itemView.layoutParams = lp
-        }
-
         // Tag child items for expand/collapse animation (same pattern as LibraryAdapter)
         val clickedKey = lastClickedGroupKey
         val clickedParent = lastClickedHeader
@@ -216,6 +262,20 @@ class AnnotationsAdapter(
         applyDecorationState(holder.itemView, item)
 
         when (holder) {
+            is TagFilterViewHolder -> {
+                val item = getItem(position) as AnnotationFlatItem.TagFilter
+                holder.bind(
+                    item = item,
+                    primaryColor = primaryColor,
+                    surfaceColor = surfaceColor,
+                    onSurfaceColor = onSurfaceColor,
+                    onSurfaceVariantColor = onSurfaceVariantColor,
+                    onStrokeColor = onStrokeColor,
+                    onToggleTag = onToggleTagFilter,
+                    onOpenTagDialog = onOpenTagFilterDialog,
+                    onToggleFilterMode = onToggleTagFilterMode,
+                )
+            }
             is HeaderViewHolder -> {
                 val item = getItem(position) as AnnotationFlatItem.Header
                 holder.bind(
@@ -253,6 +313,9 @@ class AnnotationsAdapter(
                     onAnnotationClick = onAnnotationClick,
                     onAnnotationLongClick = onAnnotationLongClick,
                 )
+            }
+            is EmptyViewHolder -> {
+                holder.bind(onSurfaceVariantColor)
             }
             is SpacerViewHolder -> { /* nothing */ }
         }
@@ -455,13 +518,19 @@ class AnnotationsAdapter(
             } else {
                 selectIcon?.visibility = View.GONE
                 itemView.setOnClickListener {
-                onAnnotationClick(ann.bkId, ann.contentId, ann.rangeLocation, ann.rangeLength, null)
-            }
+                    onAnnotationClick(
+                        ann.bkId,
+                        ann.contentId,
+                        ann.rangeLocation,
+                        ann.rangeLength,
+                        null
+                    )
+                }
 
-            itemView.setOnLongClickListener {
-                onAnnotationLongClick?.invoke(ann, it)
-                true
-            }
+                itemView.setOnLongClickListener {
+                    onAnnotationLongClick?.invoke(ann, it)
+                    true
+                }
             }
 
             if (item.index == item.lastIndex) {
@@ -481,6 +550,14 @@ class AnnotationsAdapter(
         }
     }
 
+    class EmptyViewHolder(private val textView: TextView) : RecyclerView.ViewHolder(textView) {
+        fun bind(textColor: Int) {
+            if (textColor != Color.TRANSPARENT) {
+                textView.setTextColor(textColor)
+            }
+        }
+    }
+
     class SpacerViewHolder(view: View) : RecyclerView.ViewHolder(view)
 
     // ── DiffCallback ─────────────────────────────────────────────────────────
@@ -488,6 +565,10 @@ class AnnotationsAdapter(
     class DiffCallback : DiffUtil.ItemCallback<AnnotationFlatItem>() {
         override fun areItemsTheSame(old: AnnotationFlatItem, new: AnnotationFlatItem): Boolean {
             return when (old) {
+                is AnnotationFlatItem.TagFilter -> new is AnnotationFlatItem.TagFilter
+
+                is AnnotationFlatItem.EmptyPlaceholder -> new is AnnotationFlatItem.EmptyPlaceholder
+
                 is AnnotationFlatItem.Header if new is AnnotationFlatItem.Header ->
                     old.group.key == new.group.key
 
@@ -509,8 +590,22 @@ class AnnotationsAdapter(
 /** Converts grouped annotation data to a flat list for the RecyclerView. */
 fun List<AnnotationGroup>.toFlatItems(
     expandedGroups: Map<String, Boolean>,
+    allTags: List<String> = emptyList(),
+    selectedTags: Set<String> = emptySet(),
+    tagFilterMode: TagFilterMode = TagFilterMode.OR,
 ): List<AnnotationFlatItem> {
     val result = mutableListOf<AnnotationFlatItem>()
+    if (allTags.isNotEmpty()) {
+        result += AnnotationFlatItem.TagFilter(
+            allTags = allTags,
+            selectedTags = selectedTags,
+            filterMode = tagFilterMode,
+        )
+    }
+    if (isEmpty()) {
+        result += AnnotationFlatItem.EmptyPlaceholder
+        return result
+    }
     forEachIndexed { _, group ->
         val isExpanded = expandedGroups[group.key] ?: false
         val annList = group.annotations
