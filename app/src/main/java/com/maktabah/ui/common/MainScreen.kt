@@ -102,9 +102,10 @@ import com.maktabah.ui.reader.ReaderTabsListSheet
 import com.maktabah.ui.search.SearchScreen
 import com.maktabah.ui.search.SearchViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
 
 enum class Tab(
     val titleRes: Int,
@@ -201,15 +202,23 @@ fun MainScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         var syncJob: kotlinx.coroutines.Job? = null
+        var lastSyncTimestamp = 0L
+        val minIntervalMs = 15_000L
+
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 syncJob?.cancel()
                 syncJob = scope.launch {
+                    delay(500.milliseconds)
+                    val now = System.currentTimeMillis()
+                    if (now - lastSyncTimestamp < minIntervalMs) return@launch
+
                     val ckPrefs = context.getSharedPreferences(
                         "MaktabahPrefs",
                         android.content.Context.MODE_PRIVATE
                     )
                     if (ckPrefs.getString("ckWebAuthToken", null) != null) {
+                        lastSyncTimestamp = now
                         cloudKitSyncManager.retryPendingSyncs(context, historyViewModel)
                         cloudKitSyncManager.checkAccountChangeAndSync(
                             context,
