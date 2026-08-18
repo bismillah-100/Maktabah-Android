@@ -30,7 +30,9 @@ import com.maktabah.ui.common.BootstrapScreen
 import com.maktabah.ui.common.MainScreen
 import com.maktabah.ui.common.UpdateDialog
 import com.maktabah.ui.common.registerFcmToken
+import com.maktabah.ui.history.HistoryViewModel
 import com.maktabah.ui.library.LibraryViewModel
+import com.maktabah.utils.isNetworkAvailable
 import com.maktabah.update.UpdateManager
 import com.maktabah.update.UpdateRepository
 import com.maktabah.update.UpdateViewModel
@@ -139,6 +141,7 @@ class MainActivity : ComponentActivity() {
                         val annotationsDbFile = File(this@MainActivity.filesDir, "annotations.sqlite")
                         val annotationManager = remember { AnnotationManager(annotationsDbFile) }
                         val cloudKitSyncManager = remember { CloudKitSyncManager() }
+                        val historyViewModel: HistoryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 
                         val connectivityMonitor = remember { ConnectivityMonitor(applicationContext) }
                         DisposableEffect(connectivityMonitor) {
@@ -149,11 +152,15 @@ class MainActivity : ComponentActivity() {
                         }
 
                         LaunchedEffect(connectivityMonitor.isOnline) {
-                            var wasOffline = false
+                            var wasOffline = !this@MainActivity.isNetworkAvailable()
                             connectivityMonitor.isOnline.collect { isOnline ->
                                 if (isOnline && wasOffline) {
                                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                        cloudKitSyncManager.syncAnnotations(this@MainActivity, annotationManager)
+                                        cloudKitSyncManager.retryAllPendingOperations(
+                                            this@MainActivity,
+                                            annotationManager,
+                                            historyViewModel,
+                                        )
                                     }
                                 }
                                 wasOffline = !isOnline
@@ -168,7 +175,16 @@ class MainActivity : ComponentActivity() {
                                 }
                                 if (isLocal) {
                                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                        cloudKitSyncManager.syncAnnotations(this@MainActivity, annotationManager)
+                                        val syncResult = cloudKitSyncManager.syncAnnotations(this@MainActivity, annotationManager)
+                                        if (syncResult != null && syncResult != "Success") {
+                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                android.widget.Toast.makeText(
+                                                    this@MainActivity,
+                                                    syncResult,
+                                                    android.widget.Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -178,6 +194,7 @@ class MainActivity : ComponentActivity() {
                             libraryViewModel = libraryViewModel,
                             annotationManager = annotationManager,
                             cloudKitSyncManager = cloudKitSyncManager,
+                            historyViewModel = historyViewModel,
                             onCheckForUpdates = {
                                 updateViewModel.checkForUpdates(
                                     force = true,

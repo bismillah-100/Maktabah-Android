@@ -153,7 +153,7 @@ fun HistoryScreen(
                                     android.widget.Toast.makeText(
                                         context,
                                         resultMsg,
-                                        android.widget.Toast.LENGTH_LONG
+                                        android.widget.Toast.LENGTH_SHORT
                                     ).show()
                                 }
                             }

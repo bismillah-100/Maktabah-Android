@@ -283,4 +283,5 @@
     <string name="update_dialog_confirm_download">Download &amp; Install</string>
     <string name="update_dialog_confirm_ok">OK</string>
     <string name="update_dialog_dismiss_later">Later</string>
+    <string name="no_internet_connection">No internet connection</string>
 </resources>

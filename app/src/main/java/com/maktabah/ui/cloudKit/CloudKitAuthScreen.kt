@@ -81,7 +81,11 @@ fun CloudKitAuthScreen(
                     errorMessage = context.getString(R.string.cloudkit_error_empty)
                 }
             } catch (e: Exception) {
-                errorMessage = e.message
+                errorMessage = if (com.maktabah.utils.isNetworkError(e, context)) {
+                    context.getString(R.string.no_internet_connection)
+                } else {
+                    e.localizedMessage ?: e.message
+                }
             }
         }
     }
@@ -164,7 +168,12 @@ fun CloudKitAuthScreen(
                     }
                 )
             } else if (errorMessage != null) {
-                Text(stringResource(R.string.cloudkit_error_load_failed, errorMessage!!), modifier = Modifier.padding(16.dp))
+                val displayMsg = if (errorMessage == stringResource(R.string.no_internet_connection)) {
+                    errorMessage!!
+                } else {
+                    stringResource(R.string.cloudkit_error_load_failed, errorMessage!!)
+                }
+                Text(displayMsg, modifier = Modifier.padding(16.dp))
             } else {
                 Box(
                     modifier = Modifier.fillMaxSize(),

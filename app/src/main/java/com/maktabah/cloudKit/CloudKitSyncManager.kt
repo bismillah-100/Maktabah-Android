@@ -2,6 +2,7 @@ package com.maktabah.cloudKit
 
 import android.content.Context
 import androidx.core.content.edit
+import com.maktabah.R
 import com.maktabah.database.AnnotationManager
 import com.maktabah.database.HistoryDatabaseManager
 import com.maktabah.database.ResultsHandler
@@ -10,6 +11,7 @@ import com.maktabah.models.ReadingEntry
 import com.maktabah.models.SyncFolder
 import com.maktabah.models.SyncResult
 import com.maktabah.ui.history.HistoryViewModel
+import com.maktabah.utils.isNetworkError
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -152,12 +154,11 @@ class CloudKitSyncManager {
 
     // endregion
 
-    suspend fun fetchChanges(
+    private suspend fun fetchChangesInternal(
         context: Context,
         annotationManager: AnnotationManager,
         historyViewModel: HistoryViewModel
-    ): String? = syncMutex.withLock {
-        withContext(Dispatchers.IO) {
+    ): String? = withContext(Dispatchers.IO) {
             val annotationsToSave = mutableListOf<Annotation>()
             val entriesToSave = mutableListOf<ReadingEntry>()
             val foldersToSave = mutableListOf<SyncFolder>()
@@ -389,16 +390,28 @@ class CloudKitSyncManager {
                 },
                 onFailure = {
                     if (it.message == "No Web Auth Token") return@withContext null
-                    return@withContext "Exception: ${it.message}"
+                    if (isNetworkError(it, context)) {
+                        return@withContext context.getString(R.string.no_internet_connection)
+                    }
+                    return@withContext "Sync failed: ${it.localizedMessage ?: it.message}"
                 }
             )
-        } }
+        }
 
-    suspend fun syncAnnotations(context: Context, annotationManager: AnnotationManager): String? =
-        syncMutex.withLock {
-            withContext(Dispatchers.IO) {
+    suspend fun fetchChanges(
+        context: Context,
+        annotationManager: AnnotationManager,
+        historyViewModel: HistoryViewModel
+    ): String? = syncMutex.withLock {
+        fetchChangesInternal(context, annotationManager, historyViewModel)
+    }
+
+    private suspend fun syncAnnotationsInternal(context: Context, annotationManager: AnnotationManager): String? =
+        withContext(Dispatchers.IO) {
             val annotations = annotationManager.getUnsyncedAnnotations()
             val deletedIds = annotationManager.getDeletedRecordIds()
+
+            if (annotations.isEmpty() && deletedIds.isEmpty()) return@withContext "Success"
 
             val recordsToSave = JSONArray()
             for (annotation in annotations) {
@@ -464,13 +477,25 @@ class CloudKitSyncManager {
                 annotationManager.clearPendingUploads(uploadedIds)
                 "Success"
             } else {
-                val msg = result.exceptionOrNull()?.message
-                if (msg == "No Web Auth Token") null else "Failed: $msg"
+                val ex = result.exceptionOrNull()
+                val msg = ex?.message
+                if (msg == "No Web Auth Token") {
+                    null
+                } else if (isNetworkError(ex, context)) {
+                    context.getString(R.string.no_internet_connection)
+                } else {
+                    "Failed: ${ex?.localizedMessage ?: msg}"
+                }
             }
-        } }
+        }
+
+    suspend fun syncAnnotations(context: Context, annotationManager: AnnotationManager): String? =
+        syncMutex.withLock {
+            syncAnnotationsInternal(context, annotationManager)
+        }
 
     /** Manual sync — dipakai oleh onSyncHistoryRequested di ReaderScreen. */
-    suspend fun syncHistoryAndFavorites(context: Context, entries: List<ReadingEntry>) =
+    suspend fun syncHistoryAndFavorites(context: Context, entries: List<ReadingEntry>): String? =
         withContext(Dispatchers.IO) {
             val recordsToSave = JSONArray()
             val recordIDsToDelete = JSONArray()
@@ -487,7 +512,15 @@ class CloudKitSyncManager {
             if (result.isSuccess) {
                 "Success: Uploaded history and favorites"
             } else {
-                "Failed: ${result.exceptionOrNull()?.message}"
+                val ex = result.exceptionOrNull()
+                val msg = ex?.message
+                if (msg == "No Web Auth Token") {
+                    null
+                } else if (isNetworkError(ex, context)) {
+                    context.getString(R.string.no_internet_connection)
+                } else {
+                    "Failed: ${ex?.localizedMessage ?: msg}"
+                }
             }
         }
 
@@ -550,7 +583,7 @@ class CloudKitSyncManager {
 
     // region Search Results Sync
 
-    suspend fun syncResults(context: Context): String = syncMutex.withLock {
+    private suspend fun syncResultsInternal(context: Context): String? =
         withContext(Dispatchers.IO) {
             val handler = getResultsHandler(context)
             val folders = handler.fetchAllSyncFolders()
@@ -619,8 +652,49 @@ class CloudKitSyncManager {
                 }
                 "Success"
             } else {
-                "Failed: ${result.exceptionOrNull()?.message}"
+                val ex = result.exceptionOrNull()
+                val msg = ex?.message
+                if (msg == "No Web Auth Token") {
+                    null
+                } else if (isNetworkError(ex, context)) {
+                    context.getString(R.string.no_internet_connection)
+                } else {
+                    "Failed: ${ex?.localizedMessage ?: msg}"
+                }
             }
+        }
+
+    suspend fun syncResults(context: Context): String? = syncMutex.withLock {
+        syncResultsInternal(context)
+    }
+
+    /**
+     * Retry semua operasi pending (Anotasi, History & Favorit, Hasil Pencarian) dan tarik perubahan terbaru.
+     * Dipanggil saat aplikasi resume (ON_RESUME) dan saat koneksi internet pulih.
+     */
+    suspend fun retryAllPendingOperations(
+        context: Context,
+        annotationManager: AnnotationManager,
+        historyViewModel: HistoryViewModel,
+    ) = syncMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
+            if (prefs.getString("ckWebAuthToken", null) == null) return@withContext
+
+            // 1. Periksa perubahan akun user CloudKit
+            checkAccountChangeAndSync(context, annotationManager, historyViewModel)
+
+            // 2. Retry upload & delete Anotasi
+            syncAnnotationsInternal(context, annotationManager)
+
+            // 3. Retry upload & delete History & Favorit
+            retryPendingSyncs(context, historyViewModel)
+
+            // 4. Retry upload & delete Hasil Pencarian
+            syncResultsInternal(context)
+
+            // 5. Tarik perubahan terbaru dari CloudKit
+            fetchChangesInternal(context, annotationManager, historyViewModel)
         }
     }
 

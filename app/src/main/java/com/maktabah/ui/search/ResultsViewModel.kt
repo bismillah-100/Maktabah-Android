@@ -592,11 +592,11 @@ object CloudKitResultSyncHelper {
         syncJob = scope.launch {
             kotlinx.coroutines.delay(3000.milliseconds)
             val result = com.maktabah.cloudKit.CloudKitSyncManager().syncResults(context)
-            if (com.maktabah.BuildConfig.DEBUG) {
+            if (result != "Success" && result != "No results to sync") {
                 withContext(Dispatchers.Main) {
                     android.widget.Toast.makeText(
                         context,
-                        "CloudKit Upload: $result",
+                        result,
                         android.widget.Toast.LENGTH_SHORT
                     ).show()
                 }

@@ -132,6 +132,7 @@ fun MainScreen(
     annotationManager: AnnotationManager,
     cloudKitSyncManager: CloudKitSyncManager,
     onCheckForUpdates: () -> Unit,
+    historyViewModel: HistoryViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
 ) {
     val isDataLoaded by libraryViewModel.isDataLoaded.collectAsState()
     var hasLoadedInitially by remember { mutableStateOf(false) }
@@ -184,9 +185,6 @@ fun MainScreen(
         }
     }
 
-    val historyViewModel: HistoryViewModel =
-        androidx.lifecycle.viewmodel.compose
-            .viewModel()
     val annotationsViewModel: AnnotationsViewModel =
         androidx.lifecycle.viewmodel.compose
             .viewModel()
@@ -212,23 +210,11 @@ fun MainScreen(
                     snapshotFlow { currentRouteState.value }
                         .first { route -> route != null && Tab.entries.any { it.route == route } }
 
-                    val ckPrefs = context.getSharedPreferences(
-                        "MaktabahPrefs",
-                        android.content.Context.MODE_PRIVATE
+                    cloudKitSyncManager.retryAllPendingOperations(
+                        context,
+                        annotationManager,
+                        historyViewModel,
                     )
-                    if (ckPrefs.getString("ckWebAuthToken", null) != null) {
-                        cloudKitSyncManager.retryPendingSyncs(context, historyViewModel)
-                        cloudKitSyncManager.checkAccountChangeAndSync(
-                            context,
-                            annotationManager,
-                            historyViewModel,
-                        )
-                        cloudKitSyncManager.fetchChanges(
-                            context,
-                            annotationManager,
-                            historyViewModel,
-                        )
-                    }
                 }
             } else if (event == Lifecycle.Event.ON_PAUSE) {
                 syncJob?.cancel()
@@ -925,25 +911,7 @@ private fun AppNavHost(
                         onBack = {
                             navController.popBackStack()
                         },
-                        onSyncRequested = {
-                            scope.launch {
-                                val syncResult =
-                                    cloudKitSyncManager.syncAnnotations(
-                                        context,
-                                        annotationManager,
-                                    )
-                                withContext(Dispatchers.Main) {
-                                    if (syncResult != null) {
-                                        android.widget.Toast
-                                            .makeText(
-                                                context,
-                                                syncResult,
-                                                android.widget.Toast.LENGTH_LONG,
-                                            ).show()
-                                    }
-                                }
-                            }
-                        },
+                        onSyncRequested = {},
                         onSyncHistoryRequested = {
                             scope.launch {
                                 val entry =
