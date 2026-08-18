@@ -168,6 +168,7 @@ fun MainScreen(
         remember { prefs.getString("last_tab_route", Tab.Library.route) ?: Tab.Library.route }
     var hasDonated by remember { mutableStateOf(prefs.getBoolean("has_donated", false)) }
     var hideTabsOnScroll by remember { mutableStateOf(prefs.getBoolean("hide_tabs_on_scroll", true)) }
+    var recordSearchHistory by remember { mutableStateOf(prefs.getBoolean("record_search_history", true)) }
     var showBookNotFoundPopover by remember { mutableStateOf(false) }
 
     DisposableEffect(prefs) {
@@ -177,6 +178,8 @@ fun MainScreen(
                     hasDonated = prefs.getBoolean("has_donated", false)
                 } else if (key == "hide_tabs_on_scroll") {
                     hideTabsOnScroll = prefs.getBoolean("hide_tabs_on_scroll", true)
+                } else if (key == "record_search_history") {
+                    recordSearchHistory = prefs.getBoolean("record_search_history", true)
                 }
             }
         prefs.registerOnSharedPreferenceChangeListener(listener)
@@ -267,7 +270,7 @@ fun MainScreen(
         }
     }
 
-    val handleNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit =
+    val handleNavigateToReader: (Int, Int?, Int?, Int?, String?, Boolean) -> Unit =
         remember(
             libraryViewModel,
             tabManager,
@@ -276,7 +279,7 @@ fun MainScreen(
             historyViewModel,
             annotationManager
         ) {
-            { bookId, contentId, loc, len, query ->
+            { bookId, contentId, loc, len, query, recordHistory ->
                 val book = libraryViewModel.dataManager.booksById[bookId]
                 if (book == null) {
                     showBookNotFoundPopover = true
@@ -299,6 +302,7 @@ fun MainScreen(
                                 flashTarget = flashTarget,
                                 searchQuery = query,
                                 setActive = !isInReader,
+                                recordHistory = recordHistory,
                             )
                         // Initialize ViewModel jika belum
                         tab.viewModel.initialize(
@@ -377,6 +381,7 @@ fun MainScreen(
                 tabManager = tabManager,
                 handleNavigateToReader = handleNavigateToReader,
                 hasDonated = hasDonated,
+                recordSearchHistory = recordSearchHistory,
                 onCheckForUpdates = onCheckForUpdates,
             )
 
@@ -402,7 +407,9 @@ fun MainScreen(
                 BookDownloadOverlay(
                     viewModel = libraryViewModel,
                     bottomPadding = innerPadding.calculateBottomPadding(),
-                    onNavigateToReader = handleNavigateToReader,
+                    onNavigateToReader = { bId, cId, l, ln, q ->
+                        handleNavigateToReader(bId, cId, l, ln, q, true)
+                    },
                 )
             }
 
@@ -735,8 +742,9 @@ private fun AppNavHost(
     historyViewModel: HistoryViewModel,
     annotationsViewModel: AnnotationsViewModel,
     tabManager: ReaderTabManager,
-    handleNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
+    handleNavigateToReader: (Int, Int?, Int?, Int?, String?, Boolean) -> Unit,
     hasDonated: Boolean,
+    recordSearchHistory: Boolean,
     onCheckForUpdates: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -820,7 +828,9 @@ private fun AppNavHost(
                 viewModel = libraryViewModel,
                 annotationManager = annotationManager,
                 tabManager = tabManager,
-                onNavigateToReader = handleNavigateToReader,
+                onNavigateToReader = { b, c, loc, len, q ->
+                    handleNavigateToReader(b, c, loc, len, q, true)
+                },
                 onNavigateToCloudKit = { navController.navigate("cloudkit_login") },
                 onCheckForUpdates = onCheckForUpdates,
                 bottomPadding = innerPadding.calculateBottomPadding(),
@@ -835,7 +845,9 @@ private fun AppNavHost(
                 viewModel = searchViewModel,
                 libraryViewModel = libraryViewModel,
                 bottomPadding = innerPadding.calculateBottomPadding(),
-                onNavigateToReader = handleNavigateToReader,
+                onNavigateToReader = { bookId, contentId, loc, len, query ->
+                    handleNavigateToReader(bookId, contentId, loc, len, query, recordSearchHistory)
+                },
                 hasDonated = hasDonated,
                 onClearContentSearchQuery = {
                     tabManager.tabs.value.forEach { tab ->
@@ -853,7 +865,9 @@ private fun AppNavHost(
                 historyViewModel,
                 annotationsViewModel,
                 innerPadding.calculateBottomPadding(),
-                onNavigateToReader = handleNavigateToReader,
+                onNavigateToReader = { b, c, loc, len, q ->
+                    handleNavigateToReader(b, c, loc, len, q, true)
+                },
                 hasDonated = hasDonated,
             )
         }
@@ -864,7 +878,9 @@ private fun AppNavHost(
                 annotationManager = annotationManager,
                 cloudKitSyncManager = cloudKitSyncManager,
                 bottomPadding = innerPadding.calculateBottomPadding(),
-                onNavigateToReader = handleNavigateToReader,
+                onNavigateToReader = { b, c, loc, len, q ->
+                    handleNavigateToReader(b, c, loc, len, q, true)
+                },
                 hasDonated = hasDonated,
             )
         }
@@ -895,9 +911,11 @@ private fun AppNavHost(
             val activeTab = tabManager.activeTab
 
             if (activeTab != null) {
-                LaunchedEffect(activeTab.bookId) {
-                    val affectedEntries = historyViewModel.addBookToHistory(activeTab.bookId)
-                    cloudKitSyncManager.uploadHistory(context, affectedEntries)
+                LaunchedEffect(activeTab.bookId, activeTab.viewModel.recordHistory) {
+                    if (activeTab.viewModel.recordHistory) {
+                        val affectedEntries = historyViewModel.addBookToHistory(activeTab.bookId)
+                        cloudKitSyncManager.uploadHistory(context, affectedEntries)
+                    }
                 }
 
                 androidx.compose.runtime.key(activeTab.id) {

@@ -208,6 +208,9 @@
     <string name="history_settings_title">Pengaturan</string>
     <string name="history_settings_appearance">Tampilan</string>
     <string name="history_settings_hide_tabs_on_scroll">Sembunyikan tab saat scroll ke bawah</string>
+    <string name="history_settings_history">Riwayat</string>
+    <string name="history_settings_record_search_history">Riwayat Membaca</string>
+    <string name="history_settings_record_search_history_desc">Tambahkan buku yang dibuka dari hasil pencarian ke riwayat bacaan.</string>
     <string name="history_settings_cloudkit">Akun CloudKit</string>
     <string name="history_settings_signed_in">Masuk sebagai: %1$s</string>
     <string name="history_settings_connected">Terhubung</string>

@@ -37,6 +37,7 @@ fun SettingsDialog(
     val context = LocalContext.current
     val hasToken by viewModel.hasToken.collectAsState()
     val hideTabsOnScroll by viewModel.hideTabsOnScroll.collectAsState()
+    val recordSearchHistory by viewModel.recordSearchHistory.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.initialize(context)
@@ -69,6 +70,38 @@ fun SettingsDialog(
                         checked = hideTabsOnScroll,
                         onCheckedChange = { enabled ->
                             viewModel.setHideTabsOnScroll(context, enabled)
+                        }
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = stringResource(R.string.history_settings_history),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(
+                            text = stringResource(R.string.history_settings_record_search_history),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(R.string.history_settings_record_search_history_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    androidx.compose.material3.Switch(
+                        checked = recordSearchHistory,
+                        onCheckedChange = { enabled ->
+                            viewModel.setRecordSearchHistory(context, enabled)
                         }
                     )
                 }

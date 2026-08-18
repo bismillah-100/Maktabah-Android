@@ -4,8 +4,10 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -32,6 +34,8 @@ import java.io.FileOutputStream
 import java.util.UUID
 
 class ReaderViewModel : ViewModel() {
+
+    var recordHistory by mutableStateOf(true)
 
     // Tab-specific UI state for Book TOC
     var tocSearchQuery = mutableStateOf("")
