@@ -530,6 +530,7 @@ private fun AnnotationsTopBar(
     var showSortMenu by remember { mutableStateOf(false) }
     var showSelectionExportMenu by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -641,12 +642,23 @@ private fun AnnotationsTopBar(
                                             icon = Icons.Default.Share,
                                             onClick = {
                                                 showSelectionExportMenu = false
-                                                RtfAnnotationExporter.exportAndShareRtf(
-                                                    context = context,
-                                                    groups = groupedAnnotations,
-                                                    dataManager = dataManager,
-                                                    selectedAnnotationIds = selectedAnnotationIds
-                                                )
+                                                coroutineScope.launch(Dispatchers.IO) {
+                                                    val success = RtfAnnotationExporter.exportAndShareRtf(
+                                                        context = context,
+                                                        groups = groupedAnnotations,
+                                                        dataManager = dataManager,
+                                                        selectedAnnotationIds = selectedAnnotationIds
+                                                    )
+                                                    if (!success) {
+                                                        withContext(Dispatchers.Main) {
+                                                            Toast.makeText(
+                                                                context,
+                                                                R.string.annotations_export_failed,
+                                                                Toast.LENGTH_SHORT
+                                                            ).show()
+                                                        }
+                                                    }
+                                                }
                                             },
                                         )
                                         AnnotationMenuItem(
@@ -834,23 +846,27 @@ private fun AnnotationsTopBar(
                                         },
                                     )
                                     HorizontalDivider()
-                                    AnnotationMenuItem(
+                                     AnnotationMenuItem(
                                         text = stringResource(R.string.annotations_menu_export_rtf),
                                         icon = Icons.Default.Share,
                                         onClick = {
                                             showMainMenu = false
-                                            val success =
-                                                RtfAnnotationExporter.exportAndShareRtf(
-                                                    context = context,
-                                                    groups = groupedAnnotations,
-                                                    dataManager = dataManager,
-                                                )
-                                            if (!success) {
-                                                Toast.makeText(
-                                                    context,
-                                                    R.string.annotations_export_failed,
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
+                                            coroutineScope.launch(Dispatchers.IO) {
+                                                val success =
+                                                    RtfAnnotationExporter.exportAndShareRtf(
+                                                        context = context,
+                                                        groups = groupedAnnotations,
+                                                        dataManager = dataManager,
+                                                    )
+                                                if (!success) {
+                                                    withContext(Dispatchers.Main) {
+                                                        Toast.makeText(
+                                                            context,
+                                                            R.string.annotations_export_failed,
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                }
                                             }
                                         },
                                     )
@@ -984,6 +1000,11 @@ private fun AnnotationsList(
                     0,
                     androidx.recyclerview.widget.ItemTouchHelper.RIGHT
                 ) {
+                    private val swipePath = android.graphics.Path()
+                    private val swipeRect = android.graphics.RectF()
+                    private val swipeRadii = FloatArray(8)
+                    private val redColor = "#FF3B30".toColorInt()
+
                     override fun onMove(
                         recyclerView: androidx.recyclerview.widget.RecyclerView,
                         viewHolder: androidx.recyclerview.widget.RecyclerView.ViewHolder,
@@ -1050,22 +1071,21 @@ private fun AnnotationsList(
                                 val maxRadius = 30f * density
                                 val bottomRadius = if (isLast) maxRadius else 0f
 
-                                val path = android.graphics.Path()
-                                val rect = android.graphics.RectF(
+                                swipePath.reset()
+                                swipeRect.set(
                                     if (dX > 0) itemView.left.toFloat() else itemView.right.toFloat() + dX,
                                     itemView.top.toFloat(),
                                     if (dX > 0) itemView.left.toFloat() + dX else itemView.right.toFloat(),
                                     itemView.bottom.toFloat()
                                 )
-                                val radii = floatArrayOf(
-                                    0f, 0f,
-                                    0f, 0f,
-                                    bottomRadius, bottomRadius,
-                                    bottomRadius, bottomRadius
-                                )
-                                path.addRoundRect(rect, radii, android.graphics.Path.Direction.CW)
-                                c.withClip(path) {
-                                    drawColor("#FF3B30".toColorInt()) // iOS Red
+                                swipeRadii[0] = 0f; swipeRadii[1] = 0f
+                                swipeRadii[2] = 0f; swipeRadii[3] = 0f
+                                swipeRadii[4] = bottomRadius; swipeRadii[5] = bottomRadius
+                                swipeRadii[6] = bottomRadius; swipeRadii[7] = bottomRadius
+
+                                swipePath.addRoundRect(swipeRect, swipeRadii, android.graphics.Path.Direction.CW)
+                                c.withClip(swipePath) {
+                                    drawColor(redColor)
 
                                     // Trigger haptic feedback when swiped past 55% width threshold
                                     val ratio = kotlin.math.abs(dX) / itemView.width.toFloat()
