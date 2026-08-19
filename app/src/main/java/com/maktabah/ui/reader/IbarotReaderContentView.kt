@@ -26,7 +26,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,10 +55,6 @@ import com.maktabah.utils.findArabicMatchingRangesWithIndex
 import com.maktabah.utils.filterRangesForNearMode
 import com.maktabah.utils.isArabicHarakat
 import com.maktabah.utils.normalizeArabic
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun IbarotReaderContentView(
@@ -101,8 +96,28 @@ fun IbarotReaderContentView(
     val scrollRange = remember { mutableFloatStateOf(0f) }
     val scrollExtent = remember { mutableFloatStateOf(0f) }
     var isScrollInProgress by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val scrollJobRef = remember { arrayOf<Job?>(null) }
+    val scrollEndRunnable = remember {
+        Runnable { isScrollInProgress = false }
+    }
+
+    val topGradient = remember(topPadPx) {
+        if (topPadPx > 0f) {
+            Brush.verticalGradient(
+                0.0f to Color.Transparent,
+                0.8f to Color.Black.copy(alpha = 0.15f),
+                1.0f to Color.Black,
+                startY = 0f,
+                endY = topPadPx,
+            )
+        } else null
+    }
+    val botGradientColorStops = remember {
+        arrayOf(
+            0.0f to Color.Black,
+            0.2f to Color.Black.copy(alpha = 0.15f),
+            1.0f to Color.Transparent,
+        )
+    }
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Box(
@@ -126,29 +141,19 @@ fun IbarotReaderContentView(
                 }
                 .drawWithContent {
                     drawContent()
-                    if (topPadPx > 0f) {
+                    topGradient?.let {
                         drawRect(
-                            brush =
-                                Brush.verticalGradient(
-                                    0.0f to Color.Transparent,
-                                    0.8f to Color.Black.copy(alpha = 0.15f),
-                                    1.0f to Color.Black,
-                                    startY = 0f,
-                                    endY = topPadPx,
-                                ),
+                            brush = it,
                             blendMode = BlendMode.DstIn,
                         )
                     }
                     if (botPadPx > 0f) {
                         drawRect(
-                            brush =
-                                Brush.verticalGradient(
-                                    0.0f to Color.Black,
-                                    0.2f to Color.Black.copy(alpha = 0.15f),
-                                    1.0f to Color.Transparent,
-                                    startY = size.height - botPadPx,
-                                    endY = size.height,
-                                ),
+                            brush = Brush.verticalGradient(
+                                colorStops = botGradientColorStops,
+                                startY = size.height - botPadPx,
+                                endY = size.height,
+                            ),
                             blendMode = BlendMode.DstIn,
                         )
                     }
@@ -193,11 +198,8 @@ fun IbarotReaderContentView(
                         if (!isScrollInProgress) {
                             isScrollInProgress = true
                         }
-                        scrollJobRef[0]?.cancel()
-                        scrollJobRef[0] = scope.launch {
-                            delay(350.milliseconds)
-                            isScrollInProgress = false
-                        }
+                        sv.removeCallbacks(scrollEndRunnable)
+                        sv.postDelayed(scrollEndRunnable, 350L)
                     }
                 }
             val textView =
@@ -604,6 +606,20 @@ private fun buildFuzzyQuery(query: String): String {
     return sb.toString().trim()
 }
 
+private val honorificMap: Map<Char, String> by lazy {
+    HONORIFIC_PHRASES.associate { it.second[0] to it.first.normalizeArabic() }
+}
+
+private fun Char.normalizeArabicChar(): Char {
+    return when (this.code) {
+        0x0623, 0x0625, 0x0622, 0x0671 -> '\u0627'
+        0x0629 -> '\u0647'
+        0x0649 -> '\u064A'
+        0x060C -> ','
+        else -> this
+    }
+}
+
 private fun findQueryRange(
     text: CharSequence,
     query: String,
@@ -635,10 +651,9 @@ private fun findQueryRange(
 
     for (i in renderedStr.indices) {
         val char = renderedStr[i]
-        val expansion = HONORIFIC_PHRASES.find { it.second == char.toString() }?.first
+        val expansion = honorificMap[char]
         if (expansion != null) {
-            val normalizedExpansion = expansion.normalizeArabic()
-            for (c in normalizedExpansion) {
+            for (c in expansion) {
                 if (Character.isLetterOrDigit(c)) {
                     if (cleanIdx < cleanToOrig.size) cleanToOrig[cleanIdx++] = i
                     fuzzyText.append(c)
@@ -651,17 +666,15 @@ private fun findQueryRange(
             }
         } else {
             if (char.isArabicHarakat() || char == '\u0640') continue
-            val normalizedChar = char.toString().normalizeArabic()
-            for (c in normalizedChar) {
-                if (Character.isLetterOrDigit(c)) {
-                    if (cleanIdx < cleanToOrig.size) cleanToOrig[cleanIdx++] = i
-                    fuzzyText.append(c)
-                    lastWasSpace = false
-                } else if (!lastWasSpace) {
-                    if (cleanIdx < cleanToOrig.size) cleanToOrig[cleanIdx++] = i
-                    fuzzyText.append(' ')
-                    lastWasSpace = true
-                }
+            val c = char.normalizeArabicChar()
+            if (Character.isLetterOrDigit(c)) {
+                if (cleanIdx < cleanToOrig.size) cleanToOrig[cleanIdx++] = i
+                fuzzyText.append(c)
+                lastWasSpace = false
+            } else if (!lastWasSpace) {
+                if (cleanIdx < cleanToOrig.size) cleanToOrig[cleanIdx++] = i
+                fuzzyText.append(' ')
+                lastWasSpace = true
             }
         }
     }

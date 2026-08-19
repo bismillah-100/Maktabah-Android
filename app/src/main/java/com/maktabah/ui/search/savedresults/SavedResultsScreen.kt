@@ -220,12 +220,15 @@ fun SavedResultsScreen(
     if (itemToMove != null) {
         val disabledIds = if (itemToMove is MoveTarget.Folder) {
             val node = (itemToMove as MoveTarget.Folder).node
-            fun getAllDescendantIds(n: FolderNode): List<Long> {
-                val ids = mutableListOf(n.id)
-                for (child in n.children) ids.addAll(getAllDescendantIds(child))
-                return ids
+            val ids = mutableSetOf<Long>()
+            val queue = ArrayDeque<FolderNode>()
+            queue.add(node)
+            while (queue.isNotEmpty()) {
+                val current = queue.removeFirst()
+                ids.add(current.id)
+                queue.addAll(current.children)
             }
-            getAllDescendantIds(node).toSet()
+            ids
         } else emptySet()
 
         MoveItemSheet(
@@ -306,13 +309,13 @@ private fun SavedResultsList(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .fadingEdge(listState, 110.dp),
+                .fadingEdge(listState, topPadding),
             state = listState,
             contentPadding = PaddingValues(top = topPadding + 8.dp, bottom = bottomPadding + 16.dp)
         ) {
             itemsIndexed(
                 items = folders,
-                key = { _, folder -> "folder_${folder.id}" },
+                key = { _, folder -> folder.id },
             ) { index, folder ->
                 FolderItem(
                     folder = folder,
@@ -327,7 +330,7 @@ private fun SavedResultsList(
 
             itemsIndexed(
                 items = results,
-                key = { _, result -> "result_${result.id}" },
+                key = { _, result -> -(result.id + 1L) },
             ) { idx, result ->
                 ResultItem(
                     result = result,

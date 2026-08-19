@@ -83,7 +83,7 @@ class BookSearchViewModel : ViewModel() {
         }
         _searchHistory.value = current
         val prefs = context.getSharedPreferences("search_prefs", Context.MODE_PRIVATE)
-        prefs.edit { putString("search_history_list", current.joinToString("\n")).apply() }
+        prefs.edit { putString("search_history_list", current.joinToString("\n")) }
     }
 
     fun removeFromHistory(context: Context, query: String) {
@@ -91,13 +91,13 @@ class BookSearchViewModel : ViewModel() {
         current.remove(query)
         _searchHistory.value = current
         val prefs = context.getSharedPreferences("search_prefs", Context.MODE_PRIVATE)
-        prefs.edit { putString("search_history_list", current.joinToString("\n")).apply() }
+        prefs.edit { putString("search_history_list", current.joinToString("\n")) }
     }
 
     fun clearHistory(context: Context) {
         _searchHistory.value = emptyList()
         val prefs = context.getSharedPreferences("search_prefs", Context.MODE_PRIVATE)
-        prefs.edit { remove("search_history_list").apply() }
+        prefs.edit { remove("search_history_list") }
     }
 
     fun search(
@@ -135,7 +135,9 @@ class BookSearchViewModel : ViewModel() {
                         mode = currentMode,
                         nearDistance = effectiveDistance,
                         onRowProgress = { current, total ->
-                            _searchProgress.value = Pair(current, total)
+                            if (current % 10 == 0 || current == total) {
+                                _searchProgress.value = Pair(current, total)
+                            }
                         }
                     )
                 _results.value = searchResults

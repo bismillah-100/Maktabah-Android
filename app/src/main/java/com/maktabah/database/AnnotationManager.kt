@@ -48,6 +48,10 @@ class AnnotationManager(
             """
             db.prepare(sql)?.use { it.step() }
 
+            db.prepare("CREATE INDEX IF NOT EXISTS idx_annotations_bk_created ON annotations_v2 (bkId, createdAt DESC);")?.use { it.step() }
+            db.prepare("CREATE INDEX IF NOT EXISTS idx_annotations_content ON annotations_v2 (bkId, contentId);")?.use { it.step() }
+            db.prepare("CREATE INDEX IF NOT EXISTS idx_annotations_created ON annotations_v2 (createdAt DESC);")?.use { it.step() }
+
             val sqlDeleted = """
                 CREATE TABLE IF NOT EXISTS deleted_records (
                     ckRecordId TEXT PRIMARY KEY

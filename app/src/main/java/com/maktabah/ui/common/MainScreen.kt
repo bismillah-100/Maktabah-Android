@@ -49,9 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -104,9 +102,10 @@ import com.maktabah.ui.reader.ReaderTabsListSheet
 import com.maktabah.ui.search.SearchScreen
 import com.maktabah.ui.search.SearchViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
 
 enum class Tab(
     val titleRes: Int,
@@ -201,18 +200,20 @@ fun MainScreen(
         }
     }
 
-    val currentRouteState = rememberUpdatedState(currentRoute)
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         var syncJob: kotlinx.coroutines.Job? = null
+        var lastSyncTimestamp = 0L
+        val minIntervalMs = 15_000L
+
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 syncJob?.cancel()
                 syncJob = scope.launch {
-                    // Wait until currentRoute becomes a valid main screen route
-                    snapshotFlow { currentRouteState.value }
-                        .first { route -> route != null && Tab.entries.any { it.route == route } }
-
+                    delay(500.milliseconds)
+                    val now = System.currentTimeMillis()
+                    if (now - lastSyncTimestamp < minIntervalMs) return@launch
+                    lastSyncTimestamp = now
                     cloudKitSyncManager.retryAllPendingOperations(
                         context,
                         annotationManager,
