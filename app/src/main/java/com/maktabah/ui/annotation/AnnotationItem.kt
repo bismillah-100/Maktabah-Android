@@ -200,7 +200,7 @@ fun LazyItemScope.AnnotationItem(
                         )
                         if (ann.tags.isNotEmpty()) {
                             Text(
-                                text = ann.tags.split(",").joinToString(" -- "),
+                                text = ann.tags.replace("،", ",").split(",").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }.joinToString(" -- "),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
