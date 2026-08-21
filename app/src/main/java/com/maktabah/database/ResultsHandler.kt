@@ -607,18 +607,7 @@ class ResultsHandler(private val dbFile: File) {
                         }
                     }
                     val now = System.currentTimeMillis() / 1000L
-                    for (chunk in validIds.chunked(300)) {
-                        val placeholders = chunk.joinToString(",") { "(?, ?, ?)" }
-                        db.prepare("INSERT OR REPLACE INTO sync_pending (ck_record_id, operation, queued_at) VALUES $placeholders;")?.use { stmt ->
-                            var bindIndex = 1
-                            for (id in chunk) {
-                                stmt.bindText(bindIndex++, id)
-                                stmt.bindText(bindIndex++, operation)
-                                stmt.bindLong(bindIndex++, now)
-                            }
-                            stmt.step()
-                        }
-                    }
+                    performBatchInsert(db, validIds, operation, now)
                 } else if (operation == "delete") {
                     for (chunk in ckRecordIds.chunked(900)) {
                         val placeholders = chunk.joinToString(",") { "?" }
@@ -630,18 +619,7 @@ class ResultsHandler(private val dbFile: File) {
                         }
                     }
                     val now = System.currentTimeMillis() / 1000L
-                    for (chunk in ckRecordIds.chunked(300)) {
-                        val placeholders = chunk.joinToString(",") { "(?, ?, ?)" }
-                        db.prepare("INSERT OR REPLACE INTO sync_pending (ck_record_id, operation, queued_at) VALUES $placeholders;")?.use { stmt ->
-                            var bindIndex = 1
-                            for (id in chunk) {
-                                stmt.bindText(bindIndex++, id)
-                                stmt.bindText(bindIndex++, operation)
-                                stmt.bindLong(bindIndex++, now)
-                            }
-                            stmt.step()
-                        }
-                    }
+                    performBatchInsert(db, ckRecordIds, operation, now)
                 }
                 db.prepare("COMMIT;")?.use { it.step() }
             } catch (e: Exception) {
@@ -650,6 +628,44 @@ class ResultsHandler(private val dbFile: File) {
             }
         }
     }
+    private fun performBatchInsert(db: SQLiteDB, ids: List<String>, operation: String, now: Long) {
+        if (ids.isEmpty()) return
+        val chunkSize = 300
+        val fullSql = "INSERT OR REPLACE INTO sync_pending (ck_record_id, operation, queued_at) VALUES " +
+            List(chunkSize) { "(?, ?, ?)" }.joinToString(",") + ";"
+        var fullStmt: SQLiteStmt? = null
+        try {
+            for (chunk in ids.chunked(chunkSize)) {
+                val stmt = if (chunk.size == chunkSize) {
+                    fullStmt ?: db.prepare(fullSql).also { fullStmt = it }
+                } else {
+                    val placeholders = chunk.joinToString(",") { "(?, ?, ?)" }
+                    db.prepare("INSERT OR REPLACE INTO sync_pending (ck_record_id, operation, queued_at) VALUES $placeholders;")
+                }
+                stmt?.let { s ->
+                    try {
+                        var bindIndex = 1
+                        for (id in chunk) {
+                            s.bindText(bindIndex++, id)
+                            s.bindText(bindIndex++, operation)
+                            s.bindLong(bindIndex++, now)
+                        }
+                        s.step()
+                    } finally {
+                        if (s === fullStmt) {
+                            s.reset()
+                            s.clearBindings()
+                        } else {
+                            s.close()
+                        }
+                    }
+                }
+            }
+        } finally {
+            fullStmt?.close()
+        }
+    }
+
     fun removePendingSync(ckRecordIds: List<String>) {
         if (ckRecordIds.isEmpty()) return
         openDb { db ->
