@@ -345,21 +345,23 @@ class AnnotationManager(
                     stmt.step()
                 }
 
-            db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-            try {
-                db.prepare("INSERT OR IGNORE INTO pending_uploads (ckRecordId) VALUES (?)")
-                    ?.use { stmt ->
-                        for (ckId in ckIds) {
-                            stmt.bindText(1, ckId)
+            if (ckIds.isNotEmpty()) {
+                db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
+                try {
+                    for (chunk in ckIds.chunked(300)) {
+                        val placeholders = chunk.joinToString(",") { "(?)" }
+                        db.prepare("INSERT OR IGNORE INTO pending_uploads (ckRecordId) VALUES $placeholders;")?.use { stmt ->
+                            chunk.forEachIndexed { index, ckId ->
+                                stmt.bindText(index + 1, ckId)
+                            }
                             stmt.step()
-                            stmt.reset()
-                            stmt.clearBindings()
                         }
                     }
-                db.prepare("COMMIT;")?.use { it.step() }
-            } catch (e: Exception) {
-                db.prepare("ROLLBACK;")?.use { it.step() }
-				e.printStackTrace()
+                    db.prepare("COMMIT;")?.use { it.step() }
+                } catch (e: Exception) {
+                    db.prepare("ROLLBACK;")?.use { it.step() }
+                    e.printStackTrace()
+                }
             }
         }
         updates.tryEmit(AnnotationChange.ReloadAll)
