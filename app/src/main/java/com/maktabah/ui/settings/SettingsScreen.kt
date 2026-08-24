@@ -193,12 +193,14 @@ fun SettingsDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
 					modifier = Modifier.padding(4.dp),
                 )
-                TextButton(
-                    onClick = onCheckForUpdates,
-                    contentPadding = PaddingValues(4.dp),
-                    modifier = Modifier.defaultMinSize(minWidth = 1.dp, minHeight = 1.dp)
-                ) {
-                    Text(stringResource(R.string.history_settings_check_update))
+                if (com.maktabah.BuildConfig.ENABLE_IN_APP_UPDATE) {
+                    TextButton(
+                        onClick = onCheckForUpdates,
+                        contentPadding = PaddingValues(4.dp),
+                        modifier = Modifier.defaultMinSize(minWidth = 1.dp, minHeight = 1.dp)
+                    ) {
+                        Text(stringResource(R.string.history_settings_check_update))
+                    }
                 }
             }
         },
