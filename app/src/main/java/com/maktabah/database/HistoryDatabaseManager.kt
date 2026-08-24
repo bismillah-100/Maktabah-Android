@@ -139,21 +139,31 @@ class HistoryDatabaseManager(private val dbFile: File) {
         openRW().use { db ->
             db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
             try {
-                db.prepare("DELETE FROM history_order;")?.use { it.step() }
-                db.prepare("INSERT INTO history_order (position, book_id) VALUES (?, ?);")?.use { stmt ->
-                    for ((pos, bookId) in order.withIndex()) {
-                        stmt.bindInt(1, pos)
-                        stmt.bindInt(2, bookId)
-                        stmt.step()
-                        stmt.reset()
-                        stmt.clearBindings()
-                    }
-                }
+                insertHistoryOrder(db, order)
                 db.prepare("COMMIT;")?.use { it.step() }
             } catch (e: Exception) {
                 db.prepare("ROLLBACK;")?.use { it.step() }
                 throw e
             }
+        }
+    }
+
+    private fun insertHistoryOrder(db: SQLiteDB, order: List<Int>) {
+        db.prepare("DELETE FROM history_order;")?.use { it.step() }
+        if (order.isEmpty()) return
+        var pos = 0
+        for (chunk in order.chunked(450)) {
+            val valuePlaceholders = chunk.joinToString(",") { "(?, ?)" }
+            val sql = "INSERT INTO history_order (position, book_id) VALUES $valuePlaceholders;"
+            db.prepare(sql)?.use { stmt ->
+                chunk.forEachIndexed { index, bookId ->
+                    val paramIndex = index * 2
+                    stmt.bindInt(paramIndex + 1, pos + index)
+                    stmt.bindInt(paramIndex + 2, bookId)
+                }
+                stmt.step()
+            }
+            pos += chunk.size
         }
     }
 
@@ -310,16 +320,7 @@ class HistoryDatabaseManager(private val dbFile: File) {
                     }
                 }
                 // Simpan order baru
-                db.prepare("DELETE FROM history_order;")?.use { it.step() }
-                db.prepare("INSERT INTO history_order (position, book_id) VALUES (?, ?);")?.use { stmt ->
-                    for ((pos, bookId) in newOrder.withIndex()) {
-                        stmt.bindInt(1, pos)
-                        stmt.bindInt(2, bookId)
-                        stmt.step()
-                        stmt.reset()
-                        stmt.clearBindings()
-                    }
-                }
+                insertHistoryOrder(db, newOrder)
                 db.prepare("COMMIT;")?.use { it.step() }
             } catch (e: Exception) {
                 db.prepare("ROLLBACK;")?.use { it.step() }
@@ -397,16 +398,7 @@ class HistoryDatabaseManager(private val dbFile: File) {
                             stmt.clearBindings()
                         }
                     }
-                    db.prepare("DELETE FROM history_order;")?.use { it.step() }
-                    db.prepare("INSERT INTO history_order (position, book_id) VALUES (?, ?);")?.use { stmt ->
-                        for ((pos, bookId) in order.withIndex()) {
-                            stmt.bindInt(1, pos)
-                            stmt.bindInt(2, bookId)
-                            stmt.step()
-                            stmt.reset()
-                            stmt.clearBindings()
-                        }
-                    }
+                    insertHistoryOrder(db, order)
                     db.prepare("COMMIT;")?.use { it.step() }
                 } catch (e: Exception) {
                     db.prepare("ROLLBACK;")?.use { it.step() }
