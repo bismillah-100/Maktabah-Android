@@ -102,10 +102,7 @@ class AnnotationsViewModel : ViewModel() {
     val allTags: StateFlow<List<String>> = _annotations.map { annotations ->
         val tagsSet = mutableSetOf<String>()
         annotations.forEach { ann ->
-            ann.tags.split(",").forEach { tag ->
-                val trimmed = tag.trim()
-                if (trimmed.isNotEmpty()) tagsSet.add(trimmed)
-            }
+            tagsSet.addAll(ann.tags.parseTags())
         }
         tagsSet.toList().sortedWith(String.CASE_INSENSITIVE_ORDER)
     }.flowOn(Dispatchers.Default)
@@ -116,8 +113,7 @@ class AnnotationsViewModel : ViewModel() {
             if (mode == TagFilterMode.AND && selectedTags.isNotEmpty()) {
                 val coOccurring = selectedTags.toMutableSet()
                 annotations.forEach { ann ->
-                    val annTags =
-                        ann.tags.split(",").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }.toSet()
+                    val annTags = ann.tags.parseTags()
                     if (selectedTags.all { annTags.contains(it) }) {
                         coOccurring.addAll(annTags)
                     }
@@ -126,10 +122,7 @@ class AnnotationsViewModel : ViewModel() {
             } else {
                 val tagsSet = mutableSetOf<String>()
                 annotations.forEach { ann ->
-                    ann.tags.split(",").forEach { tag ->
-                        val trimmed = tag.trim()
-                        if (trimmed.isNotEmpty()) tagsSet.add(trimmed)
-                    }
+                    tagsSet.addAll(ann.tags.parseTags())
                 }
                 tagsSet.toList().sortedWith(String.CASE_INSENSITIVE_ORDER)
             }
@@ -140,8 +133,7 @@ class AnnotationsViewModel : ViewModel() {
         if (tagFilterMode.value == TagFilterMode.AND && selected.isNotEmpty()) {
             val coOccurring = selected.toMutableSet()
             _annotations.value.forEach { ann ->
-                val annTags =
-                    ann.tags.split(",").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }.toSet()
+                val annTags = ann.tags.parseTags()
                 if (selected.all { annTags.contains(it) }) {
                     coOccurring.addAll(annTags)
                 }
@@ -305,9 +297,13 @@ class AnnotationsViewModel : ViewModel() {
 
     private fun handleUpsert(annotation: Annotation) {
         val currentList = _annotations.value.toMutableList()
-        val index = currentList.indexOfFirst { it.id == annotation.id }
+        val index = currentList.indexOfFirst {
+            it.id == annotation.id || (annotation.ckRecordId != null && it.ckRecordId == annotation.ckRecordId)
+        }
         if (index != -1) {
+            val oldAnnotation = currentList[index]
             currentList[index] = annotation
+            updateSelectedTagsOnAnnotationChanged(oldAnnotation, annotation, currentList)
         } else {
             currentList.add(0, annotation)
             currentList.sortByDescending { it.createdAt }
@@ -317,8 +313,131 @@ class AnnotationsViewModel : ViewModel() {
 
     private fun handleDelete(annotationId: Long) {
         val currentList = _annotations.value.toMutableList()
-        currentList.removeAll { it.id == annotationId }
-        _annotations.value = currentList
+        val index = currentList.indexOfFirst { it.id == annotationId }
+        if (index != -1) {
+            currentList.removeAt(index)
+            _annotations.value = currentList
+            cleanupStaleSelectedTags(currentList)
+        }
+    }
+
+    private fun updateSelectedTagsOnAnnotationChanged(
+        oldAnnotation: Annotation,
+        newAnnotation: Annotation,
+        updatedList: List<Annotation>,
+    ) {
+        val oldTags = oldAnnotation.tags.parseTags()
+        val newTags = newAnnotation.tags.parseTags()
+        if (oldTags == newTags) return
+
+        val removedTags = oldTags - newTags
+        val addedTags = newTags - oldTags
+        val currentSelected = _selectedTags.value
+
+        val affectedSelected = removedTags.intersect(currentSelected)
+        if (affectedSelected.isNotEmpty()) {
+            val updatedSelected = currentSelected.toMutableSet()
+            for (oldTag in affectedSelected) {
+                val stillExists = updatedList.any { ann ->
+                    ann.tags.parseTags().contains(oldTag)
+                }
+                if (!stillExists) {
+                    if (removedTags.size == 1 && addedTags.size == 1) {
+                        val newTag = addedTags.first()
+                        updatedSelected.remove(oldTag)
+                        updatedSelected.add(newTag)
+                        updateExpandedTagGroup(oldTag, newTag)
+                    } else {
+                        updatedSelected.remove(oldTag)
+                    }
+                }
+            }
+            if (updatedSelected != currentSelected) {
+                _selectedTags.value = updatedSelected
+            }
+        }
+    }
+
+    private fun cleanupStaleSelectedTags(annotations: List<Annotation>) {
+        val currentSelected = _selectedTags.value
+        if (currentSelected.isEmpty()) return
+
+        val allRemainingTags = annotations.flatMap { it.tags.parseTags() }.toSet()
+        val validSelected = currentSelected.filter { it in allRemainingTags }.toSet()
+        if (validSelected != currentSelected) {
+            _selectedTags.value = validSelected
+        }
+    }
+
+    private fun updateExpandedTagGroup(oldTag: String, newTag: String) {
+        val oldKey = "tag_$oldTag"
+        val newKey = "tag_$newTag"
+        val currentExpanded = _expandedGroups.value
+        if (currentExpanded.containsKey(oldKey)) {
+            val isExpanded = currentExpanded[oldKey] ?: false
+            val mutable = currentExpanded.toMutableMap()
+            mutable.remove(oldKey)
+            mutable[newKey] = isExpanded
+            _expandedGroups.value = mutable
+            if (::sharedPrefs.isInitialized) {
+                val expandedKeys = mutable.filterValues { it }.keys
+                sharedPrefs.edit { putStringSet("expandedGroups", expandedKeys) }
+            }
+        }
+    }
+
+    private fun reconcileSelectedTags(oldList: List<Annotation>, newList: List<Annotation>) {
+        val currentSelected = _selectedTags.value
+        if (currentSelected.isEmpty()) return
+
+        val oldAllTags = oldList.flatMap { it.tags.parseTags() }.toSet()
+        val newAllTags = newList.flatMap { it.tags.parseTags() }.toSet()
+
+        val updatedSelected = currentSelected.toMutableSet()
+
+        val oldMap = oldList.mapNotNull { ann -> (ann.ckRecordId ?: ann.id?.toString())?.let { it to ann } }.toMap()
+        for (newAnn in newList) {
+            val key = newAnn.ckRecordId ?: newAnn.id?.toString() ?: continue
+            val oldAnn = oldMap[key] ?: continue
+            val oldTags = oldAnn.tags.parseTags()
+            val newTags = newAnn.tags.parseTags()
+            if (oldTags != newTags) {
+                val removed = oldTags - newTags
+                val added = newTags - oldTags
+                val matched = removed.intersect(updatedSelected)
+                for (oldTag in matched) {
+                    val stillExists = newAllTags.contains(oldTag)
+                    if (!stillExists) {
+                        if (removed.size == 1 && added.size == 1) {
+                            val newTag = added.first()
+                            updatedSelected.remove(oldTag)
+                            updatedSelected.add(newTag)
+                            updateExpandedTagGroup(oldTag, newTag)
+                        } else {
+                            updatedSelected.remove(oldTag)
+                        }
+                    }
+                }
+            }
+        }
+
+        val disappeared = updatedSelected - newAllTags
+        if (disappeared.isNotEmpty()) {
+            val brandNew = newAllTags - oldAllTags
+            if (disappeared.size == 1 && brandNew.size == 1) {
+                val oldTag = disappeared.first()
+                val newTag = brandNew.first()
+                updatedSelected.remove(oldTag)
+                updatedSelected.add(newTag)
+                updateExpandedTagGroup(oldTag, newTag)
+            } else {
+                updatedSelected.removeAll(disappeared)
+            }
+        }
+
+        if (updatedSelected != currentSelected) {
+            _selectedTags.value = updatedSelected
+        }
     }
 
     private fun loadAnnotations(annotationManager: AnnotationManager, isInitial: Boolean = false) {
@@ -326,10 +445,13 @@ class AnnotationsViewModel : ViewModel() {
             if (isInitial) {
                 _isLoading.value = true
             }
-            _annotations.value = annotationManager.getAllAnnotations()
+            val oldList = _annotations.value
+            val loaded = annotationManager.getAllAnnotations()
+            _annotations.value = loaded
             if (isInitial) {
                 _isLoading.value = false
             }
+            reconcileSelectedTags(oldList, loaded)
         }
     }
 
@@ -369,7 +491,7 @@ class AnnotationsViewModel : ViewModel() {
 
             if (params.selectedTags.isNotEmpty()) {
                 filtered = filtered.filter { ann ->
-                    val annTags = ann.tags.split(",").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }.toSet()
+                    val annTags = ann.tags.parseTags()
                     if (params.tagFilterMode == TagFilterMode.AND) {
                         params.selectedTags.all { tag -> annTags.contains(tag) }
                     } else {
@@ -471,10 +593,7 @@ class AnnotationsViewModel : ViewModel() {
                     val untaggedList = mutableListOf<Annotation>()
 
                     for (ann in sortedAnnotations) {
-                        val tagsList =
-                            ann.tags
-                                .split(",")
-                                .mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }
+                        val tagsList = ann.tags.parseTagsList()
 
                         if (tagsList.isEmpty()) {
                             untaggedList.add(ann)
@@ -515,6 +634,21 @@ class AnnotationsViewModel : ViewModel() {
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList(),
         )
+}
+
+private fun String.parseTags(): Set<String> {
+    if (isEmpty()) return emptySet()
+    return replace("،", ",")
+        .split(",")
+        .mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }
+        .toSet()
+}
+
+private fun String.parseTagsList(): List<String> {
+    if (isEmpty()) return emptyList()
+    return replace("،", ",")
+        .split(",")
+        .mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }
 }
 
 private data class FilterAndSortParams(

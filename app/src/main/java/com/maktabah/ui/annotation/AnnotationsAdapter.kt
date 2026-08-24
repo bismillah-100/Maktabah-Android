@@ -490,7 +490,7 @@ class AnnotationsAdapter(
 
             if (ann.tags.isNotEmpty()) {
                 tagsText.visibility = View.VISIBLE
-                tagsText.text = ann.tags.split(",").joinToString(" -- ")
+                tagsText.text = ann.tags.replace("،", ",").split(",").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }.joinToString(" -- ")
                 tagsText.setTextColor(onSurfaceVariantColor)
             } else {
                 tagsText.visibility = View.GONE

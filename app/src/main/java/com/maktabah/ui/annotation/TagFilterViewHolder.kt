@@ -25,6 +25,11 @@ class TagFilterViewHolder private constructor(
     private val modeButton: ImageView,
 ) : RecyclerView.ViewHolder(rootView) {
 
+    private var lastSelectedTags: Set<String> = emptySet()
+    private var lastTagCount: Int = 0
+    private var lastFilterMode: TagFilterMode? = null
+    private var isFirstBind: Boolean = true
+
     fun bind(
         item: AnnotationFlatItem.TagFilter,
         primaryColor: Int,
@@ -36,6 +41,21 @@ class TagFilterViewHolder private constructor(
         onOpenTagDialog: () -> Unit,
         onToggleFilterMode: () -> Unit,
     ) {
+        val wasFiltered = lastSelectedTags.isNotEmpty()
+        val isNowCleared = item.selectedTags.isEmpty()
+        val tagCountExpanded = item.allTags.size > lastTagCount
+        val modeSwitchedToOr = lastFilterMode == TagFilterMode.AND && item.filterMode == TagFilterMode.OR
+
+        val shouldScrollToStart = isFirstBind ||
+            (wasFiltered && isNowCleared) ||
+            (isNowCleared && tagCountExpanded) ||
+            modeSwitchedToOr
+
+        lastSelectedTags = item.selectedTags
+        lastTagCount = item.allTags.size
+        lastFilterMode = item.filterMode
+        isFirstBind = false
+
         val ctx = scrollView.context
         val density = ctx.resources.displayMetrics.density
 
@@ -172,6 +192,12 @@ class TagFilterViewHolder private constructor(
             chip.background = chipRipple
             chip.setTextColor(textColor)
             chip.setOnClickListener { onToggleTag(tag) }
+        }
+
+        if (shouldScrollToStart) {
+            chipsContainer.post {
+                scrollView.scrollTo(chipsContainer.width, 0)
+            }
         }
     }
 
