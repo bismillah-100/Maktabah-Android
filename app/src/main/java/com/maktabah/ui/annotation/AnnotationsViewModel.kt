@@ -337,26 +337,17 @@ class AnnotationsViewModel : ViewModel() {
         val affectedSelected = removedTags.intersect(currentSelected)
         if (affectedSelected.isNotEmpty()) {
             val updatedSelected = currentSelected.toMutableSet()
-            if (removedTags.size == 1 && addedTags.size == 1) {
-                val oldTag = removedTags.first()
-                val newTag = addedTags.first()
-                updatedSelected.remove(oldTag)
-                updatedSelected.add(newTag)
-                updateExpandedTagGroup(oldTag, newTag)
-            } else if (addedTags.isNotEmpty()) {
-                updatedSelected.removeAll(affectedSelected)
-                updatedSelected.addAll(addedTags)
-                for (oldTag in affectedSelected) {
-                    for (newTag in addedTags) {
-                        updateExpandedTagGroup(oldTag, newTag)
-                    }
+            for (oldTag in affectedSelected) {
+                val stillExists = updatedList.any { ann ->
+                    ann.tags.parseTags().contains(oldTag)
                 }
-            } else {
-                for (oldTag in affectedSelected) {
-                    val stillExists = updatedList.any { ann ->
-                        ann.id != newAnnotation.id && ann.tags.parseTags().contains(oldTag)
-                    }
-                    if (!stillExists) {
+                if (!stillExists) {
+                    if (removedTags.size == 1 && addedTags.size == 1) {
+                        val newTag = addedTags.first()
+                        updatedSelected.remove(oldTag)
+                        updatedSelected.add(newTag)
+                        updateExpandedTagGroup(oldTag, newTag)
+                    } else {
                         updatedSelected.remove(oldTag)
                     }
                 }
@@ -414,20 +405,16 @@ class AnnotationsViewModel : ViewModel() {
                 val removed = oldTags - newTags
                 val added = newTags - oldTags
                 val matched = removed.intersect(updatedSelected)
-                if (matched.isNotEmpty()) {
-                    if (removed.size == 1 && added.size == 1) {
-                        val oldTag = removed.first()
-                        val newTag = added.first()
-                        updatedSelected.remove(oldTag)
-                        updatedSelected.add(newTag)
-                        updateExpandedTagGroup(oldTag, newTag)
-                    } else if (added.isNotEmpty()) {
-                        updatedSelected.removeAll(matched)
-                        updatedSelected.addAll(added)
-                        for (oldTag in matched) {
-                            for (newTag in added) {
-                                updateExpandedTagGroup(oldTag, newTag)
-                            }
+                for (oldTag in matched) {
+                    val stillExists = newAllTags.contains(oldTag)
+                    if (!stillExists) {
+                        if (removed.size == 1 && added.size == 1) {
+                            val newTag = added.first()
+                            updatedSelected.remove(oldTag)
+                            updatedSelected.add(newTag)
+                            updateExpandedTagGroup(oldTag, newTag)
+                        } else {
+                            updatedSelected.remove(oldTag)
                         }
                     }
                 }
