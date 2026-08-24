@@ -41,15 +41,9 @@ class TagFilterViewHolder private constructor(
         onOpenTagDialog: () -> Unit,
         onToggleFilterMode: () -> Unit,
     ) {
-        val wasFiltered = lastSelectedTags.isNotEmpty()
-        val isNowCleared = item.selectedTags.isEmpty()
-        val tagCountExpanded = item.allTags.size > lastTagCount
-        val modeSwitchedToOr = lastFilterMode == TagFilterMode.AND && item.filterMode == TagFilterMode.OR
+        val modeChanged = lastFilterMode != null && lastFilterMode != item.filterMode
 
-        val shouldScrollToStart = isFirstBind ||
-            (wasFiltered && isNowCleared) ||
-            (isNowCleared && tagCountExpanded) ||
-            modeSwitchedToOr
+        val shouldScrollToStart = isFirstBind || modeChanged
 
         lastSelectedTags = item.selectedTags
         lastTagCount = item.allTags.size
