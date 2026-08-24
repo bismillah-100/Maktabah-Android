@@ -17,7 +17,7 @@ android {
         minSdk = 26
         targetSdk = 37
         versionCode = 1
-        versionName = "0.9"
+        versionName = "1.0"
 
         manifestPlaceholders["appName"] = "Maktabah"
 
@@ -26,6 +26,7 @@ android {
                 cppFlags += "-std=c++17"
             }
         }
+        buildConfigField("boolean", "ENABLE_IN_APP_UPDATE", "true")
     }
 
     buildTypes {
@@ -110,6 +111,11 @@ android {
 
             val githubAppRepo = properties.getProperty("github.app.repo") ?: "bismillah-100/Maktabah-Android"
             buildConfigField("String", "GITHUB_APP_REPO", "\"$githubAppRepo\"")
+        }
+        create("galaxy") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            buildConfigField("boolean", "ENABLE_IN_APP_UPDATE", "false")
         }
     }
     compileOptions {

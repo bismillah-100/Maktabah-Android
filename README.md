@@ -6,6 +6,11 @@ Maktabah is an Android application for reading and managing collections of class
 
 > We are currently raising funds for the **Google Play Console** registration fee so that the app can be officially distributed via the Play Store. Any support, no matter how small, means a lot — see the [Support](#support) section below. Donors will be displayed inside the App when it is released on the Play Store.
 
+## Download
+
+[<img src="https://img.shields.io/badge/Galaxy%20Store-Download%20App-034EA2?style=for-the-badge&logo=samsung&logoColor=white" alt="Download on Galaxy Store" />](https://galaxystore.samsung.com/detail/com.maktabah.android)
+[<img src="https://img.shields.io/badge/GitHub%20Releases-Download%20APK-181717?style=for-the-badge&logo=github&logoColor=white" alt="Download APK on GitHub" />](https://github.com/bismillah-100/Maktabah-Android/releases/latest)
+
 ## Features
 
 - **Book Library** — Browse and download book collections from a centralized repository

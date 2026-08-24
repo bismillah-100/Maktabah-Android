@@ -115,15 +115,19 @@ class MainActivity : ComponentActivity() {
 
                     if (isBootstrapped) {
                         val client = remember { OkHttpClient() }
-                        val updateRepository = remember { UpdateRepository(client) }
-                        val updateManager = remember { UpdateManager(this@MainActivity, client) }
-                        val updateViewModel = remember { UpdateViewModel(updateRepository, updateManager) }
+                        var updateViewModel: UpdateViewModel? = null
+                        if (BuildConfig.ENABLE_IN_APP_UPDATE) {
+                            val updateRepository = remember { UpdateRepository(client) }
+                            val updateManager = remember { UpdateManager(this@MainActivity, client) }
+                            val vm = remember { UpdateViewModel(updateRepository, updateManager) }
+                            updateViewModel = vm
 
-                        LaunchedEffect(Unit) {
-                            updateViewModel.checkForUpdates()
+                            LaunchedEffect(Unit) {
+                                vm.checkForUpdates()
+                            }
+
+                            UpdateDialog(vm)
                         }
-
-                        UpdateDialog(updateViewModel)
 
                         val mainDbFile = File(this@MainActivity.filesDir, "main.sqlite")
                         val dataManager = remember { LibraryDataManager(mainDbFile) }
@@ -196,7 +200,7 @@ class MainActivity : ComponentActivity() {
                             cloudKitSyncManager = cloudKitSyncManager,
                             historyViewModel = historyViewModel,
                             onCheckForUpdates = {
-                                updateViewModel.checkForUpdates(
+                                updateViewModel?.checkForUpdates(
                                     force = true,
                                     onNoUpdate = {
                                         android.widget.Toast.makeText(

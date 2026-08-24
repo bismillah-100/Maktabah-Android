@@ -21,6 +21,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -386,15 +387,6 @@ fun MainScreen(
                 onCheckForUpdates = onCheckForUpdates,
             )
 
-            BookNotFoundPopover(
-                visible = showBookNotFoundPopover,
-                onDismiss = { showBookNotFoundPopover = false },
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = innerPadding.calculateBottomPadding() + 16.dp),
-            )
-
             val downloadedBookIds by libraryViewModel.downloadedBookIds.collectAsState()
             val activeDownloadStates by libraryViewModel.activeDownloadStates.collectAsState()
             val showOverlay = activeDownloadStates.any {
@@ -404,42 +396,80 @@ fun MainScreen(
                 listOf(Tab.Library.route, Tab.Annotations.route, Tab.History.route)
             val isAllowedRoute = currentRoute in allowedOverlayRoutes
 
-            if (showOverlay && isAllowedRoute) {
-                BookDownloadOverlay(
-                    viewModel = libraryViewModel,
-                    bottomPadding = innerPadding.calculateBottomPadding(),
-                    onNavigateToReader = { bId, cId, l, ln, q ->
-                        handleNavigateToReader(bId, cId, l, ln, q, true)
-                    },
-                )
-            }
-
-            if (showGlobalTabsSheet && tabs.isNotEmpty()) {
-                ReaderTabsListSheet(
-                    tabs = tabs,
-                    activeTabId = activeTabId,
-                    onSwitch = { selectedTabId ->
-                        tabManager.switchTab(selectedTabId)
-                        showGlobalTabsSheet = false
-                        if (navController.currentDestination?.route != "reader_tabs") {
-                            navController.navigate("reader_tabs") {
-                                launchSingleTop = true
-                                restoreState = true
-                            }
+            MainScreenOverlays(
+                showBookNotFoundPopover = showBookNotFoundPopover,
+                onDismissBookNotFoundPopover = { showBookNotFoundPopover = false },
+                showOverlay = showOverlay && isAllowedRoute,
+                libraryViewModel = libraryViewModel,
+                bottomPadding = innerPadding.calculateBottomPadding(),
+                onNavigateToReader = handleNavigateToReader,
+                showGlobalTabsSheet = showGlobalTabsSheet,
+                tabs = tabs,
+                activeTabId = activeTabId,
+                onSwitchTab = { selectedTabId ->
+                    tabManager.switchTab(selectedTabId)
+                    showGlobalTabsSheet = false
+                    if (navController.currentDestination?.route != "reader_tabs") {
+                        navController.navigate("reader_tabs") {
+                            launchSingleTop = true
+                            restoreState = true
                         }
-                    },
-                    onClose = { closedTabId ->
-                        tabManager.closeTab(closedTabId)
-                        if (tabManager.tabs.value.isEmpty()) {
-                            showGlobalTabsSheet = false
-                        }
-                    },
-                    onDismiss = {
+                    }
+                },
+                onCloseTab = { closedTabId ->
+                    tabManager.closeTab(closedTabId)
+                    if (tabManager.tabs.value.isEmpty()) {
                         showGlobalTabsSheet = false
-                    },
-                )
-            }
+                    }
+                },
+                onDismissGlobalTabsSheet = { showGlobalTabsSheet = false },
+            )
         }
+    }
+}
+
+@Composable
+private fun BoxScope.MainScreenOverlays(
+    showBookNotFoundPopover: Boolean,
+    onDismissBookNotFoundPopover: () -> Unit,
+    showOverlay: Boolean,
+    libraryViewModel: LibraryViewModel,
+    bottomPadding: Dp,
+    onNavigateToReader: (Int, Int?, Int?, Int?, String?, Boolean) -> Unit,
+    showGlobalTabsSheet: Boolean,
+    tabs: List<ReaderTab>,
+    activeTabId: String?,
+    onSwitchTab: (String) -> Unit,
+    onCloseTab: (String) -> Unit,
+    onDismissGlobalTabsSheet: () -> Unit,
+) {
+    BookNotFoundPopover(
+        visible = showBookNotFoundPopover,
+        onDismiss = onDismissBookNotFoundPopover,
+        modifier =
+            Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = bottomPadding + 16.dp),
+    )
+
+    if (showOverlay) {
+        BookDownloadOverlay(
+            viewModel = libraryViewModel,
+            bottomPadding = bottomPadding,
+            onNavigateToReader = { bId, cId, l, ln, q ->
+                onNavigateToReader(bId, cId, l, ln, q, true)
+            },
+        )
+    }
+
+    if (showGlobalTabsSheet && tabs.isNotEmpty()) {
+        ReaderTabsListSheet(
+            tabs = tabs,
+            activeTabId = activeTabId,
+            onSwitch = onSwitchTab,
+            onClose = onCloseTab,
+            onDismiss = onDismissGlobalTabsSheet,
+        )
     }
 }
 

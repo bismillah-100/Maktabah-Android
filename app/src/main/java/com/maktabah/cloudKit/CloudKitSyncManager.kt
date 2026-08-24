@@ -174,185 +174,11 @@ class CloudKitSyncManager {
                     val ckRecordId = record.optString("recordName", "")
                     val fields = record.optJSONObject("fields") ?: return@fetchChanges
 
-                    if (recordType == "SearchFolder") {
-                        val name = fields.optJSONObject("name")?.optString("value", "") ?: ""
-                        val lastModifiedVal = fields.optJSONObject("lastModified")?.optLong("value", 0L) ?: 0L
-                        val parentCkRecordId = fields.optJSONObject("parentCkRecordId")?.let {
-                            val v = it.opt("value")
-                            if (v == null || v == JSONObject.NULL) null else v.toString()
-                        }
-                        foldersToSave.add(SyncFolder(
-                            name = name,
-                            ckRecordId = ckRecordId,
-                            lastModified = lastModifiedVal,
-                            parentCkRecordId = parentCkRecordId
-                        ))
-                        return@fetchChanges
-                    } else if (recordType == "SearchResult") {
-                        val name = fields.optJSONObject("name")?.optString("value", "") ?: ""
-                        val query = fields.optJSONObject("query")?.optString("value", "") ?: ""
-                        val archive = fields.optJSONObject("archive")?.optInt("value", 0) ?: 0
-                        val bkId = fields.optJSONObject("bkId")?.optInt("value", 0) ?: 0
-                        val contentId = fields.optJSONObject("contentId")?.optString("value", "") ?: ""
-                        val lastModifiedVal = fields.optJSONObject("lastModified")?.optLong("value", 0L) ?: 0L
-                        val folderCkRecordId = fields.optJSONObject("folderCkRecordId")?.let {
-                            val v = it.opt("value")
-                            if (v == null || v == JSONObject.NULL) null else v.toString()
-                        }
-                        val searchMode = fields.optJSONObject("searchMode")?.optInt("value", 0) ?: 0
-                        val nearDistance = fields.optJSONObject("nearDistance")?.optInt("value", 10) ?: 10
-                        resultsToSave.add(SyncResult(
-                            name = name,
-                            query = query,
-                            archive = archive,
-                            bkId = bkId,
-                            contentId = contentId,
-                            ckRecordId = ckRecordId,
-                            lastModified = lastModifiedVal,
-                            folderCkRecordId = folderCkRecordId,
-                            searchMode = searchMode,
-                            nearDistance = nearDistance
-                        ))
-                        return@fetchChanges
-                    }
-
-                    if (recordType == "Annotation") {
-                        val bkId = fields.optJSONObject("bkId")?.optInt("value", 0) ?: 0
-                        val contentId = fields.optJSONObject("contentId")?.optInt("value", 0) ?: 0
-                        val colorHex = fields.optJSONObject("colorHex")?.optString("value", "") ?: ""
-                        val note = fields.optJSONObject("note")?.let { if (it.has("value")) it.optString("value") else null }
-                        val type = fields.optJSONObject("type")?.optInt("value", 0) ?: 0
-                        val createdAtVal = fields.optJSONObject("createdAt")?.optLong("value", 0L) ?: 0L
-                        val createdAt = if (createdAtVal in 1L..9999999999L) createdAtVal * 1000L else createdAtVal
-                        val page = fields.optJSONObject("page")?.optInt("value", 0) ?: 0
-                        val contextText = fields.optJSONObject("context")?.optString("value", "") ?: ""
-                        val rangeLocation =
-                            fields.optJSONObject("rangeLocation")?.optInt("value", 0) ?: 0
-                        val rangeLength = fields.optJSONObject("rangeLength")?.optInt("value", 0) ?: 0
-                        val rangeDiacLocation =
-                            fields.optJSONObject("rangeDiacLocation")?.optInt("value", 0) ?: 0
-                        val rangeDiacLength =
-                            fields.optJSONObject("rangeDiacLength")?.optInt("value", 0) ?: 0
-                        val part = fields.optJSONObject("part")?.optInt("value", 0) ?: 0
-
-                        val tagsObj = fields.optJSONObject("tags")
-                        val tagsList = tagsObj?.optJSONArray("value")
-                        val tags = if (tagsList != null && tagsList.length() > 0) {
-                            (0 until tagsList.length()).joinToString(",") { tagsList.getString(it) }
-                        } else ""
-
-                        val lastModifiedVal = fields.optJSONObject("lastModified")?.optLong("value", 0L) ?: 0L
-                        val lastModified = if (lastModifiedVal > 0L) {
-                            if (lastModifiedVal in 1L..9999999999L) lastModifiedVal * 1000L else lastModifiedVal
-                        } else null
-
-                        val annotation = Annotation(
-                            bkId = bkId,
-                            contentId = contentId,
-                            colorHex = colorHex,
-                            note = note,
-                            type = type,
-                            createdAt = createdAt,
-                            page = page,
-                            context = contextText,
-                            rangeLocation = rangeLocation,
-                            rangeLength = rangeLength,
-                            rangeDiacLocation = rangeDiacLocation,
-                            rangeDiacLength = rangeDiacLength,
-                            part = part,
-                            tags = tags,
-                            ckRecordId = ckRecordId,
-                            lastModified = lastModified
-                        )
-                        annotationsToSave.add(annotation)
-                    } else if (recordType == "ReadingEntry") {
-                        val bookIdObj = fields.optJSONObject("bookId")
-                        val bookId = if (bookIdObj != null) {
-                            when (val v = bookIdObj.opt("value")) {
-                                null -> 0
-                                JSONObject.NULL -> 0
-                                is Number -> v.toInt()
-                                else -> v.toString().toIntOrNull() ?: 0
-                            }
-                        } else 0
-                        if (bookId == 0) return@fetchChanges
-
-                        val lastContentIdObj = fields.optJSONObject("lastContentId")
-                        val lastContentId = if (lastContentIdObj != null) {
-                            when (val v = lastContentIdObj.opt("value")) {
-                                null -> null
-                                JSONObject.NULL -> null
-                                is Number -> v.toInt()
-                                else -> v.toString().toIntOrNull()
-                            }
-                        } else null
-
-                        val lastOpenedAtObj = fields.optJSONObject("lastOpenedAt")
-                        val lastOpenedAtVal = if (lastOpenedAtObj != null) {
-                            when (val v = lastOpenedAtObj.opt("value")) {
-                                null -> null
-                                JSONObject.NULL -> null
-                                is Number -> v.toLong()
-                                else -> v.toString().toLongOrNull()
-                            }
-                        } else null
-                        val lastOpenedAt = if (lastOpenedAtVal != null && lastOpenedAtVal in 1L..9999999999L) lastOpenedAtVal * 1000L else lastOpenedAtVal
-
-                        val favoritedAtObj = fields.optJSONObject("favoritedAt")
-                        val favoritedAtVal = if (favoritedAtObj != null) {
-                            when (val v = favoritedAtObj.opt("value")) {
-                                null -> null
-                                JSONObject.NULL -> null
-                                is Number -> v.toLong()
-                                else -> v.toString().toLongOrNull()
-                            }
-                        } else null
-                        val favoritedAt = if (favoritedAtVal != null && favoritedAtVal in 1L..9999999999L) favoritedAtVal * 1000L else favoritedAtVal
-
-                        val positionUpdatedAtObj = fields.optJSONObject("positionUpdatedAt")
-                        val positionUpdatedAtVal = if (positionUpdatedAtObj != null) {
-                            when (val v = positionUpdatedAtObj.opt("value")) {
-                                null -> null
-                                JSONObject.NULL -> null
-                                is Number -> v.toLong()
-                                else -> v.toString().toLongOrNull()
-                            }
-                        } else null
-                        val positionUpdatedAt = if (positionUpdatedAtVal != null && positionUpdatedAtVal in 1L..9999999999L) positionUpdatedAtVal * 1000L else positionUpdatedAtVal
-
-                        val isFavoriteObj = fields.optJSONObject("isFavorite")
-                        val isFavorite = if (isFavoriteObj != null) {
-                            when (val v = isFavoriteObj.opt("value")) {
-                                null -> false
-                                JSONObject.NULL -> false
-                                is Boolean -> v
-                                is Number -> v.toInt() == 1
-                                else -> v.toString().toIntOrNull() == 1
-                            }
-                        } else false
-
-                        val lastModifiedObj = fields.optJSONObject("lastModified")
-                        val lastModifiedVal = if (lastModifiedObj != null) {
-                            when (val v = lastModifiedObj.opt("value")) {
-                                null -> 0L
-                                JSONObject.NULL -> 0L
-                                is Number -> v.toLong()
-                                else -> v.toString().toLongOrNull() ?: 0L
-                            }
-                        } else 0L
-                        val lastModified = if (lastModifiedVal in 1L..9999999999L) lastModifiedVal * 1000L else lastModifiedVal
-
-                        val entry = ReadingEntry(
-                            bookId = bookId,
-                            lastContentId = lastContentId,
-                            lastOpenedAt = lastOpenedAt,
-                            favoritedAt = favoritedAt,
-                            positionUpdatedAt = positionUpdatedAt,
-                            isFavorite = isFavorite,
-                            updatedAt = lastModified,
-                            ckRecordId = ckRecordId
-                        )
-                        entriesToSave.add(entry)
+                    when (recordType) {
+                        "SearchFolder" -> foldersToSave.add(parseSearchFolderRecord(ckRecordId, fields))
+                        "SearchResult" -> resultsToSave.add(parseSearchResultRecord(ckRecordId, fields))
+                        "Annotation" -> annotationsToSave.add(parseAnnotationRecord(ckRecordId, fields))
+                        "ReadingEntry" -> parseReadingEntryRecord(ckRecordId, fields)?.let { entriesToSave.add(it) }
                     }
                 },
                 onRecordDeleted = { ckRecordId ->
@@ -419,50 +245,7 @@ class CloudKitSyncManager {
                 if (annotation.ckRecordId == null) {
                     annotationManager.insertOrUpdate(annotation.copy(ckRecordId = recordName), fromSync = true)
                 }
-                val record = JSONObject().apply {
-                    put("recordType", "Annotation")
-                    put("recordName", recordName)
-                    put("zoneID", JSONObject().apply {
-                        put("zoneName", "AnnotationsZone")
-                        put("ownerRecordName", "_defaultOwner_")
-                    })
-                    put("fields", JSONObject().apply {
-                        put("bkId", JSONObject().apply { put("value", annotation.bkId) })
-                        put("contentId", JSONObject().apply { put("value", annotation.contentId) })
-                        put("colorHex", JSONObject().apply { put("value", annotation.colorHex) })
-                        if (annotation.note != null) put(
-                            "note",
-                            JSONObject().apply { put("value", annotation.note) })
-                        put("type", JSONObject().apply { put("value", annotation.type) })
-                        val createdAtSec = if (annotation.createdAt > 10000000000L) annotation.createdAt / 1000L else annotation.createdAt
-                        put("createdAt", JSONObject().apply { put("value", createdAtSec) })
-                        put("page", JSONObject().apply { put("value", annotation.page) })
-                        put("context", JSONObject().apply { put("value", annotation.context) })
-                        put(
-                            "rangeLocation",
-                            JSONObject().apply { put("value", annotation.rangeLocation) })
-                        put(
-                            "rangeLength",
-                            JSONObject().apply { put("value", annotation.rangeLength) })
-                        put(
-                            "rangeDiacLocation",
-                            JSONObject().apply { put("value", annotation.rangeDiacLocation) })
-                        put(
-                            "rangeDiacLength",
-                            JSONObject().apply { put("value", annotation.rangeDiacLength) })
-                        put("part", JSONObject().apply { put("value", annotation.part) })
-
-                        val tagsArray = JSONArray()
-                        if (annotation.tags.isNotEmpty()) {
-                            annotation.tags.split(",").forEach { tagsArray.put(it) }
-                        }
-                        put("tags", JSONObject().apply { put("value", tagsArray) })
-
-                        val lastModVal = annotation.lastModified ?: System.currentTimeMillis()
-                        val lastModSec = if (lastModVal > 10000000000L) lastModVal / 1000L else lastModVal
-                        put("lastModified", JSONObject().apply { put("value", lastModSec) })
-                    })
-                }
+                val record = buildAnnotationRecord(annotation, recordName)
                 recordsToSave.put(record)
             }
 
@@ -593,48 +376,12 @@ class CloudKitSyncManager {
 
             for (folder in folders) {
                 val recordName = folder.ckRecordId ?: continue
-                val record = JSONObject().apply {
-                    put("recordType", "SearchFolder")
-                    put("recordName", recordName)
-                    put("zoneID", JSONObject().apply {
-                        put("zoneName", "AnnotationsZone")
-                        put("ownerRecordName", "_defaultOwner_")
-                    })
-                    put("fields", JSONObject().apply {
-                        put("name", JSONObject().apply { put("value", folder.name) })
-                        put("lastModified", JSONObject().apply { put("value", folder.lastModified ?: (System.currentTimeMillis() / 1000L)) })
-                        if (folder.parentCkRecordId != null) {
-                            put("parentCkRecordId", JSONObject().apply { put("value", folder.parentCkRecordId) })
-                        }
-                    })
-                }
-                recordsToSave.put(record)
+                recordsToSave.put(buildSearchFolderRecord(folder, recordName))
             }
 
             for (res in results) {
                 val recordName = res.ckRecordId ?: continue
-                val record = JSONObject().apply {
-                    put("recordType", "SearchResult")
-                    put("recordName", recordName)
-                    put("zoneID", JSONObject().apply {
-                        put("zoneName", "AnnotationsZone")
-                        put("ownerRecordName", "_defaultOwner_")
-                    })
-                    put("fields", JSONObject().apply {
-                        put("name", JSONObject().apply { put("value", res.name) })
-                        put("query", JSONObject().apply { put("value", res.query) })
-                        put("archive", JSONObject().apply { put("value", res.archive) })
-                        put("bkId", JSONObject().apply { put("value", res.bkId) })
-                        put("contentId", JSONObject().apply { put("value", res.contentId) })
-                        put("lastModified", JSONObject().apply { put("value", res.lastModified ?: (System.currentTimeMillis() / 1000L)) })
-                        if (res.folderCkRecordId != null) {
-                            put("folderCkRecordId", JSONObject().apply { put("value", res.folderCkRecordId) })
-                        }
-                        put("searchMode", JSONObject().apply { put("value", res.searchMode) })
-                        put("nearDistance", JSONObject().apply { put("value", res.nearDistance) })
-                    })
-                }
-                recordsToSave.put(record)
+                recordsToSave.put(buildSearchResultRecord(res, recordName))
             }
 
             val pendingDeletes = handler.fetchPendingSync("delete")
@@ -701,6 +448,274 @@ class CloudKitSyncManager {
     private fun getResultsHandler(context: Context): ResultsHandler {
         return ResultsHandler.getInstance(context)
     }
+
+    // region Helper Record Parsers & Builders
+
+    private fun parseSearchFolderRecord(ckRecordId: String, fields: JSONObject): SyncFolder {
+        val name = fields.optJSONObject("name")?.optString("value", "") ?: ""
+        val lastModifiedVal = fields.optJSONObject("lastModified")?.optLong("value", 0L) ?: 0L
+        val parentCkRecordId = fields.optJSONObject("parentCkRecordId")?.let {
+            val v = it.opt("value")
+            if (v == null || v == JSONObject.NULL) null else v.toString()
+        }
+        return SyncFolder(
+            name = name,
+            ckRecordId = ckRecordId,
+            lastModified = lastModifiedVal,
+            parentCkRecordId = parentCkRecordId
+        )
+    }
+
+    private fun parseSearchResultRecord(ckRecordId: String, fields: JSONObject): SyncResult {
+        val name = fields.optJSONObject("name")?.optString("value", "") ?: ""
+        val query = fields.optJSONObject("query")?.optString("value", "") ?: ""
+        val archive = fields.optJSONObject("archive")?.optInt("value", 0) ?: 0
+        val bkId = fields.optJSONObject("bkId")?.optInt("value", 0) ?: 0
+        val contentId = fields.optJSONObject("contentId")?.optString("value", "") ?: ""
+        val lastModifiedVal = fields.optJSONObject("lastModified")?.optLong("value", 0L) ?: 0L
+        val folderCkRecordId = fields.optJSONObject("folderCkRecordId")?.let {
+            val v = it.opt("value")
+            if (v == null || v == JSONObject.NULL) null else v.toString()
+        }
+        val searchMode = fields.optJSONObject("searchMode")?.optInt("value", 0) ?: 0
+        val nearDistance = fields.optJSONObject("nearDistance")?.optInt("value", 10) ?: 10
+        return SyncResult(
+            name = name,
+            query = query,
+            archive = archive,
+            bkId = bkId,
+            contentId = contentId,
+            ckRecordId = ckRecordId,
+            lastModified = lastModifiedVal,
+            folderCkRecordId = folderCkRecordId,
+            searchMode = searchMode,
+            nearDistance = nearDistance
+        )
+    }
+
+    private fun parseAnnotationRecord(ckRecordId: String, fields: JSONObject): Annotation {
+        val bkId = fields.optJSONObject("bkId")?.optInt("value", 0) ?: 0
+        val contentId = fields.optJSONObject("contentId")?.optInt("value", 0) ?: 0
+        val colorHex = fields.optJSONObject("colorHex")?.optString("value", "") ?: ""
+        val note = fields.optJSONObject("note")?.let { if (it.has("value")) it.optString("value") else null }
+        val type = fields.optJSONObject("type")?.optInt("value", 0) ?: 0
+        val createdAtVal = fields.optJSONObject("createdAt")?.optLong("value", 0L) ?: 0L
+        val createdAt = if (createdAtVal in 1L..9999999999L) createdAtVal * 1000L else createdAtVal
+        val page = fields.optJSONObject("page")?.optInt("value", 0) ?: 0
+        val contextText = fields.optJSONObject("context")?.optString("value", "") ?: ""
+        val rangeLocation = fields.optJSONObject("rangeLocation")?.optInt("value", 0) ?: 0
+        val rangeLength = fields.optJSONObject("rangeLength")?.optInt("value", 0) ?: 0
+        val rangeDiacLocation = fields.optJSONObject("rangeDiacLocation")?.optInt("value", 0) ?: 0
+        val rangeDiacLength = fields.optJSONObject("rangeDiacLength")?.optInt("value", 0) ?: 0
+        val part = fields.optJSONObject("part")?.optInt("value", 0) ?: 0
+
+        val tagsObj = fields.optJSONObject("tags")
+        val tagsList = tagsObj?.optJSONArray("value")
+        val tags = if (tagsList != null && tagsList.length() > 0) {
+            (0 until tagsList.length()).joinToString(",") { tagsList.getString(it) }
+        } else ""
+
+        val lastModifiedVal = fields.optJSONObject("lastModified")?.optLong("value", 0L) ?: 0L
+        val lastModified = if (lastModifiedVal > 0L) {
+            if (lastModifiedVal in 1L..9999999999L) lastModifiedVal * 1000L else lastModifiedVal
+        } else null
+
+        return Annotation(
+            bkId = bkId,
+            contentId = contentId,
+            colorHex = colorHex,
+            note = note,
+            type = type,
+            createdAt = createdAt,
+            page = page,
+            context = contextText,
+            rangeLocation = rangeLocation,
+            rangeLength = rangeLength,
+            rangeDiacLocation = rangeDiacLocation,
+            rangeDiacLength = rangeDiacLength,
+            part = part,
+            tags = tags,
+            ckRecordId = ckRecordId,
+            lastModified = lastModified
+        )
+    }
+
+    private fun parseReadingEntryRecord(ckRecordId: String, fields: JSONObject): ReadingEntry? {
+        val bookIdObj = fields.optJSONObject("bookId")
+        val bookId = if (bookIdObj != null) {
+            when (val v = bookIdObj.opt("value")) {
+                null -> 0
+                JSONObject.NULL -> 0
+                is Number -> v.toInt()
+                else -> v.toString().toIntOrNull() ?: 0
+            }
+        } else 0
+        if (bookId == 0) return null
+
+        val lastContentIdObj = fields.optJSONObject("lastContentId")
+        val lastContentId = if (lastContentIdObj != null) {
+            when (val v = lastContentIdObj.opt("value")) {
+                null -> null
+                JSONObject.NULL -> null
+                is Number -> v.toInt()
+                else -> v.toString().toIntOrNull()
+            }
+        } else null
+
+        val lastOpenedAtObj = fields.optJSONObject("lastOpenedAt")
+        val lastOpenedAtVal = if (lastOpenedAtObj != null) {
+            when (val v = lastOpenedAtObj.opt("value")) {
+                null -> null
+                JSONObject.NULL -> null
+                is Number -> v.toLong()
+                else -> v.toString().toLongOrNull()
+            }
+        } else null
+        val lastOpenedAt = if (lastOpenedAtVal != null && lastOpenedAtVal in 1L..9999999999L) lastOpenedAtVal * 1000L else lastOpenedAtVal
+
+        val favoritedAtObj = fields.optJSONObject("favoritedAt")
+        val favoritedAtVal = if (favoritedAtObj != null) {
+            when (val v = favoritedAtObj.opt("value")) {
+                null -> null
+                JSONObject.NULL -> null
+                is Number -> v.toLong()
+                else -> v.toString().toLongOrNull()
+            }
+        } else null
+        val favoritedAt = if (favoritedAtVal != null && favoritedAtVal in 1L..9999999999L) favoritedAtVal * 1000L else favoritedAtVal
+
+        val positionUpdatedAtObj = fields.optJSONObject("positionUpdatedAt")
+        val positionUpdatedAtVal = if (positionUpdatedAtObj != null) {
+            when (val v = positionUpdatedAtObj.opt("value")) {
+                null -> null
+                JSONObject.NULL -> null
+                is Number -> v.toLong()
+                else -> v.toString().toLongOrNull()
+            }
+        } else null
+        val positionUpdatedAt = if (positionUpdatedAtVal != null && positionUpdatedAtVal in 1L..9999999999L) positionUpdatedAtVal * 1000L else positionUpdatedAtVal
+
+        val isFavoriteObj = fields.optJSONObject("isFavorite")
+        val isFavorite = if (isFavoriteObj != null) {
+            when (val v = isFavoriteObj.opt("value")) {
+                null -> false
+                JSONObject.NULL -> false
+                is Boolean -> v
+                is Number -> v.toInt() == 1
+                else -> v.toString().toIntOrNull() == 1
+            }
+        } else false
+
+        val lastModifiedObj = fields.optJSONObject("lastModified")
+        val lastModifiedVal = if (lastModifiedObj != null) {
+            when (val v = lastModifiedObj.opt("value")) {
+                null -> 0L
+                JSONObject.NULL -> 0L
+                is Number -> v.toLong()
+                else -> v.toString().toLongOrNull() ?: 0L
+            }
+        } else 0L
+        val lastModified = if (lastModifiedVal in 1L..9999999999L) lastModifiedVal * 1000L else lastModifiedVal
+
+        return ReadingEntry(
+            bookId = bookId,
+            lastContentId = lastContentId,
+            lastOpenedAt = lastOpenedAt,
+            favoritedAt = favoritedAt,
+            positionUpdatedAt = positionUpdatedAt,
+            isFavorite = isFavorite,
+            updatedAt = lastModified,
+            ckRecordId = ckRecordId
+        )
+    }
+
+    private fun buildAnnotationRecord(annotation: Annotation, recordName: String): JSONObject =
+        JSONObject().apply {
+            put("recordType", "Annotation")
+            put("recordName", recordName)
+            put("zoneID", JSONObject().apply {
+                put("zoneName", "AnnotationsZone")
+                put("ownerRecordName", "_defaultOwner_")
+            })
+            put("fields", JSONObject().apply {
+                put("bkId", JSONObject().apply { put("value", annotation.bkId) })
+                put("contentId", JSONObject().apply { put("value", annotation.contentId) })
+                put("colorHex", JSONObject().apply { put("value", annotation.colorHex) })
+                if (annotation.note != null) put(
+                    "note",
+                    JSONObject().apply { put("value", annotation.note) })
+                put("type", JSONObject().apply { put("value", annotation.type) })
+                val createdAtSec = if (annotation.createdAt > 10000000000L) annotation.createdAt / 1000L else annotation.createdAt
+                put("createdAt", JSONObject().apply { put("value", createdAtSec) })
+                put("page", JSONObject().apply { put("value", annotation.page) })
+                put("context", JSONObject().apply { put("value", annotation.context) })
+                put(
+                    "rangeLocation",
+                    JSONObject().apply { put("value", annotation.rangeLocation) })
+                put(
+                    "rangeLength",
+                    JSONObject().apply { put("value", annotation.rangeLength) })
+                put(
+                    "rangeDiacLocation",
+                    JSONObject().apply { put("value", annotation.rangeDiacLocation) })
+                put(
+                    "rangeDiacLength",
+                    JSONObject().apply { put("value", annotation.rangeDiacLength) })
+                put("part", JSONObject().apply { put("value", annotation.part) })
+
+                val tagsArray = JSONArray()
+                if (annotation.tags.isNotEmpty()) {
+                    annotation.tags.split(",").forEach { tagsArray.put(it) }
+                }
+                put("tags", JSONObject().apply { put("value", tagsArray) })
+
+                val lastModVal = annotation.lastModified ?: System.currentTimeMillis()
+                val lastModSec = if (lastModVal > 10000000000L) lastModVal / 1000L else lastModVal
+                put("lastModified", JSONObject().apply { put("value", lastModSec) })
+            })
+        }
+
+    private fun buildSearchFolderRecord(folder: SyncFolder, recordName: String): JSONObject =
+        JSONObject().apply {
+            put("recordType", "SearchFolder")
+            put("recordName", recordName)
+            put("zoneID", JSONObject().apply {
+                put("zoneName", "AnnotationsZone")
+                put("ownerRecordName", "_defaultOwner_")
+            })
+            put("fields", JSONObject().apply {
+                put("name", JSONObject().apply { put("value", folder.name) })
+                put("lastModified", JSONObject().apply { put("value", folder.lastModified ?: (System.currentTimeMillis() / 1000L)) })
+                if (folder.parentCkRecordId != null) {
+                    put("parentCkRecordId", JSONObject().apply { put("value", folder.parentCkRecordId) })
+                }
+            })
+        }
+
+    private fun buildSearchResultRecord(res: SyncResult, recordName: String): JSONObject =
+        JSONObject().apply {
+            put("recordType", "SearchResult")
+            put("recordName", recordName)
+            put("zoneID", JSONObject().apply {
+                put("zoneName", "AnnotationsZone")
+                put("ownerRecordName", "_defaultOwner_")
+            })
+            put("fields", JSONObject().apply {
+                put("name", JSONObject().apply { put("value", res.name) })
+                put("query", JSONObject().apply { put("value", res.query) })
+                put("archive", JSONObject().apply { put("value", res.archive) })
+                put("bkId", JSONObject().apply { put("value", res.bkId) })
+                put("contentId", JSONObject().apply { put("value", res.contentId) })
+                put("lastModified", JSONObject().apply { put("value", res.lastModified ?: (System.currentTimeMillis() / 1000L)) })
+                if (res.folderCkRecordId != null) {
+                    put("folderCkRecordId", JSONObject().apply { put("value", res.folderCkRecordId) })
+                }
+                put("searchMode", JSONObject().apply { put("value", res.searchMode) })
+                put("nearDistance", JSONObject().apply { put("value", res.nearDistance) })
+            })
+        }
+
+    // endregion
 
     // endregion
 }

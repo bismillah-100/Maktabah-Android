@@ -3,13 +3,15 @@ name: Jules PR Review
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
 
 concurrency:
-  group: jules-review-${{ github.event.pull_request.number }}
+  group: jules-review-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   review:
+    if: vars.ENABLE_JULES_REVIEW == 'true'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
