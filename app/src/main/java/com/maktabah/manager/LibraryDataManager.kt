@@ -220,4 +220,30 @@ class LibraryDataManager(
 		val bookName = booksById[bookId]?.name ?: return false
 		return bookName.normalizeArabic().contains(query.normalizeArabic(), ignoreCase = true)
 	}
+
+    fun getBookNames(ids: List<Int>): Map<Int, String> {
+        if (!mainDbFile.exists() || ids.isEmpty()) {
+            android.util.Log.w("LibraryDataManager", "getBookNames: mainDbFile exists=${mainDbFile.exists()}, ids empty=${ids.isEmpty()}")
+            return emptyMap()
+        }
+        android.util.Log.d("LibraryDataManager", "getBookNames: querying IDs: $ids")
+        val result = mutableMapOf<Int, String>()
+        SQLiteDB(
+            mainDbFile.absolutePath,
+            SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
+        ).use { db ->
+            val placeholders = ids.joinToString(",") { "?" }
+            db.prepare("SELECT bkid, bk FROM \"0bok\" WHERE bkid IN ($placeholders)")?.use { stmt ->
+                ids.forEachIndexed { index, id -> stmt.bindInt(index + 1, id) }
+                while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                    val id = stmt.columnInt(0)
+                    val name = stmt.columnText(1) ?: ""
+                    result[id] = name
+                    android.util.Log.d("LibraryDataManager", "getBookNames: Found ID $id -> $name")
+                }
+            }
+        }
+        android.util.Log.d("LibraryDataManager", "getBookNames: result size: ${result.size}")
+        return result
+    }
 }

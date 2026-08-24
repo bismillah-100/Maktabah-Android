@@ -38,6 +38,8 @@ import com.maktabah.update.UpdateRepository
 import com.maktabah.update.UpdateViewModel
 import okhttp3.OkHttpClient
 import java.io.File
+import android.content.Intent
+import kotlinx.coroutines.flow.MutableStateFlow
 
 private val SepiaLightColorScheme = lightColorScheme(
     primary = Color(0xFF9C7A4E),
@@ -81,8 +83,21 @@ private val SepiaDarkColorScheme = darkColorScheme(
 
 class MainActivity : ComponentActivity() {
 
+    val widgetIntentFlow = MutableStateFlow<Intent?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.action == "ACTION_OPEN_BOOK") {
+            widgetIntentFlow.value = intent
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (intent?.action == "ACTION_OPEN_BOOK") {
+            widgetIntentFlow.value = intent
+        }
 
         // Subscribe to FCM topic for global sync
         FirebaseMessaging.getInstance().subscribeToTopic("global_sync")
@@ -195,6 +210,7 @@ class MainActivity : ComponentActivity() {
                         }
 
                         MainScreen(
+                            mainActivity = this@MainActivity,
                             libraryViewModel = libraryViewModel,
                             annotationManager = annotationManager,
                             cloudKitSyncManager = cloudKitSyncManager,
