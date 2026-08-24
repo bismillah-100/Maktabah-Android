@@ -17,7 +17,7 @@ android {
         minSdk = 26
         targetSdk = 37
         versionCode = 1
-        versionName = "0.9"
+        versionName = "1.0"
 
         manifestPlaceholders["appName"] = "Maktabah"
 
