@@ -369,8 +369,13 @@ class CloudKitSyncManager {
     private suspend fun syncResultsInternal(context: Context): String? =
         withContext(Dispatchers.IO) {
             val handler = getResultsHandler(context)
-            val folders = handler.fetchAllSyncFolders()
-            val results = handler.fetchAllSyncResults()
+            val pendingUploads = handler.fetchPendingSync("upload")
+            val pendingDeletes = handler.fetchPendingSync("delete")
+
+            if (pendingUploads.isEmpty() && pendingDeletes.isEmpty()) return@withContext "No results to sync"
+
+            val folders = handler.fetchSyncFoldersByCkRecordIds(pendingUploads)
+            val results = handler.fetchSyncResultsByCkRecordIds(pendingUploads)
 
             val recordsToSave = JSONArray()
 
@@ -384,18 +389,18 @@ class CloudKitSyncManager {
                 recordsToSave.put(buildSearchResultRecord(res, recordName))
             }
 
-            val pendingDeletes = handler.fetchPendingSync("delete")
             val recordIDsToDelete = JSONArray()
             for (ckId in pendingDeletes) {
                 recordIDsToDelete.put(ckId)
             }
 
-            if (recordsToSave.length() == 0 && recordIDsToDelete.length() == 0) return@withContext "No results to sync"
-
             val result = CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, recordIDsToDelete)
             if (result.isSuccess) {
-                if (pendingDeletes.isNotEmpty()) {
-                    handler.removePendingSync(pendingDeletes)
+                val handledIds = mutableListOf<String>()
+                handledIds.addAll(pendingDeletes)
+                handledIds.addAll(pendingUploads)
+                if (handledIds.isNotEmpty()) {
+                    handler.removePendingSync(handledIds)
                 }
                 "Success"
             } else {
@@ -686,9 +691,7 @@ class CloudKitSyncManager {
             put("fields", JSONObject().apply {
                 put("name", JSONObject().apply { put("value", folder.name) })
                 put("lastModified", JSONObject().apply { put("value", folder.lastModified ?: (System.currentTimeMillis() / 1000L)) })
-                if (folder.parentCkRecordId != null) {
-                    put("parentCkRecordId", JSONObject().apply { put("value", folder.parentCkRecordId) })
-                }
+                put("parentCkRecordId", JSONObject().apply { put("value", folder.parentCkRecordId ?: JSONObject.NULL) })
             })
         }
 
@@ -707,9 +710,7 @@ class CloudKitSyncManager {
                 put("bkId", JSONObject().apply { put("value", res.bkId) })
                 put("contentId", JSONObject().apply { put("value", res.contentId) })
                 put("lastModified", JSONObject().apply { put("value", res.lastModified ?: (System.currentTimeMillis() / 1000L)) })
-                if (res.folderCkRecordId != null) {
-                    put("folderCkRecordId", JSONObject().apply { put("value", res.folderCkRecordId) })
-                }
+                put("folderCkRecordId", JSONObject().apply { put("value", res.folderCkRecordId ?: JSONObject.NULL) })
                 put("searchMode", JSONObject().apply { put("value", res.searchMode) })
                 put("nearDistance", JSONObject().apply { put("value", res.nearDistance) })
             })
