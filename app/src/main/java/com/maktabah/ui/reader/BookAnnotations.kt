@@ -154,10 +154,8 @@ fun BookAnnotationsSheet(
                     ) {
                         itemsIndexed(
                             items = filteredAnnotations,
-                            key = { _, ann ->
-                                ann.id ?: java.util.UUID
-                                    .randomUUID()
-                                    .toString()
+                            key = { index, ann ->
+                                ann.id ?: "unsaved_${ann.createdAt}_$index"
                             },
                         ) { index, ann ->
                             AnnotationItem(
