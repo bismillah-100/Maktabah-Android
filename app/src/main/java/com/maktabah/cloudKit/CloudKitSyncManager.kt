@@ -40,20 +40,21 @@ class CloudKitSyncManager {
     private val historyUploadScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     /**
-     * Upload history entries ke CloudKit dengan buffer + debounce 2 detik.
-     * Entry yang masuk dalam window 2 detik digabung jadi satu batch.
+     * Upload history entries ke CloudKit dengan buffer + debounce 2 detik (atau langsung jika delete).
+     * Entry yang masuk dalam window digabung jadi satu batch.
      * Tidak suspend — aman dipanggil dari UI tanpa terikat lifecycle composable.
      * Setiap entry ditambahkan ke sync_pending sebelum buffer, dihapus setelah berhasil.
      */
     fun uploadHistory(context: Context, entries: List<ReadingEntry>) {
         if (entries.isEmpty()) return
         val appContext = context.applicationContext
+        val hasDeletes = entries.any { !it.isFavorite && it.lastOpenedAt == null }
         historyUploadScope.launch {
             // Tandai sebagai pending sebelum masuk buffer
-            val db = HistoryDatabaseManager.instance
+            val db = HistoryDatabaseManager.getInstance(appContext)
             for (entry in entries) {
                 val key = entry.ckRecordId ?: entry.bookId.toString()
-                db?.addPendingSync(key, if (!entry.isFavorite && entry.lastOpenedAt == null) "delete" else "upload")
+                db.addPendingSync(key, if (!entry.isFavorite && entry.lastOpenedAt == null) "delete" else "upload")
             }
             historyBufferMutex.withLock {
                 for (entry in entries) {
@@ -62,7 +63,9 @@ class CloudKitSyncManager {
                 }
                 historyDebounceJob?.cancel()
                 historyDebounceJob = historyUploadScope.launch {
-                    delay(2_000.milliseconds)
+                    if (!hasDeletes) {
+                        delay(2_000.milliseconds)
+                    }
                     flushHistoryBuffer(appContext)
                 }
             }
@@ -93,7 +96,8 @@ class CloudKitSyncManager {
         val result = CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, recordIDsToDelete)
         if (result.isSuccess) {
             // Upload berhasil — hapus dari antrian pending
-            HistoryDatabaseManager.instance?.removePendingSync(uploadedIds + deletedIds)
+            HistoryDatabaseManager.getInstance(context).removePendingSync(uploadedIds + deletedIds)
+            scheduleHistorySnapshotUpload(context)
         }
     }
 
@@ -103,10 +107,18 @@ class CloudKitSyncManager {
      */
     suspend fun retryPendingSyncs(context: Context, historyViewModel: HistoryViewModel) {
         withContext(Dispatchers.IO) {
-            val db = HistoryDatabaseManager.instance ?: return@withContext
+            val db = HistoryDatabaseManager.getInstance(context)
             val pendingUploads = db.fetchPendingSync("upload")
             val pendingDeletes = db.fetchPendingSync("delete")
-            if (pendingUploads.isEmpty() && pendingDeletes.isEmpty()) return@withContext
+            if (pendingUploads.isEmpty() && pendingDeletes.isEmpty()) {
+                historyBufferMutex.withLock {
+                    if (historyUploadBuffer.isNotEmpty()) {
+                        historyDebounceJob?.cancel()
+                        flushHistoryBuffer(context)
+                    }
+                }
+                return@withContext
+            }
 
             val allEntries = historyViewModel.entriesByBookId.value
             val entriesToRetry = mutableListOf<ReadingEntry>()
@@ -131,6 +143,10 @@ class CloudKitSyncManager {
                 return@withContext
             }
             uploadHistory(context, entriesToRetry)
+            historyBufferMutex.withLock {
+                historyDebounceJob?.cancel()
+            }
+            flushHistoryBuffer(context)
         }
     }
 
@@ -327,6 +343,7 @@ class CloudKitSyncManager {
             }
             val result = CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, recordIDsToDelete)
             if (result.isSuccess) {
+                scheduleHistorySnapshotUpload(context)
                 "Success: Uploaded history and favorites"
             } else {
                 val ex = result.exceptionOrNull()
@@ -462,10 +479,10 @@ class CloudKitSyncManager {
         context: Context,
         annotationManager: AnnotationManager,
         historyViewModel: HistoryViewModel,
-    ) = syncMutex.withLock {
+    ): String? = syncMutex.withLock {
         withContext(Dispatchers.IO) {
             val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
-            if (prefs.getString("ckWebAuthToken", null) == null) return@withContext
+            if (prefs.getString("ckWebAuthToken", null) == null) return@withContext null
 
             // 1. Periksa perubahan akun user CloudKit
             checkAccountChangeAndSync(context, annotationManager, historyViewModel)
@@ -752,15 +769,28 @@ class CloudKitSyncManager {
 
     // endregion
 
-    // endregion
-
     // region Widget Snapshot Records (upload-only for iOS/macOS widgets, 10s debounce)
 
+    private val prefLastHistorySnapshot = "ck_last_uploaded_history_snapshot"
     private val prefLastAnnotationSnapshot = "ck_last_uploaded_annotation_snapshot"
 
     private val snapshotScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val snapshotMutex = Mutex()
+    private var historySnapshotDebounceJob: Job? = null
     private var annotationSnapshotDebounceJob: Job? = null
+
+    fun scheduleHistorySnapshotUpload(context: Context) {
+        val appContext = context.applicationContext
+        snapshotScope.launch {
+            snapshotMutex.withLock {
+                historySnapshotDebounceJob?.cancel()
+                historySnapshotDebounceJob = snapshotScope.launch {
+                    delay(10_000.milliseconds)
+                    uploadHistorySnapshotIfChanged(appContext)
+                }
+            }
+        }
+    }
 
     fun scheduleAnnotationSnapshotUpload(context: Context, annotationManager: AnnotationManager) {
         val appContext = context.applicationContext
@@ -773,6 +803,17 @@ class CloudKitSyncManager {
                 }
             }
         }
+    }
+
+    private suspend fun uploadHistorySnapshotIfChanged(context: Context): Boolean {
+        val recordsToSave = JSONArray()
+        val signature = compileHistorySnapshotRecordIfChanged(context, recordsToSave) ?: return false
+        val result = CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, JSONArray())
+        if (result.isSuccess) {
+            saveLastHistorySnapshotSignature(context, signature)
+            return true
+        }
+        return false
     }
 
     private suspend fun uploadAnnotationSnapshotIfChanged(
@@ -813,6 +854,73 @@ class CloudKitSyncManager {
                 })
             })
         }
+
+    private fun compileHistorySnapshotRecordIfChanged(context: Context, recordsToSave: JSONArray): String? {
+        val historyDb = HistoryDatabaseManager.getInstance(context)
+        val (entries, order) = historyDb.loadFromDatabase()
+
+        val entryMap = entries.associateBy { it.bookId }
+        val orderedEntries = mutableListOf<ReadingEntry>()
+
+        for (bookId in order) {
+            entryMap[bookId]?.let { orderedEntries.add(it) }
+        }
+
+        if (orderedEntries.size < 6) {
+            val existingIds = orderedEntries.map { it.bookId }.toSet()
+            val remaining = entries
+                .filter { it.bookId !in existingIds && it.lastOpenedAt != null }
+                .sortedByDescending { it.lastOpenedAt ?: 0L }
+            orderedEntries.addAll(remaining)
+        }
+
+        val top6 = orderedEntries.take(6)
+        val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
+        val lastSignature = prefs.getString(prefLastHistorySnapshot, null)
+
+        if (top6.isEmpty() && lastSignature == null) {
+            return null
+        }
+
+        val libraryDbFile = File(context.filesDir, "main.sqlite")
+        val bookNames = if (libraryDbFile.exists() && top6.isNotEmpty()) {
+            LibraryDataManager(libraryDbFile).getBookNames(top6.map { it.bookId })
+        } else emptyMap()
+
+        val itemsArray = JSONArray()
+        for (entry in top6) {
+            val itemObj = JSONObject().apply {
+                put("id", entry.bookId.toString())
+                put("bookId", entry.bookId)
+                put("bookTitle", bookNames[entry.bookId] ?: "Book ID: ${entry.bookId}")
+                if (entry.lastContentId != null) {
+                    put("contentId", entry.lastContentId)
+                }
+                val dateMs = entry.lastOpenedAt ?: entry.positionUpdatedAt ?: entry.updatedAt
+                put("date", toAppleReferenceSeconds(dateMs))
+            }
+            itemsArray.put(itemObj)
+        }
+
+        val currentSignature = itemsArray.toString()
+        if (currentSignature == lastSignature) {
+            return null
+        }
+
+        val snapshotJson = JSONObject().apply {
+            put("items", itemsArray)
+            put("lastUpdated", toAppleReferenceSeconds(System.currentTimeMillis()))
+        }.toString()
+
+        val snapshotRecord = buildSnapshotRecord("SharedHistorySnapshot", "HistorySnapshot", snapshotJson)
+        recordsToSave.put(snapshotRecord)
+        return currentSignature
+    }
+
+    private fun saveLastHistorySnapshotSignature(context: Context, signature: String) {
+        val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
+        prefs.edit { putString(prefLastHistorySnapshot, signature).apply() }
+    }
 
     private suspend fun compileAnnotationSnapshotRecordIfChanged(
         context: Context,

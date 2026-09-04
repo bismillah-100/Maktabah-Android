@@ -1,5 +1,6 @@
 package com.maktabah.database
 
+import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.maktabah.models.ReadingEntry
@@ -18,6 +19,14 @@ class HistoryDatabaseManager(private val dbFile: File) {
         @Volatile
         var instance: HistoryDatabaseManager? = null
             private set
+
+        fun getInstance(context: Context): HistoryDatabaseManager {
+            return instance ?: synchronized(this) {
+                instance ?: HistoryDatabaseManager(File(context.applicationContext.filesDir, "History.sqlite")).also {
+                    instance = it
+                }
+            }
+        }
 
         private const val MIGRATION_FLAG = "HistoryVM_SQLiteMigrated"
 
