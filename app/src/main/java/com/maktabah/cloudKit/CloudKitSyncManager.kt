@@ -1,11 +1,13 @@
 package com.maktabah.cloudKit
 
 import android.content.Context
+import android.util.Base64
 import androidx.core.content.edit
 import com.maktabah.R
 import com.maktabah.database.AnnotationManager
 import com.maktabah.database.HistoryDatabaseManager
 import com.maktabah.database.ResultsHandler
+import com.maktabah.manager.LibraryDataManager
 import com.maktabah.models.Annotation
 import com.maktabah.models.ReadingEntry
 import com.maktabah.models.SyncFolder
@@ -258,6 +260,7 @@ class CloudKitSyncManager {
                 annotationManager.clearDeletedRecordIds(deletedIds)
                 val uploadedIds = annotations.mapNotNull { it.ckRecordId }
                 annotationManager.clearPendingUploads(uploadedIds)
+                scheduleAnnotationSnapshotUpload(context, annotationManager)
                 "Success"
             } else {
                 val ex = result.exceptionOrNull()
@@ -276,6 +279,37 @@ class CloudKitSyncManager {
         syncMutex.withLock {
             syncAnnotationsInternal(context, annotationManager)
         }
+
+    private val annotationScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val annotationThrottleMutex = Mutex()
+    private var annotationThrottleJob: Job? = null
+    private var hasPendingAnnotationSync = false
+
+    /**
+     * Throttle 5 detik untuk sinkronisasi anotasi lokal ke CloudKit.
+     * Mencegah spam HTTP POST saat pengguna membuat atau menghapus anotasi secara beruntun.
+     */
+    fun scheduleAnnotationSync(context: Context, annotationManager: AnnotationManager) {
+        val appContext = context.applicationContext
+        annotationScope.launch {
+            annotationThrottleMutex.withLock {
+                hasPendingAnnotationSync = true
+                if (annotationThrottleJob?.isActive == true) return@launch
+
+                annotationThrottleJob = annotationScope.launch {
+                    while (true) {
+                        delay(5_000.milliseconds)
+                        annotationThrottleMutex.withLock {
+                            hasPendingAnnotationSync = false
+                        }
+                        syncAnnotations(appContext, annotationManager)
+                        val shouldRepeat = annotationThrottleMutex.withLock { hasPendingAnnotationSync }
+                        if (!shouldRepeat) break
+                    }
+                }
+            }
+        }
+    }
 
     /** Manual sync — dipakai oleh onSyncHistoryRequested di ReaderScreen. */
     suspend fun syncHistoryAndFavorites(context: Context, entries: List<ReadingEntry>): String? =
@@ -717,6 +751,120 @@ class CloudKitSyncManager {
         }
 
     // endregion
+
+    // endregion
+
+    // region Widget Snapshot Records (upload-only for iOS/macOS widgets, 10s debounce)
+
+    private val prefLastAnnotationSnapshot = "ck_last_uploaded_annotation_snapshot"
+
+    private val snapshotScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val snapshotMutex = Mutex()
+    private var annotationSnapshotDebounceJob: Job? = null
+
+    fun scheduleAnnotationSnapshotUpload(context: Context, annotationManager: AnnotationManager) {
+        val appContext = context.applicationContext
+        snapshotScope.launch {
+            snapshotMutex.withLock {
+                annotationSnapshotDebounceJob?.cancel()
+                annotationSnapshotDebounceJob = snapshotScope.launch {
+                    delay(10_000.milliseconds)
+                    uploadAnnotationSnapshotIfChanged(appContext, annotationManager)
+                }
+            }
+        }
+    }
+
+    private suspend fun uploadAnnotationSnapshotIfChanged(
+        context: Context,
+        annotationManager: AnnotationManager
+    ): Boolean {
+        val recordsToSave = JSONArray()
+        val signature = compileAnnotationSnapshotRecordIfChanged(context, annotationManager, recordsToSave) ?: return false
+        val result = CloudKitCoreManager.shared.modifyRecords(context, recordsToSave, JSONArray())
+        if (result.isSuccess) {
+            saveLastAnnotationSnapshotSignature(context, signature)
+            return true
+        }
+        return false
+    }
+
+    private fun toAppleReferenceSeconds(timestamp: Long): Double {
+        val timeMs = if (timestamp > 0L) timestamp else System.currentTimeMillis()
+        val unixSec = if (timeMs > 10000000000L) timeMs / 1000L else timeMs
+        return unixSec.toDouble() - 978307200.0
+    }
+
+    private fun buildSnapshotRecord(recordName: String, recordType: String, jsonString: String): JSONObject =
+        JSONObject().apply {
+            put("recordType", recordType)
+            put("recordName", recordName)
+            put("zoneID", JSONObject().apply {
+                put("zoneName", "AnnotationsZone")
+                put("ownerRecordName", "_defaultOwner_")
+            })
+            put("fields", JSONObject().apply {
+                put("payload", JSONObject().apply {
+                    put("value", Base64.encodeToString(
+                        jsonString.toByteArray(Charsets.UTF_8),
+                        Base64.NO_WRAP
+                    ))
+                    put("type", "BYTES")
+                })
+            })
+        }
+
+    private suspend fun compileAnnotationSnapshotRecordIfChanged(
+        context: Context,
+        annotationManager: AnnotationManager,
+        recordsToSave: JSONArray
+    ): String? {
+        val top6 = annotationManager.getLatestAnnotations(6)
+        val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
+        val lastSignature = prefs.getString(prefLastAnnotationSnapshot, null)
+
+        if (top6.isEmpty() && lastSignature == null) {
+            return null
+        }
+
+        val libraryDbFile = File(context.filesDir, "main.sqlite")
+        val bookNames = if (libraryDbFile.exists() && top6.isNotEmpty()) {
+            LibraryDataManager(libraryDbFile).getBookNames(top6.map { it.bkId })
+        } else emptyMap()
+
+        val itemsArray = JSONArray()
+        for (ann in top6) {
+            val itemObj = JSONObject().apply {
+                put("id", (ann.id ?: 0L).toString())
+                put("bookId", ann.bkId)
+                put("bookTitle", bookNames[ann.bkId] ?: "Book ID: ${ann.bkId}")
+                put("content", ann.context)
+                put("colorHex", ann.colorHex)
+                put("type", ann.type)
+                put("date", toAppleReferenceSeconds(ann.createdAt))
+            }
+            itemsArray.put(itemObj)
+        }
+
+        val currentSignature = itemsArray.toString()
+        if (currentSignature == lastSignature) {
+            return null
+        }
+
+        val snapshotJson = JSONObject().apply {
+            put("items", itemsArray)
+            put("lastUpdated", toAppleReferenceSeconds(System.currentTimeMillis()))
+        }.toString()
+
+        val snapshotRecord = buildSnapshotRecord("SharedAnnotationSnapshot", "AnnotationSnapshot", snapshotJson)
+        recordsToSave.put(snapshotRecord)
+        return currentSignature
+    }
+
+    private fun saveLastAnnotationSnapshotSignature(context: Context, signature: String) {
+        val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
+        prefs.edit { putString(prefLastAnnotationSnapshot, signature).apply() }
+    }
 
     // endregion
 }
