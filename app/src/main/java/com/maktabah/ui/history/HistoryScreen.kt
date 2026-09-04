@@ -142,7 +142,7 @@ fun HistoryScreen(
                         scope.launch {
                             isSyncing = true
                             val resultMsg = withContext(Dispatchers.IO) {
-                                cloudKitSyncManager.fetchChanges(
+                                cloudKitSyncManager.retryAllPendingOperations(
                                     context,
                                     annotationManager,
                                     historyViewModel
@@ -194,7 +194,7 @@ fun HistoryScreen(
                         onNavigateToReader = onNavigateToReader,
                         onRemoveHistory = { id ->
                             val entry = historyViewModel.removeFromHistory(id)
-                            if (entry != null) cloudKitSyncManager.uploadHistory(context, listOf(entry))
+                            cloudKitSyncManager.uploadHistory(context, listOf(entry))
                         },
                         onToggleFavorite = { id ->
                             val entry = historyViewModel.toggleFavorite(id)
