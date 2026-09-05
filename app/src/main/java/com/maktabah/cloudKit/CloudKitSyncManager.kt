@@ -910,6 +910,7 @@ class CloudKitSyncManager {
         val snapshotJson = JSONObject().apply {
             put("items", itemsArray)
             put("lastUpdated", toAppleReferenceSeconds(System.currentTimeMillis()))
+            put("generation", System.currentTimeMillis())
         }.toString()
 
         val snapshotRecord = buildSnapshotRecord("SharedHistorySnapshot", "HistorySnapshot", snapshotJson)
@@ -962,6 +963,7 @@ class CloudKitSyncManager {
         val snapshotJson = JSONObject().apply {
             put("items", itemsArray)
             put("lastUpdated", toAppleReferenceSeconds(System.currentTimeMillis()))
+            put("generation", System.currentTimeMillis())
         }.toString()
 
         val snapshotRecord = buildSnapshotRecord("SharedAnnotationSnapshot", "AnnotationSnapshot", snapshotJson)
