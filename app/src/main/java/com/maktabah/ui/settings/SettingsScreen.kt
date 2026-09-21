@@ -193,13 +193,34 @@ fun SettingsDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
 					modifier = Modifier.padding(4.dp),
                 )
-                if (com.maktabah.BuildConfig.ENABLE_IN_APP_UPDATE) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     TextButton(
-                        onClick = onCheckForUpdates,
+                        onClick = {
+                            val releaseUrl = "https://github.com/${com.maktabah.BuildConfig.GITHUB_APP_REPO}/releases"
+                            try {
+                                val customTabsIntent = androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(true).build()
+                                customTabsIntent.launchUrl(context, android.net.Uri.parse(releaseUrl))
+                            } catch (_: Exception) {
+                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(releaseUrl))
+                                context.startActivity(intent)
+                            }
+                        },
                         contentPadding = PaddingValues(4.dp),
                         modifier = Modifier.defaultMinSize(minWidth = 1.dp, minHeight = 1.dp)
                     ) {
-                        Text(stringResource(R.string.history_settings_check_update))
+                        Text(stringResource(R.string.history_settings_github_releases))
+                    }
+                    if (com.maktabah.BuildConfig.ENABLE_IN_APP_UPDATE) {
+                        TextButton(
+                            onClick = onCheckForUpdates,
+                            contentPadding = PaddingValues(4.dp),
+                            modifier = Modifier.defaultMinSize(minWidth = 1.dp, minHeight = 1.dp)
+                        ) {
+                            Text(stringResource(R.string.history_settings_check_update))
+                        }
                     }
                 }
             }
