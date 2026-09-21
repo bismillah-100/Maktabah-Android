@@ -105,7 +105,7 @@ class CloudKitSyncManager {
      * Retry upload/delete entries yang masih di sync_pending dari sesi sebelumnya.
      * Dipanggil saat app resume (ON_RESUME lifecycle event) sebelum fetchChanges.
      */
-    suspend fun retryPendingSyncs(context: Context, historyViewModel: HistoryViewModel) {
+    suspend fun retryPendingSyncs(context: Context) {
         withContext(Dispatchers.IO) {
             val db = HistoryDatabaseManager.getInstance(context)
             val pendingUploads = db.fetchPendingSync("upload")
@@ -120,33 +120,34 @@ class CloudKitSyncManager {
                 return@withContext
             }
 
-            val allEntries = historyViewModel.entriesByBookId.value
+            val (dbEntries, _) = db.loadFromDatabase()
             val entriesToRetry = mutableListOf<ReadingEntry>()
 
-            // Cari entries yang masih pending upload di memory ViewModel
             for (ckId in pendingUploads) {
-                val entry = allEntries.values.find { (it.ckRecordId ?: it.bookId.toString()) == ckId }
+                val entry = dbEntries.find { (it.ckRecordId ?: it.bookId.toString()) == ckId }
                 if (entry != null) entriesToRetry.add(entry)
             }
-            // Buat dummy delete entries untuk ckIds yang perlu dihapus
             for (ckId in pendingDeletes) {
                 entriesToRetry.add(ReadingEntry(
-                    bookId = ckId.toIntOrNull() ?: continue,
+                    bookId = ckId.toIntOrNull() ?: -1,
                     ckRecordId = ckId,
                     lastOpenedAt = null,
                     isFavorite = false
                 ))
             }
             if (entriesToRetry.isEmpty()) {
-                // Tidak ada di memory — data sudah tidak relevan, bersihkan pending
                 db.removePendingSync(pendingUploads + pendingDeletes)
                 return@withContext
             }
-            uploadHistory(context, entriesToRetry)
+
             historyBufferMutex.withLock {
                 historyDebounceJob?.cancel()
+                for (entry in entriesToRetry) {
+                    val key = entry.ckRecordId ?: entry.bookId.toString()
+                    historyUploadBuffer[key] = entry
+                }
+                flushHistoryBuffer(context)
             }
-            flushHistoryBuffer(context)
         }
     }
 
@@ -219,7 +220,9 @@ class CloudKitSyncManager {
 
                     // Apply ReadingEntry changes in batch
                     if (entriesToSave.isNotEmpty() || recordIdsToDelete.isNotEmpty()) {
-                        historyViewModel.applyCloudKitChanges(entriesToSave, recordIdsToDelete)
+                        withContext(Dispatchers.Main) {
+                            historyViewModel.applyCloudKitChanges(entriesToSave, recordIdsToDelete)
+                        }
                     }
 
                     // Apply SearchFolder/SearchResult changes
@@ -398,7 +401,7 @@ class CloudKitSyncManager {
                     "User changed! Resetting local annotations and history."
                 )
                 annotationManager.clearAll()
-                historyViewModel.clearAll()
+                withContext(Dispatchers.Main) { historyViewModel.clearAll() }
                 getResultsHandler(context).nukeDatabase()
                 prefs.edit {
                     remove("ckSyncToken_AnnotationsZone")
@@ -491,7 +494,7 @@ class CloudKitSyncManager {
             syncAnnotationsInternal(context, annotationManager)
 
             // 3. Retry upload & delete History & Favorit
-            retryPendingSyncs(context, historyViewModel)
+            retryPendingSyncs(context)
 
             // 4. Retry upload & delete Hasil Pencarian
             syncResultsInternal(context)
@@ -920,7 +923,7 @@ class CloudKitSyncManager {
 
     private fun saveLastHistorySnapshotSignature(context: Context, signature: String) {
         val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
-        prefs.edit { putString(prefLastHistorySnapshot, signature).apply() }
+        prefs.edit { putString(prefLastHistorySnapshot, signature) }
     }
 
     private suspend fun compileAnnotationSnapshotRecordIfChanged(
@@ -973,7 +976,7 @@ class CloudKitSyncManager {
 
     private fun saveLastAnnotationSnapshotSignature(context: Context, signature: String) {
         val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
-        prefs.edit { putString(prefLastAnnotationSnapshot, signature).apply() }
+        prefs.edit { putString(prefLastAnnotationSnapshot, signature) }
     }
 
     // endregion

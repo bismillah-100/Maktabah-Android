@@ -181,12 +181,9 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun toggleFavorite(bookId: Int): ReadingEntry {
+    fun toggleFavorite(bookId: Int): ReadingEntry? {
         val entries = _entriesByBookId.value.toMutableMap()
-        val entry = entries[bookId] ?: ReadingEntry(
-            bookId = bookId,
-            ckRecordId = bookId.toString()
-        )
+        val entry = entries[bookId] ?: return null
         val isFav = !entry.isFavorite
         val newEntry = entry.copy(
             isFavorite = isFav,
@@ -204,16 +201,13 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
         return newEntry
     }
 
-    fun removeFromHistory(bookId: Int): ReadingEntry {
+    fun removeFromHistory(bookId: Int): ReadingEntry? {
         val order = _historyOrder.value.toMutableList()
         order.remove(bookId)
         _historyOrder.value = order
 
         val entries = _entriesByBookId.value.toMutableMap()
-        val entry = entries[bookId] ?: ReadingEntry(
-            bookId = bookId,
-            ckRecordId = bookId.toString()
-        )
+        val entry = entries[bookId] ?: return null
         val newEntry = entry.copy(
             lastOpenedAt = null,
             lastContentId = null,
@@ -245,16 +239,18 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
         if (recordIdsToDelete.isNotEmpty()) {
             val recordIdsSet = recordIdsToDelete.toSet()
             val toDelete = entries.values.filter { entry ->
-                val ckId = entry.ckRecordId ?: entry.bookId.toString()
-                recordIdsSet.contains(ckId) || recordIdsSet.contains(entry.bookId.toString())
+                val ckId = entry.ckRecordId
+                (ckId != null && recordIdsSet.contains(ckId)) || (ckId == null && recordIdsSet.contains(entry.bookId.toString()))
             }
             for (e in toDelete) {
-                entries.remove(e.bookId)
-                deletedBookIds.add(e.bookId)
+                if (e.isFavorite) {
+                    val kept = e.copy(lastOpenedAt = null, lastContentId = null, updatedAt = System.currentTimeMillis())
+                    entries[e.bookId] = kept
+                } else {
+                    entries.remove(e.bookId)
+                    deletedBookIds.add(e.bookId)
+                }
                 didChange = true
-            }
-            for (idStr in recordIdsToDelete) {
-                idStr.toIntOrNull()?.let { deletedBookIds.add(it) }
             }
         }
 
@@ -263,13 +259,18 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
         for (incoming in entriesToSave) {
             val existing = entries[incoming.bookId]
             if (existing == null || incoming.updatedAt > existing.updatedAt) {
-                if (!incoming.isFavorite && incoming.lastOpenedAt == null) {
-                    entries.remove(incoming.bookId)
-                    deletedBookIds.add(incoming.bookId)
+                val merged = if (existing != null) {
+                    incoming.copy(
+                        lastOpenedAt = incoming.lastOpenedAt ?: existing.lastOpenedAt,
+                        lastContentId = incoming.lastContentId ?: existing.lastContentId,
+                        favoritedAt = incoming.favoritedAt ?: existing.favoritedAt,
+                        positionUpdatedAt = incoming.positionUpdatedAt ?: existing.positionUpdatedAt
+                    )
                 } else {
-                    entries[incoming.bookId] = incoming
-                    upserted.add(incoming)
+                    incoming
                 }
+                entries[merged.bookId] = merged
+                upserted.add(merged)
                 didChange = true
             }
         }
@@ -291,11 +292,19 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
                         lastContentId = null,
                         updatedAt = System.currentTimeMillis()
                     )
+                    
+                    // C5: Pruned History Entries Re-Inserted Due to Stale upserted List
+                    val iterator = upserted.iterator()
+                    while (iterator.hasNext()) {
+                        if (iterator.next().bookId == idToRemove) iterator.remove()
+                    }
+
                     if (!updatedOldEntry.isFavorite) {
                         entries.remove(idToRemove)
                         deletedBookIds.add(idToRemove)
                     } else {
                         entries[idToRemove] = updatedOldEntry
+                        upserted.add(updatedOldEntry)
                     }
                     didChange = true
                 }

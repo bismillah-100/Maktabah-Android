@@ -141,14 +141,14 @@ fun HistoryScreen(
                     onSyncClick = {
                         scope.launch {
                             isSyncing = true
-                            val resultMsg = withContext(Dispatchers.IO) {
-                                cloudKitSyncManager.retryAllPendingOperations(
-                                    context,
-                                    annotationManager,
-                                    historyViewModel
-                                )
-                            }
-                            withContext(Dispatchers.Main) {
+                            try {
+                                val resultMsg = withContext(Dispatchers.IO) {
+                                    cloudKitSyncManager.fetchChanges(
+                                        context,
+                                        annotationManager,
+                                        historyViewModel
+                                    )
+                                }
                                 if (resultMsg != null) {
                                     android.widget.Toast.makeText(
                                         context,
@@ -156,8 +156,9 @@ fun HistoryScreen(
                                         android.widget.Toast.LENGTH_SHORT
                                     ).show()
                                 }
+                            } finally {
+                                isSyncing = false
                             }
-                            isSyncing = false
                         }
                     }
                 )
@@ -194,11 +195,11 @@ fun HistoryScreen(
                         onNavigateToReader = onNavigateToReader,
                         onRemoveHistory = { id ->
                             val entry = historyViewModel.removeFromHistory(id)
-                            cloudKitSyncManager.uploadHistory(context, listOf(entry))
+                            cloudKitSyncManager.uploadHistory(context, listOfNotNull(entry))
                         },
                         onToggleFavorite = { id ->
                             val entry = historyViewModel.toggleFavorite(id)
-                            cloudKitSyncManager.uploadHistory(context, listOf(entry))
+                            cloudKitSyncManager.uploadHistory(context, listOfNotNull(entry))
                         },
                         onShowBookInfo = { selectedBookInfoId = it }
                     )
@@ -223,7 +224,7 @@ fun HistoryScreen(
                         onNavigateToReader = onNavigateToReader,
                         onRemoveFavorite = { id ->
                             val entry = historyViewModel.toggleFavorite(id)
-                            cloudKitSyncManager.uploadHistory(context, listOf(entry))
+                            cloudKitSyncManager.uploadHistory(context, listOfNotNull(entry))
                         },
                         onShowBookInfo = { selectedBookInfoId = it }
                     )
@@ -244,7 +245,7 @@ fun HistoryScreen(
                 onDismiss = { showAddFavoriteSheet = false },
                 onToggleFavorite = { bookId ->
                     val entry = historyViewModel.toggleFavorite(bookId)
-                    cloudKitSyncManager.uploadHistory(context, listOf(entry))
+                    cloudKitSyncManager.uploadHistory(context, listOfNotNull(entry))
                 }
             )
         }

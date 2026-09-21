@@ -92,7 +92,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handleCustomAction(intent)
+        if (savedInstanceState == null) {
+            handleCustomAction(intent)
+        }
 
         // Subscribe to FCM topic for global sync
         FirebaseMessaging.getInstance().subscribeToTopic("global_sync")
@@ -226,8 +228,6 @@ class MainActivity : ComponentActivity() {
         if (intent == null) return
         if (intent.action == "ACTION_OPEN_BOOK") {
             widgetIntentFlow.value = intent
-        } else if (intent.action == "com.maktabah.action.REBUILD_ALL_FTS") {
-            com.maktabah.downloader.BookRebuilder.startRebuildAll(this)
         }
     }
 }

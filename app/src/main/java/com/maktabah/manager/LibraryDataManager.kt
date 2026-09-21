@@ -223,10 +223,8 @@ class LibraryDataManager(
 
     fun getBookNames(ids: List<Int>): Map<Int, String> {
         if (!mainDbFile.exists() || ids.isEmpty()) {
-            android.util.Log.w("LibraryDataManager", "getBookNames: mainDbFile exists=${mainDbFile.exists()}, ids empty=${ids.isEmpty()}")
             return emptyMap()
         }
-        android.util.Log.d("LibraryDataManager", "getBookNames: querying IDs: $ids")
         val result = mutableMapOf<Int, String>()
         SQLiteDB(
             mainDbFile.absolutePath,
@@ -239,11 +237,9 @@ class LibraryDataManager(
                     val id = stmt.columnInt(0)
                     val name = stmt.columnText(1) ?: ""
                     result[id] = name
-                    android.util.Log.d("LibraryDataManager", "getBookNames: Found ID $id -> $name")
                 }
             }
         }
-        android.util.Log.d("LibraryDataManager", "getBookNames: result size: ${result.size}")
         return result
     }
 }
