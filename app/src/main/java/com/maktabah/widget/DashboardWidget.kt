@@ -89,8 +89,8 @@ class DashboardWidget : GlanceAppWidget() {
                     return@withContext Triple(emptyList(), emptyList(), emptyMap<Int, String>())
                 }
 
-                val historyManager = HistoryDatabaseManager(historyDbFile)
-                val annotationManager = AnnotationManager(annotationsDbFile)
+                val historyManager = HistoryDatabaseManager.getInstance(context)
+                val annotationManager = AnnotationManager.getInstance(context)
                 val dataManager = LibraryDataManager(mainDbFile)
 
                 val (entries, order) = historyManager.loadFromDatabase()
@@ -303,6 +303,7 @@ class DashboardWidget : GlanceAppWidget() {
             action = "ACTION_OPEN_BOOK"
             putExtra("bookId", entry.bookId)
             putExtra("contentId", entry.lastContentId ?: -1)
+            data = android.net.Uri.parse("maktabah://book/${entry.bookId}/${entry.lastContentId ?: -1}")
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
 
@@ -339,6 +340,7 @@ class DashboardWidget : GlanceAppWidget() {
             putExtra("contentId", annotation.contentId)
             putExtra("flashLoc", annotation.rangeLocation)
             putExtra("flashLen", annotation.rangeLength)
+            data = android.net.Uri.parse("maktabah://book/${annotation.bkId}/${annotation.contentId}/${annotation.rangeLocation}/${annotation.rangeLength}")
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
 

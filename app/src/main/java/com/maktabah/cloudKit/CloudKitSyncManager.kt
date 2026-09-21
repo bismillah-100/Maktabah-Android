@@ -63,6 +63,7 @@ class CloudKitSyncManager {
                 }
                 historyDebounceJob?.cancel()
                 historyDebounceJob = historyUploadScope.launch {
+                    com.maktabah.widget.DashboardWidget.updateWidget(appContext)
                     if (!hasDeletes) {
                         delay(2_000.milliseconds)
                     }
@@ -789,6 +790,7 @@ class CloudKitSyncManager {
                 historySnapshotDebounceJob?.cancel()
                 historySnapshotDebounceJob = snapshotScope.launch {
                     delay(10_000.milliseconds)
+                    com.maktabah.widget.DashboardWidget.updateWidget(appContext)
                     uploadHistorySnapshotIfChanged(appContext)
                 }
             }
@@ -802,6 +804,7 @@ class CloudKitSyncManager {
                 annotationSnapshotDebounceJob?.cancel()
                 annotationSnapshotDebounceJob = snapshotScope.launch {
                     delay(10_000.milliseconds)
+                    com.maktabah.widget.DashboardWidget.updateWidget(appContext)
                     uploadAnnotationSnapshotIfChanged(appContext, annotationManager)
                 }
             }

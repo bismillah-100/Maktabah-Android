@@ -11,6 +11,17 @@ class AnnotationManager(
     private val dbFile: File,
 ) {
     companion object {
+        @Volatile
+        private var instance: AnnotationManager? = null
+
+        fun getInstance(context: android.content.Context): AnnotationManager {
+            return instance ?: synchronized(this) {
+                instance ?: AnnotationManager(
+                    java.io.File(context.applicationContext.filesDir, "annotations.sqlite")
+                ).also { instance = it }
+            }
+        }
+
         val updates = MutableSharedFlow<AnnotationChange>(extraBufferCapacity = 64)
     }
 

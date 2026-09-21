@@ -154,8 +154,7 @@ class MainActivity : ComponentActivity() {
                         LaunchedEffect(libraryViewModel) {
                             libraryViewModel.loadData(this@MainActivity)
                         }
-                        val annotationsDbFile = File(this@MainActivity.filesDir, "annotations.sqlite")
-                        val annotationManager = remember { AnnotationManager(annotationsDbFile) }
+                        val annotationManager = remember { AnnotationManager.getInstance(this@MainActivity) }
                         val cloudKitSyncManager = remember { CloudKitSyncManager() }
                         val historyViewModel: HistoryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 
@@ -191,6 +190,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 if (isLocal) {
                                     cloudKitSyncManager.scheduleAnnotationSync(this@MainActivity, annotationManager)
+                                    com.maktabah.widget.DashboardWidget.updateWidget(this@MainActivity)
                                 }
                             }
                         }
