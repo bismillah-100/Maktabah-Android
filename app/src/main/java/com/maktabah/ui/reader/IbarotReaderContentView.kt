@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -470,81 +471,8 @@ fun IbarotReaderContentView(
         },
     )
 
-    if (topOverscroll > 0f) {
-        val scale = 0.8f + 0.2f * topOverscroll
-        val isActive = topOverscroll >= 1f
-        val bgColor = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-        val contentColor = if (isActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .padding(top = paddingValues.calculateTopPadding() + 16.dp)
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    alpha = topOverscroll
-                },
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Icon(
-                imageVector = Icons.Default.KeyboardArrowUp,
-                contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier
-                    .background(bgColor, CircleShape)
-                    .padding(4.dp)
-            )
-            Text(
-                text = stringResource(R.string.reader_action_previous),
-                style = MaterialTheme.typography.bodySmall,
-                color = contentColor,
-                modifier = Modifier
-                    .padding(top = 4.dp)
-                    .background(bgColor, RoundedCornerShape(12.dp))
-                    .padding(horizontal = 8.dp, vertical = 2.dp)
-            )
-        }
-    }
-
-    if (botOverscroll > 0f) {
-        val scale = 0.8f + 0.2f * botOverscroll
-        val isActive = botOverscroll >= 1f
-        val bgColor = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-        val contentColor = if (isActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter)
-                .padding(bottom = paddingValues.calculateBottomPadding() + 16.dp)
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    alpha = botOverscroll
-                },
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = stringResource(R.string.reader_action_next),
-                style = MaterialTheme.typography.bodySmall,
-                color = contentColor,
-                modifier = Modifier
-                    .padding(bottom = 4.dp)
-                    .background(bgColor, RoundedCornerShape(12.dp))
-                    .padding(horizontal = 8.dp, vertical = 2.dp)
-            )
-            Icon(
-                imageVector = Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier
-                    .background(bgColor, CircleShape)
-                    .padding(4.dp)
-            )
-        }
-    }
+    OverscrollIndicator(isTop = true, progress = topOverscroll, paddingValues = paddingValues)
+    OverscrollIndicator(isTop = false, progress = botOverscroll, paddingValues = paddingValues)
     }
 }
 }
@@ -751,4 +679,65 @@ private fun findQueryRange(
     }
 
     return null
+}
+
+
+@Composable
+private fun BoxScope.OverscrollIndicator(
+    isTop: Boolean,
+    progress: Float,
+    paddingValues: PaddingValues
+) {
+    if (progress <= 0f) return
+
+    val scale = 0.8f + 0.2f * progress
+    val isActive = progress >= 1f
+    val bgColor = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+    val contentColor = if (isActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .align(if (isTop) Alignment.TopCenter else Alignment.BottomCenter)
+            .padding(
+                top = if (isTop) paddingValues.calculateTopPadding() + 16.dp else 0.dp,
+                bottom = if (!isTop) paddingValues.calculateBottomPadding() + 16.dp else 0.dp
+            )
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                alpha = progress
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (isTop) {
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowUp,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier
+                    .background(bgColor, CircleShape)
+                    .padding(4.dp)
+            )
+        }
+        Text(
+            text = stringResource(if (isTop) R.string.reader_action_previous else R.string.reader_action_next),
+            style = MaterialTheme.typography.bodySmall,
+            color = contentColor,
+            modifier = Modifier
+                .padding(top = if (isTop) 4.dp else 0.dp, bottom = if (!isTop) 4.dp else 0.dp)
+                .background(bgColor, RoundedCornerShape(12.dp))
+                .padding(horizontal = 8.dp, vertical = 2.dp)
+        )
+        if (!isTop) {
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier
+                    .background(bgColor, CircleShape)
+                    .padding(4.dp)
+            )
+        }
+    }
 }
