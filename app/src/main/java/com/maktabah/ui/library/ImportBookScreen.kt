@@ -69,7 +69,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.maktabah.R
 import com.maktabah.database.AnnotationManager
+import com.maktabah.models.AuthorRow
 import com.maktabah.models.AuthorMode
+import com.maktabah.models.BooksData
+import com.maktabah.models.CategoryData
 import com.maktabah.models.ImportMode
 import com.maktabah.ui.search.SearchTextField
 import com.maktabah.utils.normalizeArabic
@@ -335,385 +338,61 @@ fun ImportBookSheet(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                // File picker header (tidak ditampilkan di mode Change ID)
                 if (importMode != ImportMode.CHANGE_ID) {
                     item {
-                        ImportSectionCard(title = stringResource(R.string.file_sumber)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                Text(
-                                    text = selectedFileName
-                                        ?: stringResource(R.string.belum_dipilih),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color =
-                                        if (selectedFileName != null) {
-                                            MaterialTheme.colorScheme.onSurface
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                        },
-                                    modifier = Modifier.weight(1f),
+                        FileSourceSection(
+                            selectedFileName = selectedFileName,
+                            onSelectFileClick = {
+                                fileLauncher.launch(
+                                    arrayOf(
+                                        "application/x-sqlite3",
+                                        "application/vnd.sqlite3",
+                                        "application/sqlite",
+                                        "application/octet-stream"
+                                    )
                                 )
-                                OutlinedButton(
-                                    onClick = {
-                                        fileLauncher.launch(
-                                            arrayOf(
-                                                "application/x-sqlite3",
-                                                "application/vnd.sqlite3",
-                                                "application/sqlite",
-                                                "application/octet-stream"
-                                            )
-                                        )
-                                    },
-                                    shape = RoundedCornerShape(30.dp),
-                                    border =
-                                        BorderStroke(
-                                            width = 1.dp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                                alpha = 0.2f
-                                            ),
-                                        ),
-                                ) { Text(stringResource(R.string.pilih_file)) }
                             }
-                        }
+                        )
                     }
                 }
 
-                // Book Information Section
                 item {
-                    ImportSectionCard(title = stringResource(R.string.informasi_buku)) {
-                        // Mode segmented control
-                        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                            ImportMode.entries.forEachIndexed { i, mode ->
-                                SegmentedButton(
-                                    selected = importMode == mode,
-                                    onClick = { vm.setImportMode(mode) },
-                                    shape = SegmentedButtonDefaults.itemShape(
-                                        i,
-                                        ImportMode.entries.size
-                                    ),
-                                    icon = {},
-                                ) {
-                                    Text(
-                                        text =
-                                            when (mode) {
-                                                ImportMode.NEW -> stringResource(R.string.baru)
-                                                ImportMode.REPLACE -> stringResource(R.string.ganti)
-                                                ImportMode.CHANGE_ID -> stringResource(R.string.ubah_id)
-                                            },
-                                        style = MaterialTheme.typography.labelMedium,
-                                    )
-                                }
-                            }
-                        }
-
-                        RowDivider()
-
-                        // Book ID field (mode NEW)
-                        if (importMode == ImportMode.NEW) {
-                            ImportFormRow(label = stringResource(R.string.book_id_baru)) {
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    SearchTextField(
-                                        value = customBookIdText,
-                                        onValueChange = { vm.setCustomBookIdText(it) },
-                                        placeholder = stringResource(R.string.placeholder_bkid),
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        isError = isBookIdTaken,
-                                        modifier = Modifier.width(160.dp),
-                                    )
-                                    if (isBookIdTaken) {
-                                        Text(
-                                            text = stringResource(R.string.id_sudah_dipakai),
-                                            color = MaterialTheme.colorScheme.error,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            modifier = Modifier.padding(start = 8.dp),
-                                        )
-                                    }
-                                }
-                            }
-                            RowDivider()
-                        }
-
-                        // Select book (mode REPLACE / CHANGE_ID)
-                        if (importMode == ImportMode.REPLACE || importMode == ImportMode.CHANGE_ID) {
-                            ImportFormRow(label = stringResource(R.string.pilih_buku)) {
-                                PickerButton(
-                                    label =
-                                        if (selectedBookId != null) {
-                                            books.firstOrNull { it.id == selectedBookId }?.let {
-                                                stringResource(
-                                                    R.string.item_with_id,
-                                                    it.name,
-                                                    it.id
-                                                )
-                                            } ?: stringResource(
-                                                R.string.id_format,
-                                                selectedBookId!!
-                                            )
-                                        } else {
-                                            stringResource(R.string.ketuk_untuk_memilih)
-                                        },
-                                    onClick = { showBookPicker = true },
-                                )
-                            }
-                            RowDivider()
-                        }
-
-                        // New ID field (mode CHANGE_ID)
-                        if (importMode == ImportMode.CHANGE_ID) {
-                            ImportFormRow(label = stringResource(R.string.id_baru)) {
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    SearchTextField(
-                                        value = customBookIdText,
-                                        onValueChange = { vm.setCustomBookIdText(it) },
-                                        placeholder = stringResource(R.string.placeholder_bkid),
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        isError = isBookIdTaken,
-                                        modifier = Modifier.width(160.dp),
-                                    )
-                                    if (isBookIdTaken) {
-                                        Text(
-                                            text = stringResource(R.string.id_sudah_dipakai),
-                                            color = MaterialTheme.colorScheme.error,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            modifier = Modifier.padding(start = 8.dp),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Metadata fields (tidak untuk CHANGE_ID)
-                        if (importMode != ImportMode.CHANGE_ID) {
-                            ImportFormRow(label = stringResource(R.string.nama_buku)) {
-                                SearchTextField(
-                                    value = bookName,
-                                    onValueChange = { vm.setBookName(it) },
-                                    placeholder = stringResource(R.string.placeholder_book_name),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                            RowDivider()
-
-                            ImportFormRow(label = stringResource(R.string.kategori)) {
-                                PickerButton(
-                                    label =
-                                        categories.firstOrNull { it.id == categoryId }?.name
-                                            ?: stringResource(R.string.pilih_kategori_placeholder),
-                                    onClick = { showCategoryPicker = true },
-                                )
-                            }
-                            RowDivider()
-
-                            // Archive ID & Multi-Bahasa digabung dalam satu row
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            ) {
-                                ImportFormRow(
-                                    label = stringResource(R.string.archive_id_label),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        IconButton(
-                                            onClick = { vm.setArchiveId(archiveId - 1) },
-                                            enabled = archiveId > 1,
-                                            modifier = Modifier.size(32.dp),
-                                        ) {
-                                            Text(
-                                                "−",
-                                                style = MaterialTheme.typography.titleMedium
-                                            )
-                                        }
-                                        Text(
-                                            "$archiveId",
-                                            style = MaterialTheme.typography.bodyLarge
-                                        )
-                                        IconButton(
-                                            onClick = { vm.setArchiveId(archiveId + 1) },
-                                            enabled = archiveId < 20,
-                                            modifier = Modifier.size(32.dp),
-                                        ) {
-                                            Text(
-                                                "+",
-                                                style = MaterialTheme.typography.titleMedium
-                                            )
-                                        }
-                                    }
-                                }
-                                ImportFormRow(
-                                    label = stringResource(R.string.multi_bahasa),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Switch(
-                                        checked = isMultiLanguage,
-                                        onCheckedChange = { vm.setIsMultiLanguage(it) })
-                                }
-                            }
-                            RowDivider()
-
-                            ImportFormRow(label = stringResource(R.string.edisi_betaka)) {
-                                SearchTextField(
-                                    value = betaka,
-                                    onValueChange = { vm.setBetaka(it) },
-                                    placeholder = stringResource(R.string.opsional),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                            RowDivider()
-
-                            ImportFormRow(label = stringResource(R.string.info_inf)) {
-                                SearchTextField(
-                                    value = inf,
-                                    onValueChange = { vm.setInf(it) },
-                                    placeholder = stringResource(R.string.opsional),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                            RowDivider()
-
-                            ImportFormRow(label = stringResource(R.string.nama_tafseer)) {
-                                SearchTextField(
-                                    value = tafseerNam,
-                                    onValueChange = { vm.setTafseerNam(it) },
-                                    placeholder = stringResource(R.string.opsional),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                            RowDivider()
-
-                            ImportFormRow(label = stringResource(R.string.versi)) {
-                                SearchTextField(
-                                    value = bVerText,
-                                    onValueChange = { vm.setBVerText(it) },
-                                    placeholder = "1",
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.width(100.dp),
-                                )
-                            }
-                        }
-                    }
+                    BookInformationSection(
+                        vm = vm,
+                        importMode = importMode,
+                        customBookIdText = customBookIdText,
+                        isBookIdTaken = isBookIdTaken,
+                        selectedBookId = selectedBookId,
+                        bookName = bookName,
+                        categoryId = categoryId,
+                        archiveId = archiveId,
+                        isMultiLanguage = isMultiLanguage,
+                        betaka = betaka,
+                        inf = inf,
+                        tafseerNam = tafseerNam,
+                        bVerText = bVerText,
+                        books = books,
+                        categories = categories,
+                        onShowBookPicker = { showBookPicker = true },
+                        onShowCategoryPicker = { showCategoryPicker = true }
+                    )
                 }
 
-                // Author Section (tidak untuk CHANGE_ID)
                 if (importMode != ImportMode.CHANGE_ID) {
                     item {
-                        ImportSectionCard(title = stringResource(R.string.informasi_author)) {
-                            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                                SegmentedButton(
-                                    selected = authorMode == AuthorMode.EXISTING,
-                                    onClick = { vm.setAuthorMode(AuthorMode.EXISTING) },
-                                    shape = SegmentedButtonDefaults.itemShape(0, 2),
-                                    icon = {},
-                                ) {
-                                    Text(
-                                        stringResource(R.string.author_lama),
-                                        style = MaterialTheme.typography.labelMedium
-                                    )
-                                }
-                                SegmentedButton(
-                                    selected = authorMode == AuthorMode.NEW,
-                                    onClick = { vm.setAuthorMode(AuthorMode.NEW) },
-                                    shape = SegmentedButtonDefaults.itemShape(1, 2),
-                                    icon = {},
-                                ) {
-                                    Text(
-                                        stringResource(R.string.author_baru),
-                                        style = MaterialTheme.typography.labelMedium
-                                    )
-                                }
-                            }
-
-                            RowDivider()
-
-                            if (authorMode == AuthorMode.EXISTING) {
-                                ImportFormRow(label = stringResource(R.string.pilih_author)) {
-                                    PickerButton(
-                                        label =
-                                            if (selectedAuthorId != null) {
-                                                authors.firstOrNull { it.id == selectedAuthorId }
-                                                    ?.let {
-                                                        stringResource(
-                                                            R.string.item_with_id,
-                                                            it.name,
-                                                            it.id
-                                                        )
-                                                    } ?: stringResource(
-                                                    R.string.id_format,
-                                                    selectedAuthorId!!
-                                                )
-                                            } else {
-                                                stringResource(R.string.ketuk_untuk_memilih)
-                                            },
-                                        onClick = { showAuthorPicker = true },
-                                    )
-                                }
-                            } else {
-                                ImportFormRow(label = stringResource(R.string.id_author_baru)) {
-                                    Text(
-                                        "${maxAuthid + 1}",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
-                                }
-                                RowDivider()
-
-                                ImportFormRow(label = stringResource(R.string.nama_author)) {
-                                    SearchTextField(
-                                        value = authorName,
-                                        onValueChange = { vm.setAuthorName(it) },
-                                        placeholder = stringResource(R.string.placeholder_author_name),
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
-                                RowDivider()
-
-                                ImportFormRow(label = stringResource(R.string.info_author)) {
-                                    SearchTextField(
-                                        value = authorInf,
-                                        onValueChange = { vm.setAuthorInf(it) },
-                                        placeholder = stringResource(R.string.opsional),
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
-                                RowDivider()
-
-                                ImportFormRow(label = stringResource(R.string.nama_lengkap_lng)) {
-                                    SearchTextField(
-                                        value = authorLng,
-                                        onValueChange = { vm.setAuthorLng(it) },
-                                        placeholder = stringResource(R.string.opsional),
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
-                                RowDivider()
-
-                                ImportFormRow(label = stringResource(R.string.tahun_wafat_h)) {
-                                    SearchTextField(
-                                        value = authorHigriD,
-                                        onValueChange = { vm.setAuthorHigriD(it) },
-                                        placeholder = stringResource(R.string.placeholder_higri_d),
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
-                                RowDivider()
-
-                                ImportFormRow(label = stringResource(R.string.versi)) {
-                                    SearchTextField(
-                                        value = oVerText,
-                                        onValueChange = { vm.setOVerText(it) },
-                                        placeholder = "1",
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        modifier = Modifier.width(100.dp),
-                                    )
-                                }
-                            }
-                        }
+                        AuthorInformationSection(
+                            vm = vm,
+                            authorMode = authorMode,
+                            selectedAuthorId = selectedAuthorId,
+                            maxAuthid = maxAuthid,
+                            authorName = authorName,
+                            authorInf = authorInf,
+                            authorLng = authorLng,
+                            authorHigriD = authorHigriD,
+                            oVerText = oVerText,
+                            authors = authors,
+                            onShowAuthorPicker = { showAuthorPicker = true }
+                        )
                     }
                 }
 
@@ -724,6 +403,404 @@ fun ImportBookSheet(
 }
 
 // ── Helper Composables ──────────────────────────────────────────────────────
+
+@Composable
+private fun FileSourceSection(
+    selectedFileName: String?,
+    onSelectFileClick: () -> Unit
+) {
+    ImportSectionCard(title = stringResource(R.string.file_sumber)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = selectedFileName
+                    ?: stringResource(R.string.belum_dipilih),
+                style = MaterialTheme.typography.bodyMedium,
+                color =
+                    if (selectedFileName != null) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                modifier = Modifier.weight(1f),
+            )
+            OutlinedButton(
+                onClick = onSelectFileClick,
+                shape = RoundedCornerShape(30.dp),
+                border =
+                    BorderStroke(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                            alpha = 0.2f
+                        ),
+                    ),
+            ) { Text(stringResource(R.string.pilih_file)) }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BookInformationSection(
+    vm: ImportBookViewModel,
+    importMode: ImportMode,
+    customBookIdText: String,
+    isBookIdTaken: Boolean,
+    selectedBookId: Int?,
+    bookName: String,
+    categoryId: Int?,
+    archiveId: Int,
+    isMultiLanguage: Boolean,
+    betaka: String,
+    inf: String,
+    tafseerNam: String,
+    bVerText: String,
+    books: List<BooksData>,
+    categories: List<CategoryData>,
+    onShowBookPicker: () -> Unit,
+    onShowCategoryPicker: () -> Unit
+) {
+    ImportSectionCard(title = stringResource(R.string.informasi_buku)) {
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            ImportMode.entries.forEachIndexed { i, mode ->
+                SegmentedButton(
+                    selected = importMode == mode,
+                    onClick = { vm.setImportMode(mode) },
+                    shape = SegmentedButtonDefaults.itemShape(
+                        i,
+                        ImportMode.entries.size
+                    ),
+                    icon = {},
+                ) {
+                    Text(
+                        text =
+                            when (mode) {
+                                ImportMode.NEW -> stringResource(R.string.baru)
+                                ImportMode.REPLACE -> stringResource(R.string.ganti)
+                                ImportMode.CHANGE_ID -> stringResource(R.string.ubah_id)
+                            },
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
+        }
+
+        RowDivider()
+
+        if (importMode == ImportMode.NEW) {
+            ImportFormRow(label = stringResource(R.string.book_id_baru)) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    SearchTextField(
+                        value = customBookIdText,
+                        onValueChange = { vm.setCustomBookIdText(it) },
+                        placeholder = stringResource(R.string.placeholder_bkid),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        isError = isBookIdTaken,
+                        modifier = Modifier.width(160.dp),
+                    )
+                    if (isBookIdTaken) {
+                        Text(
+                            text = stringResource(R.string.id_sudah_dipakai),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                }
+            }
+            RowDivider()
+        }
+
+        if (importMode == ImportMode.REPLACE || importMode == ImportMode.CHANGE_ID) {
+            ImportFormRow(label = stringResource(R.string.pilih_buku)) {
+                PickerButton(
+                    label =
+                        if (selectedBookId != null) {
+                            books.firstOrNull { it.id == selectedBookId }?.let {
+                                stringResource(
+                                    R.string.item_with_id,
+                                    it.name,
+                                    it.id
+                                )
+                            } ?: stringResource(
+                                R.string.id_format,
+                                selectedBookId
+                            )
+                        } else {
+                            stringResource(R.string.ketuk_untuk_memilih)
+                        },
+                    onClick = onShowBookPicker,
+                )
+            }
+            RowDivider()
+        }
+
+        if (importMode == ImportMode.CHANGE_ID) {
+            ImportFormRow(label = stringResource(R.string.id_baru)) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    SearchTextField(
+                        value = customBookIdText,
+                        onValueChange = { vm.setCustomBookIdText(it) },
+                        placeholder = stringResource(R.string.placeholder_bkid),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        isError = isBookIdTaken,
+                        modifier = Modifier.width(160.dp),
+                    )
+                    if (isBookIdTaken) {
+                        Text(
+                            text = stringResource(R.string.id_sudah_dipakai),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                }
+            }
+        }
+
+        if (importMode != ImportMode.CHANGE_ID) {
+            ImportFormRow(label = stringResource(R.string.nama_buku)) {
+                SearchTextField(
+                    value = bookName,
+                    onValueChange = { vm.setBookName(it) },
+                    placeholder = stringResource(R.string.placeholder_book_name),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            RowDivider()
+
+            ImportFormRow(label = stringResource(R.string.kategori)) {
+                PickerButton(
+                    label =
+                        categories.firstOrNull { it.id == categoryId }?.name
+                            ?: stringResource(R.string.pilih_kategori_placeholder),
+                    onClick = onShowCategoryPicker,
+                )
+            }
+            RowDivider()
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                ImportFormRow(
+                    label = stringResource(R.string.archive_id_label),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        IconButton(
+                            onClick = { vm.setArchiveId(archiveId - 1) },
+                            enabled = archiveId > 1,
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            Text(
+                                "−",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+                        Text(
+                            "$archiveId",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        IconButton(
+                            onClick = { vm.setArchiveId(archiveId + 1) },
+                            enabled = archiveId < 20,
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            Text(
+                                "+",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+                    }
+                }
+                ImportFormRow(
+                    label = stringResource(R.string.multi_bahasa),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Switch(
+                        checked = isMultiLanguage,
+                        onCheckedChange = { vm.setIsMultiLanguage(it) })
+                }
+            }
+            RowDivider()
+
+            ImportFormRow(label = stringResource(R.string.edisi_betaka)) {
+                SearchTextField(
+                    value = betaka,
+                    onValueChange = { vm.setBetaka(it) },
+                    placeholder = stringResource(R.string.opsional),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            RowDivider()
+
+            ImportFormRow(label = stringResource(R.string.info_inf)) {
+                SearchTextField(
+                    value = inf,
+                    onValueChange = { vm.setInf(it) },
+                    placeholder = stringResource(R.string.opsional),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            RowDivider()
+
+            ImportFormRow(label = stringResource(R.string.nama_tafseer)) {
+                SearchTextField(
+                    value = tafseerNam,
+                    onValueChange = { vm.setTafseerNam(it) },
+                    placeholder = stringResource(R.string.opsional),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            RowDivider()
+
+            ImportFormRow(label = stringResource(R.string.versi)) {
+                SearchTextField(
+                    value = bVerText,
+                    onValueChange = { vm.setBVerText(it) },
+                    placeholder = "1",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.width(100.dp),
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AuthorInformationSection(
+    vm: ImportBookViewModel,
+    authorMode: AuthorMode,
+    selectedAuthorId: Int?,
+    maxAuthid: Int,
+    authorName: String,
+    authorInf: String,
+    authorLng: String,
+    authorHigriD: String,
+    oVerText: String,
+    authors: List<AuthorRow>,
+    onShowAuthorPicker: () -> Unit
+) {
+    ImportSectionCard(title = stringResource(R.string.informasi_author)) {
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            SegmentedButton(
+                selected = authorMode == AuthorMode.EXISTING,
+                onClick = { vm.setAuthorMode(AuthorMode.EXISTING) },
+                shape = SegmentedButtonDefaults.itemShape(0, 2),
+                icon = {},
+            ) {
+                Text(
+                    stringResource(R.string.author_lama),
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
+            SegmentedButton(
+                selected = authorMode == AuthorMode.NEW,
+                onClick = { vm.setAuthorMode(AuthorMode.NEW) },
+                shape = SegmentedButtonDefaults.itemShape(1, 2),
+                icon = {},
+            ) {
+                Text(
+                    stringResource(R.string.author_baru),
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
+        }
+
+        RowDivider()
+
+        if (authorMode == AuthorMode.EXISTING) {
+            ImportFormRow(label = stringResource(R.string.pilih_author)) {
+                PickerButton(
+                    label =
+                        if (selectedAuthorId != null) {
+                            authors.firstOrNull { it.id == selectedAuthorId }
+                                ?.let {
+                                    stringResource(
+                                        R.string.item_with_id,
+                                        it.name,
+                                        it.id
+                                    )
+                                } ?: stringResource(
+                                R.string.id_format,
+                                selectedAuthorId
+                            )
+                        } else {
+                            stringResource(R.string.ketuk_untuk_memilih)
+                        },
+                    onClick = onShowAuthorPicker,
+                )
+            }
+        } else {
+            ImportFormRow(label = stringResource(R.string.id_author_baru)) {
+                Text(
+                    "${maxAuthid + 1}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            RowDivider()
+
+            ImportFormRow(label = stringResource(R.string.nama_author)) {
+                SearchTextField(
+                    value = authorName,
+                    onValueChange = { vm.setAuthorName(it) },
+                    placeholder = stringResource(R.string.placeholder_author_name),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            RowDivider()
+
+            ImportFormRow(label = stringResource(R.string.info_author)) {
+                SearchTextField(
+                    value = authorInf,
+                    onValueChange = { vm.setAuthorInf(it) },
+                    placeholder = stringResource(R.string.opsional),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            RowDivider()
+
+            ImportFormRow(label = stringResource(R.string.nama_lengkap_lng)) {
+                SearchTextField(
+                    value = authorLng,
+                    onValueChange = { vm.setAuthorLng(it) },
+                    placeholder = stringResource(R.string.opsional),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            RowDivider()
+
+            ImportFormRow(label = stringResource(R.string.tahun_wafat_h)) {
+                SearchTextField(
+                    value = authorHigriD,
+                    onValueChange = { vm.setAuthorHigriD(it) },
+                    placeholder = stringResource(R.string.placeholder_higri_d),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            RowDivider()
+
+            ImportFormRow(label = stringResource(R.string.versi)) {
+                SearchTextField(
+                    value = oVerText,
+                    onValueChange = { vm.setOVerText(it) },
+                    placeholder = "1",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.width(100.dp),
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun ImportSectionCard(
