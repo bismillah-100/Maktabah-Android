@@ -180,78 +180,11 @@ fun AnnotationsScreen(
         }
     }
 
-    if (pendingImportUri != null) {
-        val targetUri = pendingImportUri
-        AlertDialog(
-            onDismissRequest = { pendingImportUri = null },
-            title = { Text(stringResource(R.string.annotations_import_dialog_title)) },
-            text = { Text(stringResource(R.string.annotations_import_dialog_msg)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        pendingImportUri = null
-                        if (targetUri != null) {
-                            viewModel.importJsonFromUri(context, targetUri, overwrite = true) { result ->
-                                result.fold(
-                                    onSuccess = { count ->
-                                        Toast.makeText(
-                                            context,
-                                            context.resources.getString(
-                                                R.string.annotations_import_success,
-                                                count
-                                            ),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    },
-                                    onFailure = {
-                                        Toast.makeText(
-                                            context,
-                                            R.string.annotations_import_failed,
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
-                                )
-                            }
-                        }
-                    }
-                ) {
-                    Text(stringResource(R.string.annotations_import_overwrite))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        pendingImportUri = null
-                        if (targetUri != null) {
-                            viewModel.importJsonFromUri(context, targetUri, overwrite = false) { result ->
-                                result.fold(
-                                    onSuccess = { count ->
-                                        Toast.makeText(
-                                            context,
-                                            context.resources.getString(
-                                                R.string.annotations_import_success,
-                                                count
-                                            ),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    },
-                                    onFailure = {
-                                        Toast.makeText(
-                                            context,
-                                            R.string.annotations_import_failed,
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
-                                )
-                            }
-                        }
-                    }
-                ) {
-                    Text(stringResource(R.string.annotations_import_skip))
-                }
-            }
-        )
-    }
+    ImportJsonDialog(
+        pendingImportUri = pendingImportUri,
+        onDismiss = { pendingImportUri = null },
+        viewModel = viewModel
+    )
 
     Box(
         modifier = Modifier
@@ -389,80 +322,36 @@ fun AnnotationsScreen(
         }
     }
 
-    if (popoverAnchor != null && popoverBookId != null) {
-        val bookId = popoverBookId!!
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-            com.maktabah.ui.common.TapCenteredPopover(
-                expanded = true,
-                onDismiss = {
-                    popoverAnchor = null
-                    popoverBookId = null
-                },
-                anchorBounds = popoverAnchor,
-                actions = listOf(
-                    com.maktabah.ui.common.PopoverMenuAction(
-                        label = stringResource(R.string.reader_menu_book_info),
-                        icon = Icons.Default.Info,
-                        onClick = {
-                            showBookInfoId = bookId
-                            popoverAnchor = null
-                            popoverBookId = null
-                        }
-                    )
-                )
-            )
-        }
-    }
+    BookInfoPopover(
+        popoverAnchor = popoverAnchor,
+        popoverBookId = popoverBookId,
+        onDismiss = { popoverAnchor = null; popoverBookId = null },
+        onShowBookInfo = { bookId -> showBookInfoId = bookId; popoverAnchor = null; popoverBookId = null }
+    )
 
-    if (showBookInfoId != null) {
-        com.maktabah.ui.reader.BookInfoSheet(
-            bookId = showBookInfoId!!,
-            defaultTitle = "",
-            libraryViewModel = libraryViewModel,
-            onDismissRequest = { showBookInfoId = null }
-        )
-    }
+    BookInfoSheetDialog(
+        showBookInfoId = showBookInfoId,
+        libraryViewModel = libraryViewModel,
+        onDismiss = { showBookInfoId = null }
+    )
 
-    if (popoverAnchor != null && popoverAnnotation != null) {
-        val ann = popoverAnnotation!!
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-            com.maktabah.ui.common.TapCenteredPopover(
-                expanded = true,
-                onDismiss = {
-                    popoverAnchor = null
-                    popoverAnnotation = null
-                },
-                anchorBounds = popoverAnchor,
-                actions = listOf(
-                    com.maktabah.ui.common.PopoverMenuAction(
-                        label = stringResource(R.string.annotations_menu_edit),
-                        icon = Icons.Default.Edit,
-                        onClick = {
-                            editingAnnotation = ann
-                            popoverAnchor = null
-                            popoverAnnotation = null
-                        }
-                    ),
-                    com.maktabah.ui.common.PopoverMenuAction(
-                        label = stringResource(R.string.annotations_menu_delete),
-                        icon = Icons.Default.Delete,
-                        onClick = {
-                            scope.launch {
-                                withContext(Dispatchers.IO) {
-                                    ann.id?.let { id ->
-                                        annotationManager.deleteAnnotation(id, ann.ckRecordId)
-                                    }
-                                }
-                                viewModel.forceReload(annotationManager)
-                            }
-                            popoverAnchor = null
-                            popoverAnnotation = null
-                        }
-                    )
-                )
-            )
+    AnnotationActionPopover(
+        popoverAnchor = popoverAnchor,
+        popoverAnnotation = popoverAnnotation,
+        onDismiss = { popoverAnchor = null; popoverAnnotation = null },
+        onEdit = { ann -> editingAnnotation = ann; popoverAnchor = null; popoverAnnotation = null },
+        onDelete = { ann ->
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    ann.id?.let { id ->
+                        annotationManager.deleteAnnotation(id, ann.ckRecordId)
+                    }
+                }
+                viewModel.forceReload(annotationManager)
+            }
+            popoverAnchor = null; popoverAnnotation = null
         }
-    }
+    )
 
     if (editingAnnotation != null) {
         com.maktabah.ui.reader.AnnotationEditorDialog(
@@ -1255,6 +1144,155 @@ private fun AnnotationMenuItem(
         },
         onClick = onClick,
     )
+}
+
+@Composable
+private fun ImportJsonDialog(
+    pendingImportUri: android.net.Uri?,
+    onDismiss: () -> Unit,
+    viewModel: AnnotationsViewModel,
+) {
+    val context = LocalContext.current
+    if (pendingImportUri != null) {
+        val targetUri = pendingImportUri
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(stringResource(R.string.annotations_import_dialog_title)) },
+            text = { Text(stringResource(R.string.annotations_import_dialog_msg)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDismiss()
+                        viewModel.importJsonFromUri(context, targetUri, overwrite = true) { result ->
+                            result.fold(
+                                onSuccess = { count ->
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        context.resources.getString(
+                                            R.string.annotations_import_success,
+                                            count
+                                        ),
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                },
+                                onFailure = {
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        R.string.annotations_import_failed,
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            )
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.annotations_import_overwrite))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        onDismiss()
+                        viewModel.importJsonFromUri(context, targetUri, overwrite = false) { result ->
+                            result.fold(
+                                onSuccess = { count ->
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        context.resources.getString(
+                                            R.string.annotations_import_success,
+                                            count
+                                        ),
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                },
+                                onFailure = {
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        R.string.annotations_import_failed,
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            )
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.annotations_import_skip))
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun BookInfoPopover(
+    popoverAnchor: androidx.compose.ui.unit.IntRect?,
+    popoverBookId: Int?,
+    onDismiss: () -> Unit,
+    onShowBookInfo: (Int) -> Unit
+) {
+    if (popoverAnchor != null && popoverBookId != null) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            com.maktabah.ui.common.TapCenteredPopover(
+                expanded = true,
+                onDismiss = onDismiss,
+                anchorBounds = popoverAnchor,
+                actions = listOf(
+                    com.maktabah.ui.common.PopoverMenuAction(
+                        label = stringResource(R.string.reader_menu_book_info),
+                        icon = Icons.Default.Info,
+                        onClick = { onShowBookInfo(popoverBookId) }
+                    )
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun BookInfoSheetDialog(
+    showBookInfoId: Int?,
+    libraryViewModel: LibraryViewModel,
+    onDismiss: () -> Unit
+) {
+    if (showBookInfoId != null) {
+        com.maktabah.ui.reader.BookInfoSheet(
+            bookId = showBookInfoId,
+            defaultTitle = "",
+            libraryViewModel = libraryViewModel,
+            onDismissRequest = onDismiss
+        )
+    }
+}
+
+@Composable
+private fun AnnotationActionPopover(
+    popoverAnchor: androidx.compose.ui.unit.IntRect?,
+    popoverAnnotation: com.maktabah.models.Annotation?,
+    onDismiss: () -> Unit,
+    onEdit: (com.maktabah.models.Annotation) -> Unit,
+    onDelete: (com.maktabah.models.Annotation) -> Unit
+) {
+    if (popoverAnchor != null && popoverAnnotation != null) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            com.maktabah.ui.common.TapCenteredPopover(
+                expanded = true,
+                onDismiss = onDismiss,
+                anchorBounds = popoverAnchor,
+                actions = listOf(
+                    com.maktabah.ui.common.PopoverMenuAction(
+                        label = stringResource(R.string.annotations_menu_edit),
+                        icon = Icons.Default.Edit,
+                        onClick = { onEdit(popoverAnnotation) }
+                    ),
+                    com.maktabah.ui.common.PopoverMenuAction(
+                        label = stringResource(R.string.annotations_menu_delete),
+                        icon = Icons.Default.Delete,
+                        onClick = { onDelete(popoverAnnotation) }
+                    )
+                )
+            )
+        }
+    }
 }
 
 @Composable
