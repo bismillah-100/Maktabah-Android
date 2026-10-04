@@ -471,8 +471,8 @@ fun IbarotReaderContentView(
         },
     )
 
-    OverscrollIndicator(isTop = true, progress = topOverscroll, paddingValues = paddingValues)
-    OverscrollIndicator(isTop = false, progress = botOverscroll, paddingValues = paddingValues)
+    OverscrollIndicator(isTop = true, progressProvider = { topOverscroll }, paddingValues = paddingValues)
+    OverscrollIndicator(isTop = false, progressProvider = { botOverscroll }, paddingValues = paddingValues)
     }
 }
 }
@@ -685,9 +685,10 @@ private fun findQueryRange(
 @Composable
 private fun BoxScope.OverscrollIndicator(
     isTop: Boolean,
-    progress: Float,
+    progressProvider: () -> Float,
     paddingValues: PaddingValues
 ) {
+    val progress = progressProvider()
     if (progress <= 0f) return
 
     val scale = 0.8f + 0.2f * progress
@@ -704,9 +705,10 @@ private fun BoxScope.OverscrollIndicator(
                 bottom = if (!isTop) paddingValues.calculateBottomPadding() + 16.dp else 0.dp
             )
             .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                alpha = progress
+                val p = progressProvider()
+                scaleX = 0.8f + 0.2f * p
+                scaleY = 0.8f + 0.2f * p
+                alpha = p
             },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
