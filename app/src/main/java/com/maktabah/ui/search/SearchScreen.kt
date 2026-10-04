@@ -884,57 +884,116 @@ private fun SearchResultsOverlay(
                     } else {
                         query
                     }
-                    val bookName =
-                        libraryViewModel.dataManager.booksById[result.bookId]?.name
-                            ?: stringResource(R.string.library_fallback_book_name)
+                    val book = libraryViewModel.dataManager.booksById[result.bookId]
+                    val bookName = book?.name ?: stringResource(R.string.library_fallback_book_name)
+                    val archiveId = book?.archive ?: 0
 
-                    InsetGroupedItem(
+                    SearchResultItemRow(
                         index = index,
                         lastIndex = filteredResults.lastIndex,
-                        onClick = { onSelect(result.bookId, result.contentId, null, null, finalQuery) },
-                        color = MaterialTheme.colorScheme.surface,
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                        dividerStartPadding = Dp.Hairline,
-                    ) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = bookName,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    textAlign = TextAlign.Start,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Text(
-                                    text = "ج${result.part} ص${result.page}".convertToArabicDigits(),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    textAlign = TextAlign.Start,
-                                    maxLines = 1,
-                                    color = MaterialTheme.colorScheme.secondary
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            val highlightedText = buildHighlightedText(
-                                text = result.text,
-                                searchKeywords = searchKeywords,
-                                searchMode = searchMode,
-                                nearDistance = effectiveNearDistance
-                            )
-                            Text(
-                                text = highlightedText,
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 3,
-                                textAlign = TextAlign.Start,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
+                        result = result,
+                        bookName = bookName,
+                        archiveId = archiveId,
+                        searchKeywords = searchKeywords,
+                        searchMode = searchMode,
+                        effectiveNearDistance = effectiveNearDistance,
+                        finalQuery = finalQuery,
+                        onSelect = onSelect
+                    )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchResultItemRow(
+    index: Int,
+    lastIndex: Int,
+    result: SearchResult,
+    bookName: String,
+    archiveId: Int,
+    searchKeywords: List<String>,
+    searchMode: SearchMode,
+    effectiveNearDistance: Int,
+    finalQuery: String,
+    onSelect: (bookId: Int, contentId: Int, page: Int?, part: Int?, query: String) -> Unit
+) {
+    val context = LocalContext.current
+    val packedId = (result.bookId.toLong() shl 32) or (result.contentId.toLong() and 0xFFFFFFFFL)
+
+    var snippetText by remember(packedId, result.text) {
+        mutableStateOf(result.text.ifEmpty { com.maktabah.search.SearchHitResolver.getCachedSnippet(packedId) ?: "" })
+    }
+
+    LaunchedEffect(packedId, snippetText) {
+        if (snippetText.isEmpty()) {
+            val resolved = com.maktabah.search.SearchHitResolver.resolveSnippet(
+                context = context,
+                bookId = result.bookId,
+                contentId = result.contentId,
+                archiveId = archiveId,
+                searchKeywords = searchKeywords,
+                mode = searchMode,
+                nearDistance = effectiveNearDistance
+            )
+            snippetText = resolved
+        }
+    }
+
+    InsetGroupedItem(
+        index = index,
+        lastIndex = lastIndex,
+        onClick = { onSelect(result.bookId, result.contentId, null, null, finalQuery) },
+        color = MaterialTheme.colorScheme.surface,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        dividerStartPadding = Dp.Hairline,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = bookName,
+                    style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.Start,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = "ج${result.part} ص${result.page}".convertToArabicDigits(),
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Start,
+                    maxLines = 1,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            if (snippetText.isNotEmpty()) {
+                val highlightedText = buildHighlightedText(
+                    text = snippetText,
+                    searchKeywords = searchKeywords,
+                    searchMode = searchMode,
+                    nearDistance = effectiveNearDistance
+                )
+                Text(
+                    text = highlightedText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 3,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else {
+                Text(
+                    text = "...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    maxLines = 1,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }
