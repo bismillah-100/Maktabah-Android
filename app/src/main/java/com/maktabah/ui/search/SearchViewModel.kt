@@ -19,6 +19,7 @@ import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.snippetAround
 import com.maktabah.utils.snippetNear
 import com.maktabah.utils.stripSpanTags
+import com.maktabah.utils.cleaningLineBreaks
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -473,7 +474,7 @@ class SearchViewModel : ViewModel() {
 
                         val mapped = withContext(Dispatchers.Default) {
                             bookResults.map {
-                                val stripped = it.nass.stripSpanTags()
+                                val stripped = it.nass.cleaningLineBreaks().stripSpanTags()
                                 val normalized = stripped.convertToArabicDigits()
                                 val snippet = if (mode == SearchMode.NEAR) {
                                     normalized.snippetNear(searchKeywords, effectiveDistance, contextLength = 60)
@@ -573,7 +574,7 @@ class SearchViewModel : ViewModel() {
 
                                                 if (nassBlob != null) {
                                                     val nassString = com.maktabah.database.decompressBlob(nassBlob, zstdCtx)
-                                                    val stripped = nassString.stripSpanTags()
+                                                    val stripped = nassString.cleaningLineBreaks().stripSpanTags()
                                                     val normalized = stripped.normalizeArabic().convertToArabicDigits()
 
                                                     itemsById[contentId]?.forEach { item ->

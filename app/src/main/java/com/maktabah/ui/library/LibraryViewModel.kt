@@ -630,8 +630,44 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
                     if (archiveId != null) {
                         val file = File(filesDir, "${archiveId}.sqlite")
                         val ftsFile = File(filesDir, "${archiveId}_fts.sqlite")
-                        ftsFile.delete()
-                        if (file.delete()) {
+                        
+                        var deleted = false
+                        if (file.exists()) {
+                            try {
+                                com.maktabah.database.SQLiteDB(file.absolutePath, com.maktabah.database.SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
+                                    db.prepare("DROP TABLE IF EXISTS main.\"b$bookId\";")?.use { it.step() }
+                                    db.prepare("DROP TABLE IF EXISTS main.\"t$bookId\";")?.use { it.step() }
+                                }
+                                deleted = true
+                            } catch (e: Exception) {
+                                // Ignore
+                            }
+                        }
+                        
+                        if (ftsFile.exists()) {
+                            try {
+                                com.maktabah.database.SQLiteDB(ftsFile.absolutePath, com.maktabah.database.SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
+                                    // Hapus Legacy FTS
+                                    db.prepare("DROP TABLE IF EXISTS main.\"b${bookId}_fts\";")?.use { it.step() }
+                                    
+                                    // Hapus Unified FTS Tokens
+                                    if (com.maktabah.database.ArchiveDatabaseTools.hasUnifiedFTS(db)) {
+                                        db.prepare("DELETE FROM archive_fts WHERE rowid IN (SELECT rowid FROM archive_index WHERE book_id = ?);")?.use { stmt ->
+                                            stmt.bindInt(1, bookId)
+                                            stmt.step()
+                                        }
+                                        db.prepare("DELETE FROM archive_index WHERE book_id = ?;")?.use { stmt ->
+                                            stmt.bindInt(1, bookId)
+                                            stmt.step()
+                                        }
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                // Ignore
+                            }
+                        }
+
+                        if (deleted) {
                             deletedCount++
                             deletedBookIds.add(bookId)
                         }

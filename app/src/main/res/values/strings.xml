@@ -296,4 +296,10 @@
     <string name="update_dialog_confirm_ok">OK</string>
     <string name="update_dialog_dismiss_later">Later</string>
     <string name="no_internet_connection">No internet connection</string>
+    <string name="fts_migration_channel_name">Search Index Optimization</string>
+    <string name="fts_migration_channel_desc">Notifications for search index optimization process</string>
+    <string name="fts_migration_notification_title">Optimizing Search Index</string>
+    <string name="fts_migration_starting">Starting search index optimization…</string>
+    <string name="fts_migration_progress_book">Archive %1$d: book %2$d/%3$d</string>
+    <string name="fts_migration_progress_completed">Completed archive %1$d (%2$d/%3$d)</string>
 </resources>
