@@ -14,6 +14,7 @@ import com.maktabah.models.SavedResultsItem
 import com.maktabah.models.SearchMode
 import com.maktabah.models.SearchResult
 import com.maktabah.search.SearchEngine
+import com.maktabah.search.SearchHitResolver
 import com.maktabah.utils.convertToArabicDigits
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.snippetAround
@@ -445,6 +446,7 @@ class SearchViewModel : ViewModel() {
             val allResults = mutableListOf<SearchResult>()
             var processed = 0
             val filesDir = context.filesDir
+            var eagerRemaining = 50
 
             for (bookId in selectedIds) {
                 val book = dataManager.booksById[bookId] ?: continue
@@ -464,7 +466,8 @@ class SearchViewModel : ViewModel() {
                             query = query,
                             mode = mode,
                             nearDistance = effectiveDistance,
-                            limit = 50, // Limit per book to ensure UI speed
+                            limit = 200,
+                            eagerCount = eagerRemaining,
                             onRowProgress = { current, total ->
                                 if (current % 10 == 0 || current == total) {
                                     _currentBookProgress.value = Pair(current, total)
@@ -474,12 +477,22 @@ class SearchViewModel : ViewModel() {
 
                         val mapped = withContext(Dispatchers.Default) {
                             bookResults.map {
-                                val stripped = it.nass.cleaningLineBreaks().stripSpanTags()
-                                val normalized = stripped.convertToArabicDigits()
-                                val snippet = if (mode == SearchMode.NEAR) {
-                                    normalized.snippetNear(searchKeywords, effectiveDistance, contextLength = 60)
+                                val hasEagerNass = it.nass.isNotEmpty()
+                                val snippet = if (hasEagerNass) {
+                                    val stripped = it.nass.cleaningLineBreaks().stripSpanTags()
+                                    val normalized = stripped.convertToArabicDigits()
+                                    if (mode == SearchMode.NEAR) {
+                                        normalized.snippetNear(searchKeywords, effectiveDistance, contextLength = 60)
+                                    } else {
+                                        normalized.snippetAround(searchKeywords, contextLength = 60)
+                                    }
                                 } else {
-                                    normalized.snippetAround(searchKeywords, contextLength = 60)
+                                    ""
+                                }
+
+                                if (snippet.isNotEmpty()) {
+                                    val packedId = (bookId.toLong() shl 32) or (it.id.toLong() and 0xFFFFFFFFL)
+                                    SearchHitResolver.putCachedSnippet(packedId, snippet)
                                 }
 
                                 SearchResult(
@@ -492,6 +505,8 @@ class SearchViewModel : ViewModel() {
                             }
                         }
                         allResults.addAll(mapped)
+                        val eagerCountInBook = mapped.count { it.text.isNotEmpty() }
+                        eagerRemaining = (eagerRemaining - eagerCountInBook).coerceAtLeast(0)
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }

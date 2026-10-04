@@ -26,6 +26,7 @@ class SearchEngine {
         nearDistance: Int = 10,
         limit: Int = 100,
         offset: Int = 0,
+        eagerCount: Int = Int.MAX_VALUE,
         onRowProgress: (current: Int, total: Int) -> Unit = { _, _ -> }
     ): List<BookContent> = withContext(Dispatchers.IO) {
         val results = mutableListOf<BookContent>()
@@ -110,14 +111,24 @@ class SearchEngine {
             }
 
             val sql = if (isUnified) {
-                """
-                    SELECT main.id, main.nass, main.page, main.part
-                    FROM fts_db.archive_fts AS fts
-                    INNER JOIN fts_db.archive_index AS idx ON idx.rowid = fts.rowid
-                    INNER JOIN "$tableName" AS main ON main.id = idx.id
-                    WHERE fts.nass_clean MATCH ? AND fts.rowid BETWEEN ? AND ?
-                    LIMIT ? OFFSET ?
-                """.trimIndent()
+                if (eagerCount == 0) {
+                    """
+                        SELECT idx.id, '' AS nass, idx.page, idx.part
+                        FROM fts_db.archive_fts AS fts
+                        INNER JOIN fts_db.archive_index AS idx ON idx.rowid = fts.rowid
+                        WHERE fts.nass_clean MATCH ? AND fts.rowid BETWEEN ? AND ?
+                        LIMIT ? OFFSET ?
+                    """.trimIndent()
+                } else {
+                    """
+                        SELECT main.id, main.nass, main.page, main.part
+                        FROM fts_db.archive_fts AS fts
+                        INNER JOIN fts_db.archive_index AS idx ON idx.rowid = fts.rowid
+                        INNER JOIN "$tableName" AS main ON main.id = idx.id
+                        WHERE fts.nass_clean MATCH ? AND fts.rowid BETWEEN ? AND ?
+                        LIMIT ? OFFSET ?
+                    """.trimIndent()
+                }
             } else {
                 """
                     SELECT main.id, main.nass, main.page, main.part
@@ -150,17 +161,19 @@ class SearchEngine {
                     while (stmt.step() == SQLiteDB.SQLITE_ROW) {
                         coroutineContext.ensureActive()
                         val id = stmt.columnInt(0)
-                        var nassText: String
+                        var nassText = ""
 
-                        if (nassType == -1) {
-                            nassType = stmt.columnType(1)
-                        }
+                        if (currentFetched < eagerCount && eagerCount > 0) {
+                            if (nassType == -1) {
+                                nassType = stmt.columnType(1)
+                            }
 
-                        if (nassType == SQLiteDB.SQLITE_BLOB) {
-                            val blob = stmt.columnBlobDirect(1)
-                            nassText = decompressBlob(blob, zstdCtx)
-                        } else {
-                            nassText = stmt.columnText(1) ?: ""
+                            if (nassType == SQLiteDB.SQLITE_BLOB) {
+                                val blob = stmt.columnBlobDirect(1)
+                                nassText = decompressBlob(blob, zstdCtx)
+                            } else {
+                                nassText = stmt.columnText(1) ?: ""
+                            }
                         }
 
                         val page = stmt.columnInt(2)
