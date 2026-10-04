@@ -99,6 +99,9 @@ class MainActivity : ComponentActivity() {
         // Subscribe to FCM topic for global sync
         FirebaseMessaging.getInstance().subscribeToTopic("global_sync")
         registerFcmToken(this)
+        
+        // Pemicu migrasi FTS latar belakang
+        com.maktabah.database.FtsMigrationManager.startMigration(this)
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {

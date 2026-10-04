@@ -44,6 +44,7 @@ class SearchEngine {
                 stmt.step()
             }
 
+            val isUnified = com.maktabah.database.ArchiveDatabaseTools.hasUnifiedFTS(db, "fts_db")
             val tableName = "b$bookId"
             val ftsTableName = "${tableName}_fts"
 
@@ -79,12 +80,23 @@ class SearchEngine {
                 }
             }
 
+            val minRowId = bookId.toLong() shl 32
+            val maxRowId = minRowId or 0xFFFFFFFFL
 
             // Get total matching rows count first
             var totalCount = 0
-            val countSql = "SELECT COUNT(*) FROM fts_db.\"$ftsTableName\" WHERE nass_clean MATCH ?;"
+            val countSql = if (isUnified) {
+                "SELECT COUNT(*) FROM fts_db.archive_fts WHERE nass_clean MATCH ? AND rowid BETWEEN ? AND ?;"
+            } else {
+                "SELECT COUNT(*) FROM fts_db.\"$ftsTableName\" WHERE nass_clean MATCH ?;"
+            }
+            
             db.prepare(countSql)?.use { stmt ->
                 stmt.bindText(1, ftsQuery)
+                if (isUnified) {
+                    stmt.bindLong(2, minRowId)
+                    stmt.bindLong(3, maxRowId)
+                }
                 if (stmt.step() == SQLiteDB.SQLITE_ROW) {
                     totalCount = stmt.columnInt(0)
                 }
@@ -97,18 +109,36 @@ class SearchEngine {
                 return@withContext results
             }
 
-            val sql = """
-                SELECT main.id, main.nass, main.page, main.part
-                FROM "$tableName" AS main
-                INNER JOIN fts_db."$ftsTableName" AS fts ON fts.rowid = main.id
-                WHERE fts.nass_clean MATCH ?
-                LIMIT ? OFFSET ?
-            """.trimIndent()
+            val sql = if (isUnified) {
+                """
+                    SELECT main.id, main.nass, main.page, main.part
+                    FROM fts_db.archive_fts AS fts
+                    INNER JOIN fts_db.archive_index AS idx ON idx.rowid = fts.rowid
+                    INNER JOIN "$tableName" AS main ON main.id = idx.id
+                    WHERE fts.nass_clean MATCH ? AND fts.rowid BETWEEN ? AND ?
+                    LIMIT ? OFFSET ?
+                """.trimIndent()
+            } else {
+                """
+                    SELECT main.id, main.nass, main.page, main.part
+                    FROM "$tableName" AS main
+                    INNER JOIN fts_db."$ftsTableName" AS fts ON fts.rowid = main.id
+                    WHERE fts.nass_clean MATCH ?
+                    LIMIT ? OFFSET ?
+                """.trimIndent()
+            }
 
             db.prepare(sql)?.use { stmt ->
                 stmt.bindText(1, ftsQuery)
-                stmt.bindInt(2, limit)
-                stmt.bindInt(3, offset)
+                if (isUnified) {
+                    stmt.bindLong(2, minRowId)
+                    stmt.bindLong(3, maxRowId)
+                    stmt.bindInt(4, limit)
+                    stmt.bindInt(5, offset)
+                } else {
+                    stmt.bindInt(2, limit)
+                    stmt.bindInt(3, offset)
+                }
 
                 var currentFetched = 0
                 var nassType = -1

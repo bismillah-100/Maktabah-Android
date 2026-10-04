@@ -5,6 +5,7 @@ package com.maktabah.database
 import android.content.Context
 import android.util.Log
 import com.maktabah.models.IntegratePhase
+import com.maktabah.utils.cleaningLineBreaks
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.removingHarakat
 import com.maktabah.utils.stemArabicLight10
@@ -105,7 +106,7 @@ object BookArchiveIntegrator {
             // 6. Build FTS
             Log.d(TAG, "Building FTS for $targetTableName")
             onPhaseChanged?.invoke(IntegratePhase.FTS)
-            buildFtsIndex(db, ftsDb, targetTableName)
+            buildFtsIndex(db, ftsDb, targetTableName, bookId)
 
             return@run true
         } catch (e: CancellationException) {
@@ -274,52 +275,93 @@ object BookArchiveIntegrator {
     private suspend fun buildFtsIndex(
         db: SQLiteDB,
         ftsDb: SQLiteDB,
-        targetTableName: String
+        targetTableName: String,
+        bookId: Int
     ) {
-        val ftsTableName = "${targetTableName}_fts"
-        ftsDb.prepare("DROP TABLE IF EXISTS main.\"$ftsTableName\";")?.use { it.step() }
-        ftsDb
-            .prepare(
-                "CREATE VIRTUAL TABLE main.\"$ftsTableName\" USING fts5(nass_clean, content='', tokenize='unicode61');",
-            )?.use { it.step() }
+        ftsDb.prepare("PRAGMA synchronous = OFF;")?.use { it.step() }
+        ftsDb.prepare("PRAGMA journal_mode = MEMORY;")?.use { it.step() }
+        ftsDb.prepare("PRAGMA temp_store = MEMORY;")?.use { it.step() }
+
+        ftsDb.prepare("CREATE TABLE IF NOT EXISTS main.metadata (key TEXT PRIMARY KEY, value INTEGER);")?.use { it.step() }
+        ftsDb.prepare("INSERT OR REPLACE INTO main.metadata (key, value) VALUES ('fts_version', 5);")?.use { it.step() }
+
+        ftsDb.prepare(
+            "CREATE TABLE IF NOT EXISTS main.archive_index (rowid INTEGER PRIMARY KEY, book_id INTEGER, page INTEGER, id INTEGER, part INTEGER);"
+        )?.use { it.step() }
+        ftsDb.prepare(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS main.archive_fts USING fts5(nass_clean, content='', contentless_delete=1, tokenize='unicode61');"
+        )?.use { it.step() }
+
+        try {
+            ftsDb.prepare("DELETE FROM main.archive_fts WHERE rowid IN (SELECT rowid FROM main.archive_index WHERE book_id = ?);")?.use { stmt ->
+                stmt.bindLong(1, bookId.toLong())
+                stmt.step()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error cleaning archive_fts: ${e.message}")
+        }
+        try {
+            ftsDb.prepare("DELETE FROM main.archive_index WHERE book_id = ?;")?.use { stmt ->
+                stmt.bindLong(1, bookId.toLong())
+                stmt.step()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error cleaning archive_index: ${e.message}")
+        }
 
         ftsDb.prepare("BEGIN TRANSACTION;")?.use { it.step() }
 
         var ftsCount = 0
-        ftsDb.prepare("INSERT INTO main.\"$ftsTableName\" (rowid, nass_clean) VALUES (?, ?);")?.use { ftsInsertStmt ->
-            db.prepare("SELECT id, nass FROM main.\"$targetTableName\" WHERE nass IS NOT NULL;")?.use { ftsSelectStmt ->
-                val ctx = ZstdContextPool.getDecompressCtx()
-                try {
-                    while (ftsSelectStmt.step() == SQLiteDB.SQLITE_ROW) {
-                        yield()
-                        val id = ftsSelectStmt.columnLong(0)
-                        val nassText = decompressBlob(ftsSelectStmt.columnBlobDirect(1), ctx)
-                        if (nassText.isNotEmpty()) {
-                            val cleanText =
-                                nassText
-                                    .replace("\n", " ")
-                                    .replace("\r", " ")
-                                    .removingHarakat()
-                                    .normalizeArabic()
-                                    .stemArabicLight10()
+        ftsDb.prepare("INSERT INTO main.archive_fts (rowid, nass_clean) VALUES (?, ?);")?.use { ftsInsertStmt ->
+            ftsDb.prepare("INSERT OR REPLACE INTO main.archive_index(rowid, book_id, page, id, part) VALUES (?, ?, ?, ?, ?);")?.use { indexInsertStmt ->
+                db.prepare("SELECT id, nass, page, part FROM main.\"$targetTableName\" WHERE nass IS NOT NULL;")?.use { ftsSelectStmt ->
+                    val ctx = ZstdContextPool.getDecompressCtx()
+                    try {
+                        while (ftsSelectStmt.step() == SQLiteDB.SQLITE_ROW) {
+                            yield()
+                            val id = ftsSelectStmt.columnLong(0)
+                            val page = ftsSelectStmt.columnLong(2)
+                            val part = ftsSelectStmt.columnLong(3)
 
-                            if (cleanText.isNotBlank()) {
-                                ftsInsertStmt.reset()
-                                ftsInsertStmt.clearBindings()
-                                ftsInsertStmt.bindLong(1, id)
-                                ftsInsertStmt.bindText(2, cleanText)
-                                ftsInsertStmt.step()
-                                ftsCount++
+                            val nassText = decompressBlob(ftsSelectStmt.columnBlobDirect(1), ctx)
+                            if (nassText.isNotEmpty()) {
+                                val cleanText =
+                                    nassText
+                                        .cleaningLineBreaks()
+                                        .removingHarakat()
+                                        .normalizeArabic()
+                                        .stemArabicLight10()
+
+                                if (cleanText.isNotBlank()) {
+                                    val packedRowId = (bookId.toLong() shl 32) or (id and 0xFFFFFFFFL)
+
+                                    ftsInsertStmt.reset()
+                                    ftsInsertStmt.clearBindings()
+                                    ftsInsertStmt.bindLong(1, packedRowId)
+                                    ftsInsertStmt.bindText(2, cleanText)
+                                    ftsInsertStmt.step()
+
+                                    indexInsertStmt.reset()
+                                    indexInsertStmt.clearBindings()
+                                    indexInsertStmt.bindLong(1, packedRowId)
+                                    indexInsertStmt.bindLong(2, bookId.toLong())
+                                    indexInsertStmt.bindLong(3, page)
+                                    indexInsertStmt.bindLong(4, id)
+                                    indexInsertStmt.bindLong(5, part)
+                                    indexInsertStmt.step()
+
+                                    ftsCount++
+                                }
                             }
                         }
+                    } finally {
+                        ZstdContextPool.releaseDecompressCtx(ctx)
                     }
-                } finally {
-                    ZstdContextPool.releaseDecompressCtx(ctx)
                 }
             }
         }
         ftsDb.prepare("COMMIT;")?.use { it.step() }
-        Log.d(TAG, "Built FTS for $ftsCount rows")
+        Log.d(TAG, "Built Unified FTS for $ftsCount rows (Book $bookId)")
     }
 
     private fun makeCreateTableSQL(

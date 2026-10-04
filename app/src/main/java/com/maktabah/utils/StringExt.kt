@@ -723,3 +723,29 @@ fun String.filterRangesForNearMode(rangesWithIndex: List<RangeWithIndex>, keywor
 }
 
 
+
+fun String.cleaningLineBreaks(): String {
+    val result = StringBuilder(this.length)
+    var i = 0
+    val len = this.length
+    while (i < len) {
+        val c = this[i]
+        if (c == '\n' || c == '\r') {
+            result.append(' ')
+        } else if (c == '\\' && i + 1 < len) {
+            val next = this[i + 1]
+            if (next == 'n' || next == 'r') {
+                result.append(' ')
+                i++
+            } else {
+                result.append(c)
+                result.append(next)
+                i++
+            }
+        } else {
+            result.append(c)
+        }
+        i++
+    }
+    return result.toString()
+}
