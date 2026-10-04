@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -688,11 +689,10 @@ private fun BoxScope.OverscrollIndicator(
     progressProvider: () -> Float,
     paddingValues: PaddingValues
 ) {
-    val progress = progressProvider()
-    if (progress <= 0f) return
+    val isVisible by remember { derivedStateOf { progressProvider() > 0f } }
+    if (!isVisible) return
 
-    val scale = 0.8f + 0.2f * progress
-    val isActive = progress >= 1f
+    val isActive by remember { derivedStateOf { progressProvider() >= 1f } }
     val bgColor = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
     val contentColor = if (isActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
 
