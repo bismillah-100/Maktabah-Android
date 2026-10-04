@@ -381,7 +381,6 @@ fun ImportBookSheet(
                 if (importMode != ImportMode.CHANGE_ID) {
                     item {
                         AuthorInformationSection(
-                            vm = vm,
                             authorMode = authorMode,
                             selectedAuthorId = selectedAuthorId,
                             maxAuthid = maxAuthid,
@@ -391,6 +390,12 @@ fun ImportBookSheet(
                             authorHigriD = authorHigriD,
                             oVerText = oVerText,
                             authors = authors,
+                            onAuthorModeChange = { vm.setAuthorMode(it) },
+                            onAuthorNameChange = { vm.setAuthorName(it) },
+                            onAuthorInfChange = { vm.setAuthorInf(it) },
+                            onAuthorLngChange = { vm.setAuthorLng(it) },
+                            onAuthorHigriDChange = { vm.setAuthorHigriD(it) },
+                            onOVerTextChange = { vm.setOVerText(it) },
                             onShowAuthorPicker = { showAuthorPicker = true }
                         )
                     }
@@ -677,7 +682,6 @@ private fun BookInformationSection(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AuthorInformationSection(
-    vm: ImportBookViewModel,
     authorMode: AuthorMode,
     selectedAuthorId: Int?,
     maxAuthid: Int,
@@ -687,13 +691,19 @@ private fun AuthorInformationSection(
     authorHigriD: String,
     oVerText: String,
     authors: List<AuthorRow>,
+    onAuthorModeChange: (AuthorMode) -> Unit,
+    onAuthorNameChange: (String) -> Unit,
+    onAuthorInfChange: (String) -> Unit,
+    onAuthorLngChange: (String) -> Unit,
+    onAuthorHigriDChange: (String) -> Unit,
+    onOVerTextChange: (String) -> Unit,
     onShowAuthorPicker: () -> Unit
 ) {
     ImportSectionCard(title = stringResource(R.string.informasi_author)) {
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
             SegmentedButton(
                 selected = authorMode == AuthorMode.EXISTING,
-                onClick = { vm.setAuthorMode(AuthorMode.EXISTING) },
+                onClick = { onAuthorModeChange(AuthorMode.EXISTING) },
                 shape = SegmentedButtonDefaults.itemShape(0, 2),
                 icon = {},
             ) {
@@ -704,7 +714,7 @@ private fun AuthorInformationSection(
             }
             SegmentedButton(
                 selected = authorMode == AuthorMode.NEW,
-                onClick = { vm.setAuthorMode(AuthorMode.NEW) },
+                onClick = { onAuthorModeChange(AuthorMode.NEW) },
                 shape = SegmentedButtonDefaults.itemShape(1, 2),
                 icon = {},
             ) {
@@ -752,7 +762,7 @@ private fun AuthorInformationSection(
             ImportFormRow(label = stringResource(R.string.nama_author)) {
                 SearchTextField(
                     value = authorName,
-                    onValueChange = { vm.setAuthorName(it) },
+                    onValueChange = onAuthorNameChange,
                     placeholder = stringResource(R.string.placeholder_author_name),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -762,7 +772,7 @@ private fun AuthorInformationSection(
             ImportFormRow(label = stringResource(R.string.info_author)) {
                 SearchTextField(
                     value = authorInf,
-                    onValueChange = { vm.setAuthorInf(it) },
+                    onValueChange = onAuthorInfChange,
                     placeholder = stringResource(R.string.opsional),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -772,7 +782,7 @@ private fun AuthorInformationSection(
             ImportFormRow(label = stringResource(R.string.nama_lengkap_lng)) {
                 SearchTextField(
                     value = authorLng,
-                    onValueChange = { vm.setAuthorLng(it) },
+                    onValueChange = onAuthorLngChange,
                     placeholder = stringResource(R.string.opsional),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -782,7 +792,7 @@ private fun AuthorInformationSection(
             ImportFormRow(label = stringResource(R.string.tahun_wafat_h)) {
                 SearchTextField(
                     value = authorHigriD,
-                    onValueChange = { vm.setAuthorHigriD(it) },
+                    onValueChange = onAuthorHigriDChange,
                     placeholder = stringResource(R.string.placeholder_higri_d),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -792,7 +802,7 @@ private fun AuthorInformationSection(
             ImportFormRow(label = stringResource(R.string.versi)) {
                 SearchTextField(
                     value = oVerText,
-                    onValueChange = { vm.setOVerText(it) },
+                    onValueChange = onOVerTextChange,
                     placeholder = "1",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.width(100.dp),
