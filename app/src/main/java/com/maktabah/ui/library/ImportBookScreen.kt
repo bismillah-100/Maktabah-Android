@@ -381,22 +381,28 @@ fun ImportBookSheet(
                 if (importMode != ImportMode.CHANGE_ID) {
                     item {
                         AuthorInformationSection(
-                            authorMode = authorMode,
-                            selectedAuthorId = selectedAuthorId,
-                            maxAuthid = maxAuthid,
-                            authorName = authorName,
-                            authorInf = authorInf,
-                            authorLng = authorLng,
-                            authorHigriD = authorHigriD,
-                            oVerText = oVerText,
-                            authors = authors,
-                            onAuthorModeChange = { vm.setAuthorMode(it) },
-                            onAuthorNameChange = { vm.setAuthorName(it) },
-                            onAuthorInfChange = { vm.setAuthorInf(it) },
-                            onAuthorLngChange = { vm.setAuthorLng(it) },
-                            onAuthorHigriDChange = { vm.setAuthorHigriD(it) },
-                            onOVerTextChange = { vm.setOVerText(it) },
-                            onShowAuthorPicker = { showAuthorPicker = true }
+                            state = AuthorUiState(
+                                authorMode = authorMode,
+                                selectedAuthorId = selectedAuthorId,
+                                maxAuthid = maxAuthid,
+                                authorName = authorName,
+                                authorInf = authorInf,
+                                authorLng = authorLng,
+                                authorHigriD = authorHigriD,
+                                oVerText = oVerText,
+                                authors = authors,
+                            ),
+                            onEvent = { event ->
+                                when (event) {
+                                    is AuthorUiEvent.ChangeMode -> vm.setAuthorMode(event.mode)
+                                    is AuthorUiEvent.ChangeName -> vm.setAuthorName(event.name)
+                                    is AuthorUiEvent.ChangeInf -> vm.setAuthorInf(event.inf)
+                                    is AuthorUiEvent.ChangeLng -> vm.setAuthorLng(event.lng)
+                                    is AuthorUiEvent.ChangeHigriD -> vm.setAuthorHigriD(event.higriD)
+                                    is AuthorUiEvent.ChangeOVerText -> vm.setOVerText(event.text)
+                                    AuthorUiEvent.ShowAuthorPicker -> showAuthorPicker = true
+                                }
+                            }
                         )
                     }
                 }
@@ -679,31 +685,39 @@ private fun BookInformationSection(
     }
 }
 
+sealed interface AuthorUiEvent {
+    data class ChangeMode(val mode: AuthorMode) : AuthorUiEvent
+    data class ChangeName(val name: String) : AuthorUiEvent
+    data class ChangeInf(val inf: String) : AuthorUiEvent
+    data class ChangeLng(val lng: String) : AuthorUiEvent
+    data class ChangeHigriD(val higriD: String) : AuthorUiEvent
+    data class ChangeOVerText(val text: String) : AuthorUiEvent
+    data object ShowAuthorPicker : AuthorUiEvent
+}
+
+data class AuthorUiState(
+    val authorMode: AuthorMode = AuthorMode.EXISTING,
+    val selectedAuthorId: Int? = null,
+    val maxAuthid: Int = 0,
+    val authorName: String = "",
+    val authorInf: String = "",
+    val authorLng: String = "",
+    val authorHigriD: String = "",
+    val oVerText: String = "",
+    val authors: List<AuthorRow> = emptyList(),
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AuthorInformationSection(
-    authorMode: AuthorMode,
-    selectedAuthorId: Int?,
-    maxAuthid: Int,
-    authorName: String,
-    authorInf: String,
-    authorLng: String,
-    authorHigriD: String,
-    oVerText: String,
-    authors: List<AuthorRow>,
-    onAuthorModeChange: (AuthorMode) -> Unit,
-    onAuthorNameChange: (String) -> Unit,
-    onAuthorInfChange: (String) -> Unit,
-    onAuthorLngChange: (String) -> Unit,
-    onAuthorHigriDChange: (String) -> Unit,
-    onOVerTextChange: (String) -> Unit,
-    onShowAuthorPicker: () -> Unit
+    state: AuthorUiState,
+    onEvent: (AuthorUiEvent) -> Unit,
 ) {
     ImportSectionCard(title = stringResource(R.string.informasi_author)) {
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
             SegmentedButton(
-                selected = authorMode == AuthorMode.EXISTING,
-                onClick = { onAuthorModeChange(AuthorMode.EXISTING) },
+                selected = state.authorMode == AuthorMode.EXISTING,
+                onClick = { onEvent(AuthorUiEvent.ChangeMode(AuthorMode.EXISTING)) },
                 shape = SegmentedButtonDefaults.itemShape(0, 2),
                 icon = {},
             ) {
@@ -713,8 +727,8 @@ private fun AuthorInformationSection(
                 )
             }
             SegmentedButton(
-                selected = authorMode == AuthorMode.NEW,
-                onClick = { onAuthorModeChange(AuthorMode.NEW) },
+                selected = state.authorMode == AuthorMode.NEW,
+                onClick = { onEvent(AuthorUiEvent.ChangeMode(AuthorMode.NEW)) },
                 shape = SegmentedButtonDefaults.itemShape(1, 2),
                 icon = {},
             ) {
@@ -727,12 +741,12 @@ private fun AuthorInformationSection(
 
         RowDivider()
 
-        if (authorMode == AuthorMode.EXISTING) {
+        if (state.authorMode == AuthorMode.EXISTING) {
             ImportFormRow(label = stringResource(R.string.pilih_author)) {
                 PickerButton(
                     label =
-                        if (selectedAuthorId != null) {
-                            authors.firstOrNull { it.id == selectedAuthorId }
+                        if (state.selectedAuthorId != null) {
+                            state.authors.firstOrNull { it.id == state.selectedAuthorId }
                                 ?.let {
                                     stringResource(
                                         R.string.item_with_id,
@@ -741,18 +755,18 @@ private fun AuthorInformationSection(
                                     )
                                 } ?: stringResource(
                                 R.string.id_format,
-                                selectedAuthorId
+                                state.selectedAuthorId
                             )
                         } else {
                             stringResource(R.string.ketuk_untuk_memilih)
                         },
-                    onClick = onShowAuthorPicker,
+                    onClick = { onEvent(AuthorUiEvent.ShowAuthorPicker) },
                 )
             }
         } else {
             ImportFormRow(label = stringResource(R.string.id_author_baru)) {
                 Text(
-                    "${maxAuthid + 1}",
+                    "${state.maxAuthid + 1}",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -761,8 +775,8 @@ private fun AuthorInformationSection(
 
             ImportFormRow(label = stringResource(R.string.nama_author)) {
                 SearchTextField(
-                    value = authorName,
-                    onValueChange = onAuthorNameChange,
+                    value = state.authorName,
+                    onValueChange = { onEvent(AuthorUiEvent.ChangeName(it)) },
                     placeholder = stringResource(R.string.placeholder_author_name),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -771,8 +785,8 @@ private fun AuthorInformationSection(
 
             ImportFormRow(label = stringResource(R.string.info_author)) {
                 SearchTextField(
-                    value = authorInf,
-                    onValueChange = onAuthorInfChange,
+                    value = state.authorInf,
+                    onValueChange = { onEvent(AuthorUiEvent.ChangeInf(it)) },
                     placeholder = stringResource(R.string.opsional),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -781,8 +795,8 @@ private fun AuthorInformationSection(
 
             ImportFormRow(label = stringResource(R.string.nama_lengkap_lng)) {
                 SearchTextField(
-                    value = authorLng,
-                    onValueChange = onAuthorLngChange,
+                    value = state.authorLng,
+                    onValueChange = { onEvent(AuthorUiEvent.ChangeLng(it)) },
                     placeholder = stringResource(R.string.opsional),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -791,8 +805,8 @@ private fun AuthorInformationSection(
 
             ImportFormRow(label = stringResource(R.string.tahun_wafat_h)) {
                 SearchTextField(
-                    value = authorHigriD,
-                    onValueChange = onAuthorHigriDChange,
+                    value = state.authorHigriD,
+                    onValueChange = { onEvent(AuthorUiEvent.ChangeHigriD(it)) },
                     placeholder = stringResource(R.string.placeholder_higri_d),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -801,8 +815,8 @@ private fun AuthorInformationSection(
 
             ImportFormRow(label = stringResource(R.string.versi)) {
                 SearchTextField(
-                    value = oVerText,
-                    onValueChange = onOVerTextChange,
+                    value = state.oVerText,
+                    onValueChange = { onEvent(AuthorUiEvent.ChangeOVerText(it)) },
                     placeholder = "1",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.width(100.dp),
