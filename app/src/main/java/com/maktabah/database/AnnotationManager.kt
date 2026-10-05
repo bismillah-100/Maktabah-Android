@@ -11,6 +11,17 @@ class AnnotationManager(
     private val dbFile: File,
 ) {
     companion object {
+        @Volatile
+        private var instance: AnnotationManager? = null
+
+        fun getInstance(context: android.content.Context): AnnotationManager {
+            return instance ?: synchronized(this) {
+                instance ?: AnnotationManager(
+                    java.io.File(context.applicationContext.filesDir, "annotations.sqlite")
+                ).also { instance = it }
+            }
+        }
+
         val updates = MutableSharedFlow<AnnotationChange>(extraBufferCapacity = 64)
     }
 
@@ -251,9 +262,21 @@ class AnnotationManager(
     }
 
     suspend fun getAllAnnotations(): List<Annotation> {
+        return getAnnotationsWithLimit(-1)
+    }
+
+    suspend fun getLatestAnnotations(limit: Int): List<Annotation> {
+        return getAnnotationsWithLimit(limit)
+    }
+
+    private suspend fun getAnnotationsWithLimit(limit: Int): List<Annotation> {
         val list = mutableListOf<Annotation>()
         SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
-            val sql = "SELECT * FROM annotations_v2 ORDER BY createdAt DESC"
+            val sql = if (limit > 0) {
+                "SELECT * FROM annotations_v2 ORDER BY createdAt DESC LIMIT $limit"
+            } else {
+                "SELECT * FROM annotations_v2 ORDER BY createdAt DESC"
+            }
             db.prepare(sql)?.use { stmt ->
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
                     yield()

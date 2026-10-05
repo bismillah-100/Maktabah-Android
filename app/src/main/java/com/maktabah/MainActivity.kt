@@ -38,6 +38,8 @@ import com.maktabah.update.UpdateRepository
 import com.maktabah.update.UpdateViewModel
 import okhttp3.OkHttpClient
 import java.io.File
+import android.content.Intent
+import kotlinx.coroutines.flow.MutableStateFlow
 
 private val SepiaLightColorScheme = lightColorScheme(
     primary = Color(0xFF9C7A4E),
@@ -81,8 +83,18 @@ private val SepiaDarkColorScheme = darkColorScheme(
 
 class MainActivity : ComponentActivity() {
 
+    val widgetIntentFlow = MutableStateFlow<Intent?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleCustomAction(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) {
+            handleCustomAction(intent)
+        }
 
         // Subscribe to FCM topic for global sync
         FirebaseMessaging.getInstance().subscribeToTopic("global_sync")
@@ -142,8 +154,7 @@ class MainActivity : ComponentActivity() {
                         LaunchedEffect(libraryViewModel) {
                             libraryViewModel.loadData(this@MainActivity)
                         }
-                        val annotationsDbFile = File(this@MainActivity.filesDir, "annotations.sqlite")
-                        val annotationManager = remember { AnnotationManager(annotationsDbFile) }
+                        val annotationManager = remember { AnnotationManager.getInstance(this@MainActivity) }
                         val cloudKitSyncManager = remember { CloudKitSyncManager() }
                         val historyViewModel: HistoryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 
@@ -178,23 +189,14 @@ class MainActivity : ComponentActivity() {
                                     is AnnotationChange.ReloadAll -> false
                                 }
                                 if (isLocal) {
-                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                        val syncResult = cloudKitSyncManager.syncAnnotations(this@MainActivity, annotationManager)
-                                        if (syncResult != null && syncResult != "Success") {
-                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                android.widget.Toast.makeText(
-                                                    this@MainActivity,
-                                                    syncResult,
-                                                    android.widget.Toast.LENGTH_SHORT
-                                                ).show()
-                                            }
-                                        }
-                                    }
+                                    cloudKitSyncManager.scheduleAnnotationSync(this@MainActivity, annotationManager)
+                                    com.maktabah.widget.DashboardWidget.updateWidget(this@MainActivity)
                                 }
                             }
                         }
 
                         MainScreen(
+                            mainActivity = this@MainActivity,
                             libraryViewModel = libraryViewModel,
                             annotationManager = annotationManager,
                             cloudKitSyncManager = cloudKitSyncManager,
@@ -219,6 +221,13 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    private fun handleCustomAction(intent: Intent?) {
+        if (intent == null) return
+        if (intent.action == "ACTION_OPEN_BOOK") {
+            widgetIntentFlow.value = intent
         }
     }
 }
