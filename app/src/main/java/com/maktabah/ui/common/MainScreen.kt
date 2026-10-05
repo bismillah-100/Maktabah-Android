@@ -104,6 +104,7 @@ import com.maktabah.ui.search.SearchScreen
 import com.maktabah.ui.search.SearchViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import com.maktabah.MainActivity
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration.Companion.milliseconds
@@ -128,6 +129,7 @@ enum class Tab(
 
 @Composable
 fun MainScreen(
+    mainActivity: MainActivity,
     libraryViewModel: LibraryViewModel,
     annotationManager: AnnotationManager,
     cloudKitSyncManager: CloudKitSyncManager,
@@ -284,6 +286,9 @@ fun MainScreen(
             { bookId, contentId, loc, len, query, recordHistory ->
                 val book = libraryViewModel.dataManager.booksById[bookId]
                 if (book == null) {
+                    if (navController.currentDestination?.route == "reader_tabs") {
+                        navController.popBackStack()
+                    }
                     showBookNotFoundPopover = true
                 } else {
                     if (libraryViewModel.isBookDownloadedById(bookId)) {
@@ -295,7 +300,6 @@ fun MainScreen(
                                 query != null -> FlashTarget(query = query)
                                 else -> null
                             }
-                        val isInReader = navController.currentDestination?.route == "reader_tabs"
                         val tab =
                             tabManager.openTab(
                                 book = book,
@@ -303,7 +307,7 @@ fun MainScreen(
                                 initialContentId = contentId,
                                 flashTarget = flashTarget,
                                 searchQuery = query,
-                                setActive = !isInReader,
+                                setActive = true,
                                 recordHistory = recordHistory,
                             )
                         // Initialize ViewModel jika belum
@@ -326,6 +330,9 @@ fun MainScreen(
                             }
                         }
                     } else {
+                        if (navController.currentDestination?.route == "reader_tabs") {
+                            navController.popBackStack()
+                        }
                         libraryViewModel.showDownloadConfirmation(
                             context,
                             bookId,
@@ -338,6 +345,21 @@ fun MainScreen(
                 }
             }
         }
+
+    LaunchedEffect(mainActivity) {
+        mainActivity.widgetIntentFlow.collect { intent ->
+            if (intent?.action == "ACTION_OPEN_BOOK") {
+                val bookId = intent.getIntExtra("bookId", -1)
+                if (bookId != -1) {
+                    val contentId = intent.getIntExtra("contentId", -1).takeIf { it != -1 }
+                    val flashLoc = intent.getIntExtra("flashLoc", -1).takeIf { it != -1 }
+                    val flashLen = intent.getIntExtra("flashLen", -1).takeIf { it != -1 }
+                    handleNavigateToReader(bookId, contentId, flashLoc, flashLen, null, true)
+                }
+                mainActivity.widgetIntentFlow.value = null
+            }
+        }
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0.dp),
