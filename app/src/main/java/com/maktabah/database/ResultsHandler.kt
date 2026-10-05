@@ -482,12 +482,46 @@ class ResultsHandler(private val dbFile: File) {
         return list
     }
 
+    fun fetchSyncFoldersByCkRecordIds(ckRecordIds: List<String>): List<SyncFolder> {
+        if (ckRecordIds.isEmpty()) return emptyList()
+        val list = mutableListOf<SyncFolder>()
+        openDb { db ->
+            ckRecordIds.chunked(900).forEach { chunk ->
+                val placeholders = chunk.joinToString(",") { "?" }
+                db.prepare("SELECT * FROM folders WHERE ckRecordId IN ($placeholders);")?.use { stmt ->
+                    chunk.forEachIndexed { index, id -> stmt.bindText(index + 1, id) }
+                    while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                        list.add(readSyncFolder(stmt))
+                    }
+                }
+            }
+        }
+        return list
+    }
+
     fun fetchAllSyncResults(): List<SyncResult> {
         val list = mutableListOf<SyncResult>()
         openDb { db ->
             db.prepare("SELECT * FROM results")?.use { stmt ->
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
                     list.add(readSyncResult(stmt))
+                }
+            }
+        }
+        return list
+    }
+
+    fun fetchSyncResultsByCkRecordIds(ckRecordIds: List<String>): List<SyncResult> {
+        if (ckRecordIds.isEmpty()) return emptyList()
+        val list = mutableListOf<SyncResult>()
+        openDb { db ->
+            ckRecordIds.chunked(900).forEach { chunk ->
+                val placeholders = chunk.joinToString(",") { "?" }
+                db.prepare("SELECT * FROM results WHERE ckRecordId IN ($placeholders);")?.use { stmt ->
+                    chunk.forEachIndexed { index, id -> stmt.bindText(index + 1, id) }
+                    while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                        list.add(readSyncResult(stmt))
+                    }
                 }
             }
         }

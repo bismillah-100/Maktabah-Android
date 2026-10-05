@@ -181,12 +181,9 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun toggleFavorite(bookId: Int): ReadingEntry {
+    fun toggleFavorite(bookId: Int): ReadingEntry? {
         val entries = _entriesByBookId.value.toMutableMap()
-        val entry = entries[bookId] ?: ReadingEntry(
-            bookId = bookId,
-            ckRecordId = bookId.toString()
-        )
+        val entry = entries[bookId] ?: ReadingEntry(bookId = bookId, ckRecordId = bookId.toString())
         val isFav = !entry.isFavorite
         val newEntry = entry.copy(
             isFavorite = isFav,
@@ -210,54 +207,71 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
         _historyOrder.value = order
 
         val entries = _entriesByBookId.value.toMutableMap()
-        val entry = entries[bookId]
-        if (entry != null) {
-            val newEntry = entry.copy(
-                lastOpenedAt = null,
-                lastContentId = null,
-                updatedAt = System.currentTimeMillis()
-            )
-            if (!newEntry.isFavorite) {
-                entries.remove(bookId)
-                viewModelScope.launch(Dispatchers.IO) {
-                    dbManager.deleteEntry(bookId)
-                    dbManager.saveHistoryOrder(order)
-                }
-            } else {
-                entries[bookId] = newEntry
-                viewModelScope.launch(Dispatchers.IO) {
-                    dbManager.upsertEntry(newEntry)
-                    dbManager.saveHistoryOrder(order)
-                }
+        val entry = entries[bookId] ?: return null
+        val newEntry = entry.copy(
+            lastOpenedAt = null,
+            lastContentId = null,
+            updatedAt = System.currentTimeMillis()
+        )
+        if (!newEntry.isFavorite) {
+            entries.remove(bookId)
+            viewModelScope.launch(Dispatchers.IO) {
+                dbManager.deleteEntry(bookId)
+                dbManager.saveHistoryOrder(order)
             }
-            _entriesByBookId.value = entries
-            return newEntry
+        } else {
+            entries[bookId] = newEntry
+            viewModelScope.launch(Dispatchers.IO) {
+                dbManager.upsertEntry(newEntry)
+                dbManager.saveHistoryOrder(order)
+            }
         }
-        viewModelScope.launch(Dispatchers.IO) { dbManager.saveHistoryOrder(order) }
-        return null
+        _entriesByBookId.value = entries
+        return newEntry
     }
 
     fun applyCloudKitChanges(entriesToSave: List<ReadingEntry>, recordIdsToDelete: List<String>) {
         val entries = _entriesByBookId.value.toMutableMap()
         var didChange = false
+        val deletedBookIds = mutableListOf<Int>()
 
+        val upserted = mutableListOf<ReadingEntry>()
         // Process Deletions
         if (recordIdsToDelete.isNotEmpty()) {
             val recordIdsSet = recordIdsToDelete.toSet()
-            val removed = entries.values.removeAll { entry ->
-                val ckId = entry.ckRecordId ?: entry.bookId.toString()
-                recordIdsSet.contains(ckId)
+            val toDelete = entries.values.filter { entry ->
+                val ckId = entry.ckRecordId
+                (ckId != null && recordIdsSet.contains(ckId)) || (ckId == null && recordIdsSet.contains(entry.bookId.toString()))
             }
-            if (removed) didChange = true
+            for (e in toDelete) {
+                if (e.isFavorite) {
+                    val kept = e.copy(lastOpenedAt = null, lastContentId = null, updatedAt = System.currentTimeMillis())
+                    entries[e.bookId] = kept
+                    upserted.add(kept)
+                } else {
+                    entries.remove(e.bookId)
+                    deletedBookIds.add(e.bookId)
+                }
+                didChange = true
+            }
         }
 
         // Updates/Insertions
-        val upserted = mutableListOf<ReadingEntry>()
         for (incoming in entriesToSave) {
             val existing = entries[incoming.bookId]
             if (existing == null || incoming.updatedAt > existing.updatedAt) {
-                entries[incoming.bookId] = incoming
-                upserted.add(incoming)
+                val merged = if (existing != null) {
+                    incoming.copy(
+                        lastOpenedAt = incoming.lastOpenedAt ?: existing.lastOpenedAt,
+                        lastContentId = incoming.lastContentId ?: existing.lastContentId,
+                        favoritedAt = incoming.favoritedAt ?: existing.favoritedAt,
+                        positionUpdatedAt = incoming.positionUpdatedAt ?: existing.positionUpdatedAt
+                    )
+                } else {
+                    incoming
+                }
+                entries[merged.bookId] = merged
+                upserted.add(merged)
                 didChange = true
             }
         }
@@ -279,8 +293,20 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
                         lastContentId = null,
                         updatedAt = System.currentTimeMillis()
                     )
-                    if (!updatedOldEntry.isFavorite) entries.remove(idToRemove)
-                    else entries[idToRemove] = updatedOldEntry
+                    
+                    // C5: Pruned History Entries Re-Inserted Due to Stale upserted List
+                    val iterator = upserted.iterator()
+                    while (iterator.hasNext()) {
+                        if (iterator.next().bookId == idToRemove) iterator.remove()
+                    }
+
+                    if (!updatedOldEntry.isFavorite) {
+                        entries.remove(idToRemove)
+                        deletedBookIds.add(idToRemove)
+                    } else {
+                        entries[idToRemove] = updatedOldEntry
+                        upserted.add(updatedOldEntry)
+                    }
                     didChange = true
                 }
             }
@@ -295,14 +321,11 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
             _entriesByBookId.value = finalEntries
             _historyOrder.value = newOrder
 
-            // Hitung deleted IDs untuk batch DB write
-            val deletedBookIds = recordIdsToDelete.mapNotNull { ckId ->
-                _entriesByBookId.value.values.find { it.ckRecordId == ckId }?.bookId
-            } + (currentOrder - newOrder.toSet())
-                .filter { finalEntries[it]?.let { e -> !e.isFavorite } ?: true }
+            val allDeletedIds = (deletedBookIds + (currentOrder - newOrder.toSet())
+                .filter { finalEntries[it]?.let { e -> !e.isFavorite } ?: true }).distinct()
 
             viewModelScope.launch(Dispatchers.IO) {
-                dbManager.applyCloudKitBatch(upserted, deletedBookIds.distinct(), newOrder)
+                dbManager.applyCloudKitBatch(upserted, allDeletedIds, newOrder)
             }
             notifyRefresh()
         }
