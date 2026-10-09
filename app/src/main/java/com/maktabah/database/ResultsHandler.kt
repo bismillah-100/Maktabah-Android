@@ -272,9 +272,7 @@ class ResultsHandler(private val dbFile: File) {
                 throw e
             }
         }
-        for (ckId in ckIdsToDelete) {
-            addPendingSync(ckId, "delete")
-        }
+        addPendingSyncs(ckIdsToDelete, "delete")
     }
 
     fun getAllDescendantIds(db: SQLiteDB, folderId: Long): List<Long> {
@@ -395,7 +393,7 @@ class ResultsHandler(private val dbFile: File) {
                 stmt.step()
             }
         }
-        for (ckId in ckIds) addPendingSync(ckId, "upload")
+        addPendingSyncs(ckIds, "upload")
     }
 
     fun updateResultParent(newParentId: Long?, oldParent: Long?, name: String) {
@@ -421,7 +419,7 @@ class ResultsHandler(private val dbFile: File) {
                 stmt.step()
             }
         }
-        for (ckId in ckIds) addPendingSync(ckId, "upload")
+        addPendingSyncs(ckIds, "upload")
     }
 
     fun deleteResult(folderId: Long?, name: String) {
