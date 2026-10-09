@@ -134,6 +134,26 @@ class FtsMigrationWorker(
             }
 
             ftsDb.prepare("BEGIN TRANSACTION;")?.use { it.step() }
+
+            // Bersihkan entri buku jika sudah ada sebelumnya di archive_index / archive_fts
+            bookIds.chunked(900).forEach { chunk ->
+                try {
+                    val placeholders = chunk.joinToString(",") { "?" }
+                    ftsDb.prepare("DELETE FROM main.archive_fts WHERE rowid IN (SELECT rowid FROM main.archive_index WHERE book_id IN ($placeholders));")?.use { stmt ->
+                        chunk.forEachIndexed { index, id ->
+                            stmt.bindLong(index + 1, id.toLong())
+                        }
+                        stmt.step()
+                    }
+                    ftsDb.prepare("DELETE FROM main.archive_index WHERE book_id IN ($placeholders);")?.use { stmt ->
+                        chunk.forEachIndexed { index, id ->
+                            stmt.bindLong(index + 1, id.toLong())
+                        }
+                        stmt.step()
+                    }
+                } catch (_: Exception) {}
+            }
+
             var currentBook = 0
 
             ftsDb.prepare("INSERT INTO main.archive_fts (rowid, nass_clean) VALUES (?, ?);")?.use { ftsInsertStmt ->
@@ -147,18 +167,6 @@ class FtsMigrationWorker(
 
                             val tableName = "b$bookId"
                             val oldFtsTable = "${tableName}_fts"
-
-                            // Bersihkan entri buku ini jika sudah ada sebelumnya di archive_index / archive_fts
-                            try {
-                                ftsDb.prepare("DELETE FROM main.archive_fts WHERE rowid IN (SELECT rowid FROM main.archive_index WHERE book_id = ?);")?.use { stmt ->
-                                    stmt.bindLong(1, bookId.toLong())
-                                    stmt.step()
-                                }
-                                ftsDb.prepare("DELETE FROM main.archive_index WHERE book_id = ?;")?.use { stmt ->
-                                    stmt.bindLong(1, bookId.toLong())
-                                    stmt.step()
-                                }
-                            } catch (_: Exception) {}
 
                             db.prepare("SELECT id, nass, page, part FROM main.\"$tableName\" WHERE nass IS NOT NULL;")?.use { ftsSelectStmt ->
                                 while (ftsSelectStmt.step() == SQLiteDB.SQLITE_ROW) {
