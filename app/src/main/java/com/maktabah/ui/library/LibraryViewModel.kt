@@ -81,6 +81,9 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
     private val _showOnlyDownloaded = MutableStateFlow(false)
     val showOnlyDownloaded: StateFlow<Boolean> = _showOnlyDownloaded
 
+    private val _availableUpdateCount = MutableStateFlow(0)
+    val availableUpdateCount: StateFlow<Int> = _availableUpdateCount
+
     private val _isSelectionMode = MutableStateFlow(false)
     val isSelectionMode: StateFlow<Boolean> = _isSelectionMode
 
@@ -105,6 +108,7 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
         }
         loadDownloadedBooks(context)
         loadDownloadIndex(context)
+        checkBookUpdatesPeriodically(context, force = false)
     }
 
     fun getBookFlow(bookId: Int): kotlinx.coroutines.flow.Flow<BooksData?> {
@@ -122,6 +126,33 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
             _isDataLoaded.value = true
         }
         loadDownloadIndex(context)
+        checkBookUpdatesPeriodically(context, force = true)
+    }
+
+    fun checkBookUpdatesPeriodically(context: Context, force: Boolean = false) {
+        val prefs = context.getSharedPreferences("library_prefs", Context.MODE_PRIVATE)
+        val lastCheck = prefs.getLong("last_book_update_check", 0L)
+        val oneDayMs = 86_400_000L
+        val now = System.currentTimeMillis()
+
+        if (!force && now - lastCheck < oneDayMs) {
+            _availableUpdateCount.value = prefs.getInt("cached_book_update_count", 0)
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val items = com.maktabah.database.BookUpdateManager.fetchAvailableUpdates(context)
+                val count = items.count { it.needsUpdate }
+                prefs.edit {
+                    putLong("last_book_update_check", now)
+                    putInt("cached_book_update_count", count)
+                }
+                _availableUpdateCount.value = count
+            } catch (_: Exception) {
+                // Ignore if offline during background check
+            }
+        }
     }
 
     fun loadDownloadIndex(context: Context) {

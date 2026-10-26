@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.ImportContacts
 import androidx.compose.material3.CircularProgressIndicator
@@ -97,6 +98,7 @@ fun LibraryScreen(
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val isBulkDownloading by viewModel.isBulkDownloading.collectAsState()
     val selectedBookIds by viewModel.selectedBookIds.collectAsState()
+    val availableUpdateCount by viewModel.availableUpdateCount.collectAsState()
     val viewMode by viewModel.viewMode.collectAsState()
     val expandedCategories by viewModel.expandedCategories.collectAsState()
     val focusManager = LocalFocusManager.current
@@ -112,6 +114,7 @@ fun LibraryScreen(
     )
 
     var showImportSheet by remember { mutableStateOf(false) }
+    var showUpdateSheet by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
 
     var popoverAnchor by remember { mutableStateOf<IntRect?>(null) }
@@ -269,12 +272,14 @@ fun LibraryScreen(
                                     if (!isSelectionMode) {
                                         LibraryMoreOptionsMenu(
                                             viewMode = viewMode,
+                                            availableUpdateCount = availableUpdateCount,
                                             onToggleSelectionMode = {
                                                 viewModel.toggleSelectionMode(
                                                     context
                                                 )
                                             },
                                             onSetViewMode = { viewModel.setViewMode(it) },
+                                            onBookUpdatesClick = { showUpdateSheet = true },
                                             onImportClick = { showImportSheet = true },
                                             onSettingsClick = { showSettings = true },
                                         )
@@ -403,13 +408,40 @@ fun LibraryScreen(
             }
         }
     }
+
+    // Book Updates Sheet
+    if (showUpdateSheet) {
+        Dialog(
+            onDismissRequest = { showUpdateSheet = false },
+            properties =
+                DialogProperties(
+                    usePlatformDefaultWidth = false,
+                    dismissOnClickOutside = false,
+                ),
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                BookUpdateSheet(
+                    onDismiss = { showUpdateSheet = false },
+                    onUpdateSuccess = {
+                        viewModel.reloadData(context)
+                        viewModel.checkBookUpdatesPeriodically(context, force = true)
+                    },
+                )
+            }
+        }
+    }
 }
 
 @Composable
 private fun LibraryMoreOptionsMenu(
     viewMode: LibraryViewMode,
+    availableUpdateCount: Int,
     onToggleSelectionMode: () -> Unit,
     onSetViewMode: (LibraryViewMode) -> Unit,
+    onBookUpdatesClick: () -> Unit,
     onImportClick: () -> Unit,
     onSettingsClick: () -> Unit,
 ) {
@@ -497,6 +529,17 @@ private fun LibraryMoreOptionsMenu(
                 onClick = {
                     showMenu = false
                     onImportClick()
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    val baseTitle = stringResource(R.string.book_update_title)
+                    Text(if (availableUpdateCount > 0) "$baseTitle ($availableUpdateCount)" else baseTitle)
+                },
+                leadingIcon = { Icon(Icons.Default.Sync, null) },
+                onClick = {
+                    showMenu = false
+                    onBookUpdatesClick()
                 },
             )
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))

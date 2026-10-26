@@ -302,4 +302,25 @@
     <string name="fts_migration_starting">Starting search index optimization…</string>
     <string name="fts_migration_progress_book">Archive %1$d: book %2$d/%3$d</string>
     <string name="fts_migration_progress_completed">Completed archive %1$d (%2$d/%3$d)</string>
+    <string name="book_update_title">Book Updates</string>
+    <string name="book_update_clear_selection">Clear Selections</string>
+    <string name="book_update_select_only_updates">Update Only</string>
+    <string name="book_update_select_all">Select All</string>
+    <string name="book_update_loading_list">Loading update list…</string>
+    <string name="book_update_found_count">Found %1$d books that need an update</string>
+    <string name="book_update_all_up_to_date">All books are up to date</string>
+    <string name="book_update_check_again">Check Again</string>
+    <string name="book_update_button_selected">Update Selected (%1$d)</string>
+    <string name="book_update_starting">Starting update for %1$d books…</string>
+    <string name="book_update_downloading_progress">Downloading books… (%1$d/%2$d)</string>
+    <string name="book_update_download_phase_done">Downloaded %1$d/%2$d books. Integrating…</string>
+    <string name="book_update_processing_item">Processing %1$s (%2$d/%3$d)…</string>
+    <string name="book_update_completed_summary">Completed: %1$d/%2$d books updated</string>
+    <string name="book_update_status_checking">Checking…</string>
+    <string name="book_update_status_downloading">Downloading…</string>
+    <string name="book_update_status_downloaded">Downloaded</string>
+    <string name="book_update_status_processing">Processing…</string>
+    <string name="book_update_status_new">NEW</string>
+    <string name="book_update_status_needs_update">Needs Update</string>
+    <string name="book_update_status_up_to_date">Up to Date</string>
 </resources>
