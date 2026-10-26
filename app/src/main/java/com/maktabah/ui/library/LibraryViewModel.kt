@@ -5,7 +5,9 @@ import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.maktabah.R
+import com.maktabah.config.AppConfig
 import com.maktabah.database.SQLiteDB
+import com.maktabah.database.updater.BookUpdateCheckWorker
 import com.maktabah.downloader.BookDownloadManager
 import com.maktabah.manager.LibraryDataManager
 import com.maktabah.models.BookDownloadState
@@ -108,6 +110,7 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
         }
         loadDownloadedBooks(context)
         loadDownloadIndex(context)
+        BookUpdateCheckWorker.enqueuePeriodicCheck(context)
         checkBookUpdatesPeriodically(context, force = false)
     }
 
@@ -130,13 +133,13 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
     }
 
     fun checkBookUpdatesPeriodically(context: Context, force: Boolean = false) {
-        val prefs = context.getSharedPreferences("library_prefs", Context.MODE_PRIVATE)
-        val lastCheck = prefs.getLong("last_book_update_check", 0L)
+        val prefs = context.getSharedPreferences(AppConfig.Prefs.LIBRARY_PREFS, Context.MODE_PRIVATE)
+        val lastCheck = prefs.getLong(AppConfig.Prefs.KEY_LAST_UPDATE_CHECK, 0L)
         val oneDayMs = 86_400_000L
         val now = System.currentTimeMillis()
 
         if (!force && now - lastCheck < oneDayMs) {
-            _availableUpdateCount.value = prefs.getInt("cached_book_update_count", 0)
+            _availableUpdateCount.value = prefs.getInt(AppConfig.Prefs.KEY_CACHED_UPDATE_COUNT, 0)
             return
         }
 
@@ -145,8 +148,8 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
                 val items = com.maktabah.database.BookUpdateManager.fetchAvailableUpdates(context)
                 val count = items.count { it.needsUpdate }
                 prefs.edit {
-                    putLong("last_book_update_check", now)
-                    putInt("cached_book_update_count", count)
+                    putLong(AppConfig.Prefs.KEY_LAST_UPDATE_CHECK, now)
+                    putInt(AppConfig.Prefs.KEY_CACHED_UPDATE_COUNT, count)
                 }
                 _availableUpdateCount.value = count
             } catch (_: Exception) {
