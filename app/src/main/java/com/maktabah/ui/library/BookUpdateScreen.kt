@@ -51,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.Font
@@ -60,8 +61,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.maktabah.R
+import com.maktabah.database.updater.BookUpdateRepository
 import com.maktabah.models.BookUpdateItem
 import com.maktabah.models.UpdateStatus
 import com.maktabah.ui.search.SearchTextField
@@ -73,8 +76,20 @@ private val UthmanFontFamily = FontFamily(Font(R.font.uthman))
 fun BookUpdateSheet(
     onDismiss: () -> Unit,
     onUpdateSuccess: suspend () -> Unit,
+    viewModel: BookUpdateViewModel? = null,
 ) {
-    val vm: BookUpdateViewModel = viewModel()
+    val context = LocalContext.current
+    val vm: BookUpdateViewModel = viewModel ?: run {
+        val repository = remember(context) { BookUpdateRepository(context.applicationContext) }
+        viewModel(
+            factory = object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                    return BookUpdateViewModel(repository) as T
+                }
+            }
+        )
+    }
 
     val availableUpdates by vm.availableUpdates.collectAsState()
     val filteredUpdates by vm.filteredUpdates.collectAsState()
@@ -82,6 +97,7 @@ fun BookUpdateSheet(
     val isLoadingList by vm.isLoadingList.collectAsState()
     val isUpdating by vm.isUpdating.collectAsState()
     val progressMessage by vm.progressMessage.collectAsState()
+    val progressText = progressMessage.asString()
 
     val selectedCount by remember(availableUpdates) {
         derivedStateOf { availableUpdates.count { it.isSelected } }
@@ -180,7 +196,7 @@ fun BookUpdateSheet(
                                 modifier = Modifier.fillMaxWidth(),
                             )
 
-                            if (progressMessage.isNotEmpty() || isUpdating) {
+                            if (progressText.isNotEmpty() || isUpdating) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -193,7 +209,7 @@ fun BookUpdateSheet(
                                         )
                                     }
                                     Text(
-                                        text = progressMessage,
+                                        text = progressText,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
@@ -301,9 +317,9 @@ fun BookUpdateSheet(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        if (progressMessage.isNotEmpty()) {
+                        if (progressText.isNotEmpty()) {
                             Text(
-                                text = progressMessage,
+                                text = progressText,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

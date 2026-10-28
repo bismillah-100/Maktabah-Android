@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import com.google.firebase.messaging.FirebaseMessaging
 import com.maktabah.cloudKit.CloudKitSyncManager
 import com.maktabah.database.AnnotationManager
+import com.maktabah.database.updater.BookUpdateRepository
 import com.maktabah.models.AnnotationChange
 import com.maktabah.downloader.ConnectivityMonitor
 import com.maktabah.downloader.CoreDatabaseDownloader
@@ -146,11 +147,12 @@ class MainActivity : ComponentActivity() {
 
                         val mainDbFile = File(this@MainActivity.filesDir, "main.sqlite")
                         val dataManager = remember { LibraryDataManager(mainDbFile) }
+                        val updateRepository = remember { BookUpdateRepository(applicationContext) }
                         val libraryViewModel: LibraryViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
                             factory = object : androidx.lifecycle.ViewModelProvider.Factory {
                                 @Suppress("UNCHECKED_CAST")
                                 override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-                                    return LibraryViewModel(dataManager) as T
+                                    return LibraryViewModel(dataManager, updateRepository) as T
                                 }
                             }
                         )

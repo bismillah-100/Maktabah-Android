@@ -1,17 +1,17 @@
 package com.maktabah.ui.library
 
-import android.app.Application
-import android.content.Context
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.maktabah.R
 import com.maktabah.database.BookUpdateManager
+import com.maktabah.database.updater.BookUpdateRepository
 import com.maktabah.models.AuthIndexEntry
 import com.maktabah.models.BookIndexEntry
 import com.maktabah.models.BookUpdateItem
 import com.maktabah.models.BookUpdateResult
 import com.maktabah.models.UpdateAction
 import com.maktabah.models.UpdateStatus
+import com.maktabah.ui.common.UiText
 import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -25,10 +25,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class BookUpdateViewModel(application: Application) : AndroidViewModel(application) {
-
-    private val appContext: Context
-        get() = getApplication<Application>().applicationContext
+class BookUpdateViewModel(
+    private val repository: BookUpdateRepository,
+) : ViewModel() {
 
     private val _availableUpdates = MutableStateFlow<List<BookUpdateItem>>(emptyList())
     val availableUpdates: StateFlow<List<BookUpdateItem>> = _availableUpdates.asStateFlow()
@@ -42,8 +41,8 @@ class BookUpdateViewModel(application: Application) : AndroidViewModel(applicati
     private val _isUpdating = MutableStateFlow(false)
     val isUpdating: StateFlow<Boolean> = _isUpdating.asStateFlow()
 
-    private val _progressMessage = MutableStateFlow("")
-    val progressMessage: StateFlow<String> = _progressMessage.asStateFlow()
+    private val _progressMessage = MutableStateFlow<UiText>(UiText.Empty)
+    val progressMessage: StateFlow<UiText> = _progressMessage.asStateFlow()
 
     val filteredUpdates: StateFlow<List<BookUpdateItem>> = combine(
         _availableUpdates,
@@ -68,18 +67,18 @@ class BookUpdateViewModel(application: Application) : AndroidViewModel(applicati
         if (_isLoadingList.value || _isUpdating.value) return
         viewModelScope.launch {
             _isLoadingList.value = true
-            _progressMessage.value = appContext.getString(R.string.book_update_loading_list)
+            _progressMessage.value = UiText.StringResource(R.string.book_update_loading_list)
             try {
-                val items = BookUpdateManager.fetchAvailableUpdates(appContext)
+                val items = repository.fetchAvailableUpdates()
                 _availableUpdates.value = items
                 val needsCount = items.count { it.needsUpdate }
                 _progressMessage.value = if (needsCount > 0) {
-                    appContext.getString(R.string.book_update_found_count, needsCount)
+                    UiText.StringResource(R.string.book_update_found_count, needsCount)
                 } else {
-                    ""
+                    UiText.Empty
                 }
             } catch (e: Exception) {
-                _progressMessage.value = "Error: ${e.localizedMessage ?: e.message ?: ""}"
+                _progressMessage.value = UiText.DynamicString("Error: ${e.localizedMessage ?: e.message ?: ""}")
             } finally {
                 _isLoadingList.value = false
             }
@@ -121,10 +120,10 @@ class BookUpdateViewModel(application: Application) : AndroidViewModel(applicati
 
         viewModelScope.launch {
             _isUpdating.value = true
-            _progressMessage.value = appContext.getString(R.string.book_update_starting, selectedItems.size)
+            _progressMessage.value = UiText.StringResource(R.string.book_update_starting, selectedItems.size)
             try {
                 val authEntries = try {
-                    BookUpdateManager.fetchAuthIndexEntries()
+                    repository.fetchAuthIndexEntries()
                 } catch (_: Exception) {
                     emptyList()
                 }
@@ -141,7 +140,7 @@ class BookUpdateViewModel(application: Application) : AndroidViewModel(applicati
                     maxConcurrent = 3,
                 )
 
-                _progressMessage.value = appContext.getString(
+                _progressMessage.value = UiText.StringResource(
                     R.string.book_update_download_phase_done,
                     stagedMap.size,
                     selectedItems.size,
@@ -156,7 +155,7 @@ class BookUpdateViewModel(application: Application) : AndroidViewModel(applicati
                     val staged = stagedMap[item.id] ?: continue
                     processingIndex++
                     updateItemStatus(item.id, UpdateStatus.Processing)
-                    _progressMessage.value = appContext.getString(
+                    _progressMessage.value = UiText.StringResource(
                         R.string.book_update_processing_item,
                         item.bookName,
                         processingIndex,
@@ -164,7 +163,7 @@ class BookUpdateViewModel(application: Application) : AndroidViewModel(applicati
                     )
 
                     try {
-                        val result: BookUpdateResult = BookUpdateManager.applyStagedBookUpdate(appContext, staged)
+                        val result: BookUpdateResult = repository.applyStagedBookUpdate(staged)
                         when (result.action) {
                             UpdateAction.INSERTED, UpdateAction.UPDATED -> {
                                 completedCount++
@@ -190,7 +189,7 @@ class BookUpdateViewModel(application: Application) : AndroidViewModel(applicati
                     }
                 }
 
-                _progressMessage.value = appContext.getString(
+                _progressMessage.value = UiText.StringResource(
                     R.string.book_update_completed_summary,
                     completedCount,
                     totalCount,
@@ -200,9 +199,9 @@ class BookUpdateViewModel(application: Application) : AndroidViewModel(applicati
                     onReloadLibrary()
                 }
             } catch (e: Exception) {
-                _progressMessage.value = "Error: ${e.localizedMessage ?: e.message ?: ""}"
+                _progressMessage.value = UiText.DynamicString("Error: ${e.localizedMessage ?: e.message ?: ""}")
             } finally {
-                BookUpdateManager.cleanupWorkingDirectory(appContext)
+                repository.cleanupWorkingDirectory()
                 _isUpdating.value = false
             }
         }
@@ -228,7 +227,7 @@ class BookUpdateViewModel(application: Application) : AndroidViewModel(applicati
                         fileSize = item.fileSize,
                     )
                     runCatching {
-                        BookUpdateManager.stageBookDownload(appContext, entry, authIndexMap)
+                        repository.stageBookDownload(entry, authIndexMap)
                     }.toPair(item.id)
                 }
             }
@@ -242,7 +241,7 @@ class BookUpdateViewModel(application: Application) : AndroidViewModel(applicati
                 }.onFailure { err ->
                     updateItemStatus(bookId, UpdateStatus.Failed(err.localizedMessage ?: "Download error"))
                 }
-                _progressMessage.value = appContext.getString(
+                _progressMessage.value = UiText.StringResource(
                     R.string.book_update_downloading_progress,
                     completedDownloads,
                     selectedItems.size,
