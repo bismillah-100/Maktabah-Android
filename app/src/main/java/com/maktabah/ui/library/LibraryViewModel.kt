@@ -5,7 +5,10 @@ import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.maktabah.R
+import com.maktabah.config.AppConfig
 import com.maktabah.database.SQLiteDB
+import com.maktabah.database.updater.BookUpdateCheckWorker
+import com.maktabah.database.updater.BookUpdateRepository
 import com.maktabah.downloader.BookDownloadManager
 import com.maktabah.manager.LibraryDataManager
 import com.maktabah.models.BookDownloadState
@@ -33,7 +36,10 @@ import kotlin.time.Duration.Companion.milliseconds
 
 private val SQLITE_FILE_REGEX = Regex("\\d+\\.sqlite")
 
-class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
+class LibraryViewModel(
+    val dataManager: LibraryDataManager,
+    val updateRepository: BookUpdateRepository? = null,
+) : ViewModel() {
 
     private val _downloadedBookIds = MutableStateFlow<Set<Int>>(emptySet())
     val downloadedBookIds: StateFlow<Set<Int>> = _downloadedBookIds
@@ -81,6 +87,9 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
     private val _showOnlyDownloaded = MutableStateFlow(false)
     val showOnlyDownloaded: StateFlow<Boolean> = _showOnlyDownloaded
 
+    private val _availableUpdateCount = MutableStateFlow(0)
+    val availableUpdateCount: StateFlow<Int> = _availableUpdateCount
+
     private val _isSelectionMode = MutableStateFlow(false)
     val isSelectionMode: StateFlow<Boolean> = _isSelectionMode
 
@@ -90,7 +99,7 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
     fun loadData(context: Context) {
         if (_isDataLoaded.value) return
         if (prefs == null) {
-            prefs = context.getSharedPreferences("library_prefs", Context.MODE_PRIVATE)
+            prefs = context.getSharedPreferences(AppConfig.Prefs.LIBRARY_PREFS, Context.MODE_PRIVATE)
             _showOnlyDownloaded.value = prefs?.getBoolean("show_only_downloaded", false) ?: false
         }
         viewModelScope.launch {
@@ -105,6 +114,8 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
         }
         loadDownloadedBooks(context)
         loadDownloadIndex(context)
+        BookUpdateCheckWorker.enqueuePeriodicCheck(context)
+        checkBookUpdatesPeriodically(context, force = false)
     }
 
     fun getBookFlow(bookId: Int): kotlinx.coroutines.flow.Flow<BooksData?> {
@@ -122,6 +133,32 @@ class LibraryViewModel(val dataManager: LibraryDataManager) : ViewModel() {
             _isDataLoaded.value = true
         }
         loadDownloadIndex(context)
+        checkBookUpdatesPeriodically(context, force = true)
+    }
+
+    fun checkBookUpdatesPeriodically(context: Context? = null, force: Boolean = false) {
+        val repo = updateRepository ?: context?.let { BookUpdateRepository(it.applicationContext) } ?: return
+        val lastCheck = repo.getLastUpdateCheck()
+        val oneDayMs = 86_400_000L
+        val now = System.currentTimeMillis()
+
+        if (!force && now - lastCheck < oneDayMs) {
+            _availableUpdateCount.value = repo.getCachedUpdateCount()
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val items = repo.fetchAvailableUpdates()
+                val count = items.count { it.needsUpdate }
+                repo.saveUpdateCheck(now, count)
+                withContext(Dispatchers.Main) {
+                    _availableUpdateCount.value = count
+                }
+            } catch (_: Exception) {
+                // Ignore if offline during background check
+            }
+        }
     }
 
     fun loadDownloadIndex(context: Context) {

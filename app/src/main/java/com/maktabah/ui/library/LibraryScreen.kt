@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.ImportContacts
 import androidx.compose.material3.CircularProgressIndicator
@@ -43,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -97,6 +99,7 @@ fun LibraryScreen(
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val isBulkDownloading by viewModel.isBulkDownloading.collectAsState()
     val selectedBookIds by viewModel.selectedBookIds.collectAsState()
+    val availableUpdateCount by viewModel.availableUpdateCount.collectAsState()
     val viewMode by viewModel.viewMode.collectAsState()
     val expandedCategories by viewModel.expandedCategories.collectAsState()
     val focusManager = LocalFocusManager.current
@@ -112,6 +115,7 @@ fun LibraryScreen(
     )
 
     var showImportSheet by remember { mutableStateOf(false) }
+    var showUpdateSheet by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
 
     var popoverAnchor by remember { mutableStateOf<IntRect?>(null) }
@@ -269,12 +273,14 @@ fun LibraryScreen(
                                     if (!isSelectionMode) {
                                         LibraryMoreOptionsMenu(
                                             viewMode = viewMode,
+                                            availableUpdateCount = availableUpdateCount,
                                             onToggleSelectionMode = {
                                                 viewModel.toggleSelectionMode(
                                                     context
                                                 )
                                             },
                                             onSetViewMode = { viewModel.setViewMode(it) },
+                                            onBookUpdatesClick = { showUpdateSheet = true },
                                             onImportClick = { showImportSheet = true },
                                             onSettingsClick = { showSettings = true },
                                         )
@@ -403,18 +409,112 @@ fun LibraryScreen(
             }
         }
     }
+
+    // Book Updates Sheet
+    if (showUpdateSheet) {
+        Dialog(
+            onDismissRequest = { showUpdateSheet = false },
+            properties =
+                DialogProperties(
+                    usePlatformDefaultWidth = false,
+                    dismissOnClickOutside = false,
+                ),
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                BookUpdateSheet(
+                    onDismiss = { showUpdateSheet = false },
+                    onUpdateSuccess = {
+                        viewModel.reloadData(context)
+                        viewModel.checkBookUpdatesPeriodically(context, force = true)
+                    },
+                )
+            }
+        }
+    }
+}
+
+private sealed interface LibraryMenuEntry {
+    data class Item(
+        val title: String,
+        val icon: ImageVector,
+        val contentDescription: String? = null,
+        val onClick: () -> Unit,
+    ) : LibraryMenuEntry
+
+    data class SubMenu(
+        val title: String,
+        val icon: ImageVector,
+        val contentDescription: String? = null,
+        val isExpanded: Boolean,
+        val onToggle: (Boolean) -> Unit,
+        val children: List<Item>,
+    ) : LibraryMenuEntry
+
+    data object Divider : LibraryMenuEntry
 }
 
 @Composable
 private fun LibraryMoreOptionsMenu(
     viewMode: LibraryViewMode,
+    availableUpdateCount: Int,
     onToggleSelectionMode: () -> Unit,
     onSetViewMode: (LibraryViewMode) -> Unit,
+    onBookUpdatesClick: () -> Unit,
     onImportClick: () -> Unit,
     onSettingsClick: () -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showGroupByMenu by remember { mutableStateOf(false) }
+
+    val updateTitle = stringResource(R.string.book_update_title)
+    val updateLabel = if (availableUpdateCount > 0) "$updateTitle ($availableUpdateCount)" else updateTitle
+
+    val menuEntries = listOf<LibraryMenuEntry>(
+        LibraryMenuEntry.Item(
+            title = stringResource(R.string.library_menu_select),
+            icon = Icons.Default.CheckCircleOutline,
+            contentDescription = stringResource(R.string.library_action_selection_mode),
+            onClick = onToggleSelectionMode,
+        ),
+        LibraryMenuEntry.SubMenu(
+            title = stringResource(R.string.library_action_group_by),
+            icon = if (viewMode == LibraryViewMode.CATEGORY) Icons.Default.Folder else Icons.Default.Person,
+            contentDescription = stringResource(R.string.library_action_group_by),
+            isExpanded = showGroupByMenu,
+            onToggle = { showGroupByMenu = it },
+            children = listOf(
+                LibraryMenuEntry.Item(
+                    title = stringResource(R.string.library_menu_category),
+                    icon = Icons.Default.Folder,
+                    onClick = { onSetViewMode(LibraryViewMode.CATEGORY) },
+                ),
+                LibraryMenuEntry.Item(
+                    title = stringResource(R.string.library_menu_author),
+                    icon = Icons.Default.Person,
+                    onClick = { onSetViewMode(LibraryViewMode.AUTHOR) },
+                ),
+            ),
+        ),
+        LibraryMenuEntry.Item(
+            title = stringResource(R.string.library_menu_import),
+            icon = Icons.Outlined.ImportContacts,
+            onClick = onImportClick,
+        ),
+        LibraryMenuEntry.Item(
+            title = updateLabel,
+            icon = Icons.Default.Sync,
+            onClick = onBookUpdatesClick,
+        ),
+        LibraryMenuEntry.Divider,
+        LibraryMenuEntry.Item(
+            title = stringResource(R.string.history_settings_title),
+            icon = Icons.Default.Settings,
+            onClick = onSettingsClick,
+        ),
+    )
 
     Box {
         IconButton(onClick = { showMenu = true }) {
@@ -431,83 +531,55 @@ private fun LibraryMoreOptionsMenu(
             },
             containerColor = MaterialTheme.colorScheme.surface,
         ) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.library_menu_select)) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircleOutline,
-                        contentDescription = stringResource(R.string.library_action_selection_mode),
-                    )
-                },
-                onClick = {
-                    showMenu = false
-                    onToggleSelectionMode()
-                },
-            )
-            Box {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_action_group_by)) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector =
-                                if (viewMode == LibraryViewMode.CATEGORY) {
-                                    Icons.Default.Folder
-                                } else {
-                                    Icons.Default.Person
+            menuEntries.forEach { entry ->
+                when (entry) {
+                    is LibraryMenuEntry.Item -> {
+                        DropdownMenuItem(
+                            text = { Text(entry.title) },
+                            leadingIcon = { Icon(entry.icon, contentDescription = entry.contentDescription) },
+                            onClick = {
+                                showMenu = false
+                                entry.onClick()
+                            },
+                        )
+                    }
+                    is LibraryMenuEntry.SubMenu -> {
+                        Box {
+                            DropdownMenuItem(
+                                text = { Text(entry.title) },
+                                leadingIcon = { Icon(entry.icon, contentDescription = entry.contentDescription) },
+                                trailingIcon = {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowRight,
+                                        contentDescription = stringResource(R.string.library_action_arrow_right),
+                                    )
                                 },
-                            contentDescription = stringResource(R.string.library_action_group_by),
-                        )
-                    },
-                    trailingIcon = {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowRight,
-                            contentDescription = stringResource(R.string.library_action_arrow_right),
-                        )
-                    },
-                    onClick = { showGroupByMenu = true },
-                )
-                DropdownMenu(
-                    expanded = showGroupByMenu,
-                    onDismissRequest = { showGroupByMenu = false },
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.library_menu_category)) },
-                        leadingIcon = { Icon(Icons.Default.Folder, null) },
-                        onClick = {
-                            showGroupByMenu = false
-                            showMenu = false
-                            onSetViewMode(LibraryViewMode.CATEGORY)
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.library_menu_author)) },
-                        leadingIcon = { Icon(Icons.Default.Person, null) },
-                        onClick = {
-                            showGroupByMenu = false
-                            showMenu = false
-                            onSetViewMode(LibraryViewMode.AUTHOR)
-                        },
-                    )
+                                onClick = { entry.onToggle(true) },
+                            )
+                            DropdownMenu(
+                                expanded = entry.isExpanded,
+                                onDismissRequest = { entry.onToggle(false) },
+                                containerColor = MaterialTheme.colorScheme.surface,
+                            ) {
+                                entry.children.forEach { child ->
+                                    DropdownMenuItem(
+                                        text = { Text(child.title) },
+                                        leadingIcon = { Icon(child.icon, contentDescription = child.contentDescription) },
+                                        onClick = {
+                                            entry.onToggle(false)
+                                            showMenu = false
+                                            child.onClick()
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    is LibraryMenuEntry.Divider -> {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    }
                 }
             }
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.library_menu_import)) },
-                leadingIcon = { Icon(Icons.Outlined.ImportContacts, null) },
-                onClick = {
-                    showMenu = false
-                    onImportClick()
-                },
-            )
-            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.history_settings_title)) },
-                leadingIcon = { Icon(Icons.Default.Settings, null) },
-                onClick = {
-                    showMenu = false
-                    onSettingsClick()
-                },
-            )
         }
     }
 }

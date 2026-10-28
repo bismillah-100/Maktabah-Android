@@ -300,4 +300,25 @@
     <string name="fts_migration_starting">Memulai pengoptimalan indeks pencarian…</string>
     <string name="fts_migration_progress_book">Arsip %1$d: buku %2$d/%3$d</string>
     <string name="fts_migration_progress_completed">Selesai arsip %1$d (%2$d/%3$d)</string>
+    <string name="book_update_title">Pembaruan Buku</string>
+    <string name="book_update_clear_selection">Hapus Pilihan</string>
+    <string name="book_update_select_only_updates">Hanya Pembaruan</string>
+    <string name="book_update_select_all">Pilih Semua</string>
+    <string name="book_update_loading_list">Memuat daftar pembaruan…</string>
+    <string name="book_update_found_count">Ditemukan %1$d buku yang perlu diperbarui</string>
+    <string name="book_update_all_up_to_date">Semua buku sudah versi terbaru</string>
+    <string name="book_update_check_again">Periksa Lagi</string>
+    <string name="book_update_button_selected">Perbarui Terpilih (%1$d)</string>
+    <string name="book_update_starting">Memulai pembaruan %1$d buku…</string>
+    <string name="book_update_downloading_progress">Mengunduh buku… (%1$d/%2$d)</string>
+    <string name="book_update_download_phase_done">Berhasil mengunduh %1$d/%2$d buku. Mengintegrasikan…</string>
+    <string name="book_update_processing_item">Memproses %1$s (%2$d/%3$d)…</string>
+    <string name="book_update_completed_summary">Selesai: %1$d/%2$d buku diperbarui</string>
+    <string name="book_update_status_checking">Memeriksa…</string>
+    <string name="book_update_status_downloading">Mengunduh…</string>
+    <string name="book_update_status_downloaded">Terunduh</string>
+    <string name="book_update_status_processing">Memproses…</string>
+    <string name="book_update_status_new">BARU</string>
+    <string name="book_update_status_needs_update">Perlu Update</string>
+    <string name="book_update_status_up_to_date">Sudah Terbaru</string>
 </resources>
