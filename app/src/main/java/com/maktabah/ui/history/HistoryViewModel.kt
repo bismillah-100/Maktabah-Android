@@ -260,18 +260,8 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
         for (incoming in entriesToSave) {
             val existing = entries[incoming.bookId]
             if (existing == null || incoming.updatedAt > existing.updatedAt) {
-                val merged = if (existing != null) {
-                    incoming.copy(
-                        lastOpenedAt = incoming.lastOpenedAt ?: existing.lastOpenedAt,
-                        lastContentId = incoming.lastContentId ?: existing.lastContentId,
-                        favoritedAt = incoming.favoritedAt ?: existing.favoritedAt,
-                        positionUpdatedAt = incoming.positionUpdatedAt ?: existing.positionUpdatedAt
-                    )
-                } else {
-                    incoming
-                }
-                entries[merged.bookId] = merged
-                upserted.add(merged)
+                entries[incoming.bookId] = incoming
+                upserted.add(incoming)
                 didChange = true
             }
         }

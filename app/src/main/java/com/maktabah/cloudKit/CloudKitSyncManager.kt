@@ -111,12 +111,16 @@ class CloudKitSyncManager {
             val db = HistoryDatabaseManager.getInstance(context)
             val pendingUploads = db.fetchPendingSync("upload")
             val pendingDeletes = db.fetchPendingSync("delete")
+            var shouldFlush = false
             if (pendingUploads.isEmpty() && pendingDeletes.isEmpty()) {
                 historyBufferMutex.withLock {
                     if (historyUploadBuffer.isNotEmpty()) {
                         historyDebounceJob?.cancel()
-                        flushHistoryBuffer(context)
+                        shouldFlush = true
                     }
+                }
+                if (shouldFlush) {
+                    flushHistoryBuffer(context)
                 }
                 return@withContext
             }
@@ -147,8 +151,8 @@ class CloudKitSyncManager {
                     val key = entry.ckRecordId ?: entry.bookId.toString()
                     historyUploadBuffer[key] = entry
                 }
-                flushHistoryBuffer(context)
             }
+            flushHistoryBuffer(context)
         }
     }
 
