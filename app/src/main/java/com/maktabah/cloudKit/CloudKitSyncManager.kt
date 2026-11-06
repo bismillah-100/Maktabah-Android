@@ -208,6 +208,14 @@ class CloudKitSyncManager {
                 onRecordDeleted = { ckRecordId ->
                     recordIdsToDelete.add(ckRecordId)
                     resultRecordIdsToDelete.add(ckRecordId)
+                },
+                onReset = {
+                    annotationsToSave.clear()
+                    entriesToSave.clear()
+                    foldersToSave.clear()
+                    resultsToSave.clear()
+                    recordIdsToDelete.clear()
+                    resultRecordIdsToDelete.clear()
                 }
             )
 
@@ -241,7 +249,10 @@ class CloudKitSyncManager {
                     return@withContext it.second
                 },
                 onFailure = {
-                    if (it.message == "No Web Auth Token") return@withContext null
+                    if (it is CloudKitError.NoWebAuthToken) return@withContext null
+                    if (it is CloudKitError.AuthenticationExpired) {
+                        return@withContext context.getString(R.string.cloudkit_auth_expired)
+                    }
                     if (isNetworkError(it, context)) {
                         return@withContext context.getString(R.string.no_internet_connection)
                     }
@@ -289,8 +300,10 @@ class CloudKitSyncManager {
             } else {
                 val ex = result.exceptionOrNull()
                 val msg = ex?.message
-                if (msg == "No Web Auth Token") {
+                if (ex is CloudKitError.NoWebAuthToken) {
                     null
+                } else if (ex is CloudKitError.AuthenticationExpired) {
+                    context.getString(R.string.cloudkit_auth_expired)
                 } else if (isNetworkError(ex, context)) {
                     context.getString(R.string.no_internet_connection)
                 } else {
@@ -356,8 +369,10 @@ class CloudKitSyncManager {
             } else {
                 val ex = result.exceptionOrNull()
                 val msg = ex?.message
-                if (msg == "No Web Auth Token") {
+                if (ex is CloudKitError.NoWebAuthToken) {
                     null
+                } else if (ex is CloudKitError.AuthenticationExpired) {
+                    context.getString(R.string.cloudkit_auth_expired)
                 } else if (isNetworkError(ex, context)) {
                     context.getString(R.string.no_internet_connection)
                 } else {
@@ -465,8 +480,10 @@ class CloudKitSyncManager {
             } else {
                 val ex = result.exceptionOrNull()
                 val msg = ex?.message
-                if (msg == "No Web Auth Token") {
+                if (ex is CloudKitError.NoWebAuthToken) {
                     null
+                } else if (ex is CloudKitError.AuthenticationExpired) {
+                    context.getString(R.string.cloudkit_auth_expired)
                 } else if (isNetworkError(ex, context)) {
                     context.getString(R.string.no_internet_connection)
                 } else {

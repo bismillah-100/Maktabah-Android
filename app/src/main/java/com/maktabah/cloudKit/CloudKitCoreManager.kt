@@ -36,7 +36,7 @@ class CloudKitCoreManager private constructor() {
 
         val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
         val webAuthToken = prefs.getString("ckWebAuthToken", null) 
-            ?: return@withContext Result.failure(Exception("No Web Auth Token"))
+            ?: return@withContext Result.failure(CloudKitError.NoWebAuthToken)
 
         try {
             val url = URL("$cloudKitBaseUrl/modify?ckAPIToken=$apiToken&ckWebAuthToken=${URLEncoder.encode(webAuthToken, "UTF-8")}")
@@ -84,33 +84,37 @@ class CloudKitCoreManager private constructor() {
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.doOutput = true
 
-                conn.outputStream.use { os ->
-                    val input = jsonBody.toString().toByteArray(Charsets.UTF_8)
-                    os.write(input, 0, input.size)
-                }
+                try {
+                    conn.outputStream.use { os ->
+                        val input = jsonBody.toString().toByteArray(Charsets.UTF_8)
+                        os.write(input, 0, input.size)
+                    }
 
-                if (conn.responseCode != HttpURLConnection.HTTP_OK) {
-                    val errorStr = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                    val reason = try { JSONObject(errorStr).getString("reason") } catch(_: Exception) { errorStr.take(100) }
-                    return@withContext Result.failure(Exception("Err: $reason"))
-                } else {
-                    try {
-                        val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
-                        val responseObj = JSONObject(responseStr)
-                        val recordsArr = responseObj.optJSONArray("records")
-                        if (recordsArr != null) {
-                            for (i in 0 until recordsArr.length()) {
-                                val rec = recordsArr.getJSONObject(i)
-                                if (rec.has("serverErrorCode")) {
-                                    val err = rec.optString("serverErrorCode")
-                                    val recName = rec.optString("recordName")
-                                    android.util.Log.w("CloudKitCore", "modifyRecord $recName: $err")
+                    val responseCode = conn.responseCode
+                    if (responseCode != HttpURLConnection.HTTP_OK) {
+                        val errorStr = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                        return@withContext Result.failure(classifyError(context, responseCode, errorStr))
+                    } else {
+                        try {
+                            val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
+                            val responseObj = JSONObject(responseStr)
+                            val recordsArr = responseObj.optJSONArray("records")
+                            if (recordsArr != null) {
+                                for (i in 0 until recordsArr.length()) {
+                                    val rec = recordsArr.getJSONObject(i)
+                                    if (rec.has("serverErrorCode")) {
+                                        val err = rec.optString("serverErrorCode")
+                                        val recName = rec.optString("recordName")
+                                        android.util.Log.w("CloudKitCore", "modifyRecord $recName: $err")
+                                    }
                                 }
                             }
+                        } catch (e: Exception) {
+                            android.util.Log.e("CloudKitCore", "Error parsing modifyRecords response", e)
                         }
-                    } catch (e: Exception) {
-                        android.util.Log.e("CloudKitCore", "Error parsing modifyRecords response", e)
                     }
+                } finally {
+                    conn.disconnect()
                 }
             }
             
@@ -126,7 +130,7 @@ class CloudKitCoreManager private constructor() {
     suspend fun fetchUserInfo(context: Context): Result<JSONObject> = withContext(Dispatchers.IO) {
         val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
         val webAuthToken = prefs.getString("ckWebAuthToken", null)
-            ?: return@withContext Result.failure(Exception("No Web Auth Token"))
+            ?: return@withContext Result.failure(CloudKitError.NoWebAuthToken)
 
         val scopes = listOf("public", "private")
         var lastException: Exception? = null
@@ -140,18 +144,21 @@ class CloudKitCoreManager private constructor() {
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "GET"
 
-                val responseCode = conn.responseCode
-                android.util.Log.d("CloudKitCore", "fetchUserInfo Response Code ($scope): $responseCode")
+                try {
+                    val responseCode = conn.responseCode
+                    android.util.Log.d("CloudKitCore", "fetchUserInfo Response Code ($scope): $responseCode")
 
-                if (responseCode == HttpURLConnection.HTTP_OK) {
-                    val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
-                    android.util.Log.d("CloudKitCore", "fetchUserInfo Success ($scope)")
-                    return@withContext Result.success(JSONObject(responseStr))
-                } else {
-                    val errorStr = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                    android.util.Log.e("CloudKitCore", "fetchUserInfo Error ($scope)")
-                    val reason = try { JSONObject(errorStr).getString("reason") } catch(_: Exception) { errorStr.take(100) }
-                    lastException = Exception("Err ($scope): $reason")
+                    if (responseCode == HttpURLConnection.HTTP_OK) {
+                        val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
+                        android.util.Log.d("CloudKitCore", "fetchUserInfo Success ($scope)")
+                        return@withContext Result.success(JSONObject(responseStr))
+                    } else {
+                        val errorStr = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                        android.util.Log.e("CloudKitCore", "fetchUserInfo Error ($scope)")
+                        lastException = classifyError(context, responseCode, errorStr)
+                    }
+                } finally {
+                    conn.disconnect()
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -161,23 +168,25 @@ class CloudKitCoreManager private constructor() {
             }
         }
         
-        Result.failure(lastException ?: Exception("Unknown error fetching user info"))
+        Result.failure(lastException ?: CloudKitError.ServerError("Unknown error fetching user info"))
     }
 
     suspend fun fetchChanges(
         context: Context,
         zoneName: String,
         onRecordReceived: (JSONObject) -> Unit,
-        onRecordDeleted: (String) -> Unit
+        onRecordDeleted: (String) -> Unit,
+        onReset: (() -> Unit)? = null
     ): Result<Pair<Int, String>> = withContext(Dispatchers.IO) {
         val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
         val webAuthToken = prefs.getString("ckWebAuthToken", null) 
-            ?: return@withContext Result.failure(Exception("No Web Auth Token"))
+            ?: return@withContext Result.failure(CloudKitError.NoWebAuthToken)
 
         try {
             var syncToken: String? = prefs.getString("ckSyncToken_$zoneName", null)
             var moreComing = true
             var totalCount = 0
+            var changeTokenRetries = 0
 
             while (moreComing) {
                 coroutineContext.ensureActive()
@@ -187,55 +196,70 @@ class CloudKitCoreManager private constructor() {
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.doOutput = true
 
-                val jsonBody = JSONObject().apply {
-                    put("zoneID", JSONObject().apply {
-                        put("zoneName", zoneName)
-                        put("ownerRecordName", "_defaultOwner_")
-                    })
-                    if (syncToken != null) {
-                        put("syncToken", syncToken)
-                    }
-                }
-
-                conn.outputStream.use { os ->
-                    val input = jsonBody.toString().toByteArray(Charsets.UTF_8)
-                    os.write(input, 0, input.size)
-                }
-
-                if (conn.responseCode == HttpURLConnection.HTTP_OK) {
-                    val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
-                    val responseObj = JSONObject(responseStr)
-
-                    moreComing = responseObj.optBoolean("moreComing", false)
-                    val newSyncToken = responseObj.optString("syncToken", "")
-                    if (newSyncToken.isNotEmpty()) {
-                        syncToken = newSyncToken
-                    }
-
-                    if (responseObj.has("records")) {
-                        val records = responseObj.getJSONArray("records")
-                        for (i in 0 until records.length()) {
-                            coroutineContext.ensureActive()
-                            val record = records.getJSONObject(i)
-                            val ckRecordId = record.optString("recordName", "")
-                            
-                            if (ckRecordId.isNotEmpty() && record.optBoolean("deleted", false)) {
-                                onRecordDeleted(ckRecordId)
-                            } else if (record.has("fields")) {
-                                onRecordReceived(record)
-                                totalCount++
-                            }
+                try {
+                    val jsonBody = JSONObject().apply {
+                        put("zoneID", JSONObject().apply {
+                            put("zoneName", zoneName)
+                            put("ownerRecordName", "_defaultOwner_")
+                        })
+                        if (syncToken != null) {
+                            put("syncToken", syncToken)
                         }
                     }
-                } else {
-                    val errorStr = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                    val reason = try { JSONObject(errorStr).getString("reason") } catch(_: Exception) { errorStr.take(100) }
-                    return@withContext Result.failure(Exception("Err: $reason"))
+
+                    conn.outputStream.use { os ->
+                        val input = jsonBody.toString().toByteArray(Charsets.UTF_8)
+                        os.write(input, 0, input.size)
+                    }
+
+                    val responseCode = conn.responseCode
+                    if (responseCode == HttpURLConnection.HTTP_OK) {
+                        val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
+                        val responseObj = JSONObject(responseStr)
+
+                        moreComing = responseObj.optBoolean("moreComing", false)
+                        val newSyncToken = responseObj.optString("syncToken", "")
+                        if (newSyncToken.isNotEmpty()) {
+                            syncToken = newSyncToken
+                        }
+
+                        if (responseObj.has("records")) {
+                            val records = responseObj.getJSONArray("records")
+                            for (i in 0 until records.length()) {
+                                coroutineContext.ensureActive()
+                                val record = records.getJSONObject(i)
+                                val ckRecordId = record.optString("recordName", "")
+                                
+                                if (ckRecordId.isNotEmpty() && record.optBoolean("deleted", false)) {
+                                    onRecordDeleted(ckRecordId)
+                                } else if (record.has("fields")) {
+                                    onRecordReceived(record)
+                                    totalCount++
+                                }
+                            }
+                        }
+                    } else {
+                        val errorStr = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                        val error = classifyError(context, responseCode, errorStr, zoneName)
+                        if (error is CloudKitError.ChangeTokenExpired && syncToken != null && changeTokenRetries < 1) {
+                            changeTokenRetries++
+                            totalCount = 0
+                            onReset?.invoke()
+                            prefs.edit { remove("ckSyncToken_$zoneName") }
+                            android.util.Log.w("CloudKitCore", "Change token expired for $zoneName, retrying full sync")
+                            syncToken = null
+                            moreComing = true
+                            continue
+                        }
+                        return@withContext Result.failure(error)
+                    }
+                } finally {
+                    conn.disconnect()
                 }
             }
             
             syncToken?.let { token ->
-                prefs.edit { putString("ckSyncToken_$zoneName", token).apply() }
+                prefs.edit { putString("ckSyncToken_$zoneName", token) }
             }
             
             Result.success(Pair(totalCount, "Success: Synced $totalCount records"))
@@ -245,5 +269,46 @@ class CloudKitCoreManager private constructor() {
             e.printStackTrace()
             Result.failure(e)
         }
+    }
+
+    private fun classifyError(
+        context: Context,
+        httpCode: Int,
+        errorBody: String,
+        zoneName: String? = null
+    ): CloudKitError {
+        val json = try { JSONObject(errorBody) } catch (_: Exception) { null }
+        val serverErrorCode = json?.optString("serverErrorCode") ?: ""
+        val reason = json?.optString("reason")?.takeIf { it.isNotEmpty() }
+            ?: serverErrorCode.takeIf { it.isNotEmpty() }
+            ?: errorBody.take(100)
+
+        val codeUpper = serverErrorCode.uppercase()
+        val rawUpper = errorBody.uppercase()
+
+        // HTTP 401 or Apple's AUTHENTICATION_FAILED / AUTHENTICATION_REQUIRED / NOT_AUTHENTICATED
+        if (httpCode == HttpURLConnection.HTTP_UNAUTHORIZED ||
+            codeUpper == "AUTHENTICATION_FAILED" ||
+            codeUpper == "AUTHENTICATION_REQUIRED" ||
+            codeUpper == "NOT_AUTHENTICATED" ||
+            rawUpper.contains("AUTHENTICATION_FAILED") ||
+            rawUpper.contains("AUTHENTICATION_REQUIRED") ||
+            rawUpper.contains("NOT_AUTHENTICATED")
+        ) {
+            val prefs = context.getSharedPreferences("MaktabahPrefs", Context.MODE_PRIVATE)
+            prefs.edit { remove("ckWebAuthToken") }
+            android.util.Log.w("CloudKitCore", "Auth expired, cleared ckWebAuthToken")
+            return CloudKitError.AuthenticationExpired
+        }
+
+        // Delta sync token expired
+        if ((codeUpper == "CHANGE_TOKEN_EXPIRED" ||
+             rawUpper.contains("CHANGE_TOKEN_EXPIRED") ||
+             rawUpper.contains("CHANGE TOKEN EXPIRED")) && zoneName != null
+        ) {
+            return CloudKitError.ChangeTokenExpired(zoneName)
+        }
+
+        return CloudKitError.ServerError(reason)
     }
 }

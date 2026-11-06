@@ -321,4 +321,5 @@
     <string name="book_update_status_new">BARU</string>
     <string name="book_update_status_needs_update">Perlu Update</string>
     <string name="book_update_status_up_to_date">Sudah Terbaru</string>
+    <string name="cloudkit_auth_expired">Sesi CloudKit telah berakhir. Silakan hubungkan kembali di Pengaturan.</string>
 </resources>

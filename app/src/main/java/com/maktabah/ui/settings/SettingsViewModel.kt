@@ -5,6 +5,7 @@ import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.maktabah.cloudKit.CloudKitCoreManager
+import com.maktabah.cloudKit.CloudKitError
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,6 +37,12 @@ class SettingsViewModel : ViewModel() {
                     val userRecordName = json.optString("userRecordName")
                     if (userRecordName.isNotEmpty()) {
                         _userName.value = userRecordName
+                    }
+                }
+                result.onFailure { error ->
+                    if (error is CloudKitError.AuthenticationExpired || error is CloudKitError.NoWebAuthToken) {
+                        _hasToken.value = false
+                        _userName.value = null
                     }
                 }
             }

@@ -323,4 +323,5 @@
     <string name="book_update_status_new">NEW</string>
     <string name="book_update_status_needs_update">Needs Update</string>
     <string name="book_update_status_up_to_date">Up to Date</string>
+    <string name="cloudkit_auth_expired">CloudKit session expired. Please reconnect in Settings.</string>
 </resources>
