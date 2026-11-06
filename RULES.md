@@ -33,3 +33,19 @@ Proyek ini menggunakan pola **Model-View-ViewModel (MVVM)**.
 - Ikuti standar Kotlin coding conventions.
 - Pastikan semua file baru memiliki package name yang sesuai (`com.maktabah.*`).
 - Hapus import yang tidak digunakan dan lakukan format kode sebelum commit.
+
+## 7. Pedoman Code Review & Deep Tracing
+Saat mereview kode atau melakukan perubahan arsitektur, lakukan tracing aktif ke seluruh basis kode:
+- **Domain Intent vs Syntax**: Pastikan logika mencerminkan maksud domain/bisnis, bukan sekadar valid secara sintaks (hindari logika filter terbalik atau menerapkan filter global pada scoped modal).
+- **Data Contract Mutation**: Jika mengubah struktur, tipe, skema, atau format key data, telusuri semua consumer data tersebut untuk memastikan tidak ada parser/handler yang rusak.
+- **Scope Identity & Boundary**: Jangan berasumsi ID atau key bersifat unik secara global jika sejatinya terikat entitas/skop tertentu.
+- **Lifecycle & Stale State**: Periksa variabel state saat menambahkan early return atau flag short-circuit agar tidak meninggalkan state usang (stale).
+- **Thread Safety & Dispatcher**:
+  - Dilarang menjalankan I/O, komputasi berat, atau query SQLite (via JNI) secara sinkron di `Dispatchers.Main`.
+  - Pastikan mutasi UI dan pembaruan `StateFlow` selalu dieksekusi di `Dispatchers.Main`.
+- **Resource Leak & Integritas Transaksi**:
+  - Pada query atau transaksi custom SQLite JNI, pastikan semua alur eksekusi (termasuk early return dan exception) memanggil rollback dan membebaskan resource secara aman.
+  - Jangan menelan `CancellationException` pada coroutine, dan pastikan cleanup tetap berjalan tanpa merusak structured concurrency.
+- **Jetpack Compose Performance & Sync**:
+  - Hindari recomposition berlebih akibat unstable model atau ketiadaan `remember`/`derivedStateOf`.
+  - Pada logika sinkronisasi (CloudKit/FCM), isolasi mutasi lokal sebelum menerapkan payload jarak jauh guna mencegah race condition.
