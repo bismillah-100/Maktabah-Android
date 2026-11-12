@@ -243,6 +243,7 @@ fun MainScreen(
     var showGlobalTabsSheet by remember { mutableStateOf(false) }
 
     var isBottomBarVisible by remember { mutableStateOf(true) }
+    var isBottomBarSuppressed by remember { mutableStateOf(false) }
     LaunchedEffect(currentRoute) {
         isBottomBarVisible = true
     }
@@ -253,6 +254,9 @@ fun MainScreen(
                 available: Offset,
                 source: NestedScrollSource,
             ): Offset {
+                if (isBottomBarSuppressed) {
+                    return Offset.Zero
+                }
                 if (!hideTabsOnScroll) {
                     if (!isBottomBarVisible) isBottomBarVisible = true
                     return Offset.Zero
@@ -365,7 +369,7 @@ fun MainScreen(
         contentWindowInsets = WindowInsets(0.dp),
         bottomBar = {
             AnimatedVisibility(
-                visible = isBottomBarVisible,
+                visible = isBottomBarVisible && !isBottomBarSuppressed,
                 enter = slideInVertically { it } + fadeIn(),
                 exit = slideOutVertically { it } + fadeOut(),
             ) {
@@ -407,7 +411,7 @@ fun MainScreen(
                 hasDonated = hasDonated,
                 recordSearchHistory = recordSearchHistory,
                 onCheckForUpdates = onCheckForUpdates,
-                onToggleBottomBar = { isBottomBarVisible = it },
+                onToggleBottomBar = { isBottomBarSuppressed = !it },
             )
 
             val downloadedBookIds by libraryViewModel.downloadedBookIds.collectAsState()
