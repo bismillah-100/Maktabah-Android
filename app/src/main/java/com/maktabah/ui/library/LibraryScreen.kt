@@ -667,6 +667,10 @@ private fun LibraryList(
             }
         }
 
+        val concatAdapter = remember(adapter, donationAdapter) {
+            androidx.recyclerview.widget.ConcatAdapter(adapter, donationAdapter)
+        }
+
         androidx.compose.runtime.LaunchedEffect(hasDonated) {
             donationAdapter.submitList(if (hasDonated) emptyList() else listOf(Unit))
         }
@@ -676,15 +680,16 @@ private fun LibraryList(
             colors, showOnlyDownloaded
         ) {
             val viewModeChanged = adapter.viewMode != viewMode
+            adapter.primaryColor = colors.primaryColor
+            adapter.secondaryColor = colors.secondaryColor
+            adapter.onSurfaceVariantColor = colors.onSurfaceVariantColor
+            adapter.expandedCategories = expandedCategories
+
             adapter.submitList(flatVisibleItems) {
                 adapter.viewMode = viewMode
                 adapter.isSelectionMode = isSelectionMode
                 adapter.selectedBookIds = selectedBookIds
-                adapter.expandedCategories = expandedCategories
                 adapter.onlySelectDownloaded = showOnlyDownloaded
-                adapter.primaryColor = colors.primaryColor
-                adapter.secondaryColor = colors.secondaryColor
-                adapter.onSurfaceVariantColor = colors.onSurfaceVariantColor
                 if (viewModeChanged) {
                     adapter.scrollToTop()
                 }
@@ -711,7 +716,7 @@ private fun LibraryList(
             } else {
                 GroupedRecyclerView(
                     recyclerViewId = R.id.library_recycler_view,
-                    adapter = androidx.recyclerview.widget.ConcatAdapter(adapter, donationAdapter),
+                    adapter = concatAdapter,
                     padding = padding,
                     bottomContentPadding = bottomPadding,
                     colors = colors,
