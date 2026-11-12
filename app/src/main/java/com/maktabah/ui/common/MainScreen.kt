@@ -407,6 +407,7 @@ fun MainScreen(
                 hasDonated = hasDonated,
                 recordSearchHistory = recordSearchHistory,
                 onCheckForUpdates = onCheckForUpdates,
+                onToggleBottomBar = { isBottomBarVisible = it },
             )
 
             val downloadedBookIds by libraryViewModel.downloadedBookIds.collectAsState()
@@ -799,6 +800,7 @@ private fun AppNavHost(
     hasDonated: Boolean,
     recordSearchHistory: Boolean,
     onCheckForUpdates: () -> Unit,
+    onToggleBottomBar: (Boolean) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -888,6 +890,7 @@ private fun AppNavHost(
                 onCheckForUpdates = onCheckForUpdates,
                 bottomPadding = innerPadding.calculateBottomPadding(),
                 hasDonated = hasDonated,
+                onToggleBottomBar = onToggleBottomBar,
             )
         }
         composable(Tab.Search.route) {

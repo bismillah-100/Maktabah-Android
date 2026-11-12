@@ -8,6 +8,8 @@ import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -46,6 +48,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,8 +63,6 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.maktabah.R
 import com.maktabah.database.AnnotationManager
 import com.maktabah.models.CategoryData
@@ -90,6 +91,7 @@ fun LibraryScreen(
     onCheckForUpdates: () -> Unit,
     bottomPadding: androidx.compose.ui.unit.Dp,
     hasDonated: Boolean,
+    onToggleBottomBar: ((Boolean) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val downloadedBookIds by viewModel.downloadedBookIds.collectAsState()
@@ -117,6 +119,17 @@ fun LibraryScreen(
     var showImportSheet by remember { mutableStateOf(false) }
     var showUpdateSheet by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+
+    DisposableEffect(showImportSheet, showUpdateSheet) {
+        if (showImportSheet || showUpdateSheet) {
+            onToggleBottomBar?.invoke(false)
+        } else {
+            onToggleBottomBar?.invoke(true)
+        }
+        onDispose {
+            onToggleBottomBar?.invoke(true)
+        }
+    }
 
     var popoverAnchor by remember { mutableStateOf<IntRect?>(null) }
     var popoverBookId by remember { mutableStateOf<Int?>(null) }
@@ -323,7 +336,6 @@ fun LibraryScreen(
                 hasDonated = hasDonated,
             )
         }
-    }
 
     if (showSettings) {
         SettingsDialog(
@@ -387,53 +399,68 @@ fun LibraryScreen(
         )
     }
 
-    // Import Sheet
-    if (showImportSheet) {
-        Dialog(
-            onDismissRequest = { showImportSheet = false },
-            properties =
-                DialogProperties(
-                    usePlatformDefaultWidth = false,
-                    dismissOnClickOutside = false,
-                ),
+    // Import Overlay
+    AnimatedVisibility(
+        visible = showImportSheet,
+        enter = slideInVertically(
+            initialOffsetY = { it },
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow,
+            )
+        ) + fadeIn(),
+        exit = slideOutVertically(
+            targetOffsetY = { it },
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow,
+            )
+        ) + fadeOut(),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
         ) {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background,
-            ) {
-                ImportBookSheet(
-                    annotationManager = annotationManager,
-                    onDismiss = { showImportSheet = false },
-                    onImportSuccess = { viewModel.reloadData(context) },
-                )
-            }
+            ImportBookSheet(
+                annotationManager = annotationManager,
+                onDismiss = { showImportSheet = false },
+                onImportSuccess = { viewModel.reloadData(context) },
+            )
         }
     }
 
-    // Book Updates Sheet
-    if (showUpdateSheet) {
-        Dialog(
-            onDismissRequest = { showUpdateSheet = false },
-            properties =
-                DialogProperties(
-                    usePlatformDefaultWidth = false,
-                    dismissOnClickOutside = false,
-                ),
+    // Book Updates Overlay
+    AnimatedVisibility(
+        visible = showUpdateSheet,
+        enter = slideInVertically(
+            initialOffsetY = { it },
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow,
+            )
+        ) + fadeIn(),
+        exit = slideOutVertically(
+            targetOffsetY = { it },
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow,
+            )
+        ) + fadeOut(),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
         ) {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background,
-            ) {
-                BookUpdateSheet(
-                    onDismiss = { showUpdateSheet = false },
-                    onUpdateSuccess = {
-                        viewModel.reloadData(context)
-                        viewModel.checkBookUpdatesPeriodically(context, force = true)
-                    },
-                )
-            }
+            BookUpdateSheet(
+                onDismiss = { showUpdateSheet = false },
+                onUpdateSuccess = {
+                    viewModel.reloadData(context)
+                    viewModel.checkBookUpdatesPeriodically(context, force = true)
+                },
+            )
         }
     }
+}
 }
 
 private sealed interface LibraryMenuEntry {

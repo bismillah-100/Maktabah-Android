@@ -1,6 +1,7 @@
 package com.maktabah.ui.library
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -12,13 +13,16 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -117,6 +121,10 @@ fun ImportBookSheet(
 
     val isValid by vm.isValid.collectAsState()
     val isBookIdTaken by vm.isBookIdTaken.collectAsState()
+
+    BackHandler(enabled = !isImporting) {
+        onDismiss()
+    }
 
     // Handle import result
     LaunchedEffect(importResult) {
@@ -287,7 +295,12 @@ fun ImportBookSheet(
                 shadowElevation = 8.dp,
                 color = MaterialTheme.colorScheme.surface,
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(16.dp)
+                ) {
                     Button(
                         onClick = {
                             vm.performImport(context, annotationManager) {
