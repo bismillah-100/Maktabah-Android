@@ -27,19 +27,18 @@ class TreeItemAnimator : DefaultItemAnimator() {
     }
 
     // Menjaga agar hanya ada satu invalidate terjadwal per RecyclerView dalam satu waktu,
-    // supaya updateListener yang terpanggil puluhan kali per detik (per frame animasi,
-    // per item yang beranimasi) tidak membanjiri message queue dengan Runnable duplikat.
+    // supaya callback akhir animasi tidak membanjiri message queue dengan Runnable duplikat.
     private val pendingInvalidate = mutableSetOf<RecyclerView>()
 
-    private fun invalidateDecoration(view: View) {
+    // Dipanggil SAAT frame animasi berjalan (HANYA redraw canvas, TANPA requestLayout)
+    private fun invalidateDecorationDrawOnly(view: View) {
         val rv = view.parent as? RecyclerView ?: return
-        // invalidateItemDecorations() melempar IllegalStateException kalau dipanggil
-        // saat RecyclerView sedang di tengah layout/scroll pass (assertNotInLayoutOrScroll).
-        // Callback animator ini (onAnimationCancel khususnya) bisa terpicu DARI DALAM
-        // dispatchLayout milik RecyclerView sendiri -- misalnya saat toggle expand/collapse
-        // yang cepat membuat DefaultItemAnimator meng-cancel animasi item lain di tengah
-        // layout pass. Maka invalidate harus selalu di-defer ke frame berikutnya lewat post{},
-        // tidak pernah dipanggil sinkron dari sini.
+        rv.invalidate()
+    }
+
+    // Dipanggil HANYA saat animasi selesai atau dibatalkan untuk sinkronisasi layout decor
+    private fun invalidateDecorationOffsets(view: View) {
+        val rv = view.parent as? RecyclerView ?: return
         if (!pendingInvalidate.add(rv)) return
         rv.post {
             pendingInvalidate.remove(rv)
@@ -50,9 +49,16 @@ class TreeItemAnimator : DefaultItemAnimator() {
         }
     }
 
+    private val clipRects = java.util.WeakHashMap<View, android.graphics.Rect>()
+
     private fun setClipTop(view: View, top: Int) {
         val topToUse = top.coerceAtLeast(0)
-        view.clipBounds = android.graphics.Rect(0, topToUse, view.width, view.height.coerceAtLeast(topToUse))
+        val bottomToUse = view.height.coerceAtLeast(topToUse)
+        val rect = clipRects.getOrPut(view) { android.graphics.Rect() }
+        if (rect.top != topToUse || rect.right != view.width || rect.bottom != bottomToUse) {
+            rect.set(0, topToUse, view.width, bottomToUse)
+            view.clipBounds = rect
+        }
     }
 
     private fun getParentBottom(tag: Any?): Float {
@@ -135,13 +141,13 @@ class TreeItemAnimator : DefaultItemAnimator() {
 
                 val cTop = (getParentBottom(tag) - (targetY + (if (isFresh) startTranslationY else view.translationY))).toInt()
                 setClipTop(view, cTop)
-                invalidateDecoration(view)
+                invalidateDecorationDrawOnly(view)
 
                 val updateListener = android.animation.ValueAnimator.AnimatorUpdateListener {
                     val currentTransY = view.translationY
                     val currentClipTop = (getParentBottom(tag) - (targetY + currentTransY)).toInt()
                     setClipTop(view, currentClipTop)
-                    invalidateDecoration(view)
+                    invalidateDecorationDrawOnly(view)
                 }
 
                 view.animate()
@@ -155,13 +161,15 @@ class TreeItemAnimator : DefaultItemAnimator() {
                         override fun onAnimationCancel(animator: Animator) {
                             view.translationY = 0f
                             view.clipBounds = null
-                            invalidateDecoration(view)
+                            clipRects.remove(view)
+                            invalidateDecorationOffsets(view)
                         }
                         override fun onAnimationEnd(animator: Animator) {
                             view.animate().setListener(null)
                             view.animate().setUpdateListener(null)
                             view.clipBounds = null
-                            invalidateDecoration(view)
+                            clipRects.remove(view)
+                            invalidateDecorationOffsets(view)
                             dispatchAddFinished(holder)
                         }
                     }).start()
@@ -182,7 +190,7 @@ class TreeItemAnimator : DefaultItemAnimator() {
                     val currentTransY = view.translationY
                     val currentClipTop = (getParentBottom(tag) - (view.top + currentTransY)).toInt()
                     setClipTop(view, currentClipTop)
-                    invalidateDecoration(view)
+                    invalidateDecorationDrawOnly(view)
                 }
 
                 view.animate()
@@ -196,14 +204,16 @@ class TreeItemAnimator : DefaultItemAnimator() {
                         override fun onAnimationCancel(animator: Animator) {
                             view.translationY = 0f
                             view.clipBounds = null
-                            invalidateDecoration(view)
+                            clipRects.remove(view)
+                            invalidateDecorationOffsets(view)
                         }
                         override fun onAnimationEnd(animator: Animator) {
                             view.animate().setListener(null)
                             view.animate().setUpdateListener(null)
                             view.translationY = 0f
                             view.clipBounds = null
-                            invalidateDecoration(view)
+                            clipRects.remove(view)
+                            invalidateDecorationOffsets(view)
                             dispatchRemoveFinished(holder)
                         }
                     }).start()

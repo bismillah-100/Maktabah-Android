@@ -121,11 +121,23 @@ class LibraryAdapter(
             }
         }
 
+    companion object {
+        private const val PAYLOAD_EXPAND_STATE = "payload_expand_state"
+    }
+
     var expandedCategories: Set<Int> = emptySet()
         set(value) {
             if (field != value) {
+                val changedIds = (field - value) + (value - field)
                 field = value
-                if (itemCount > 0) notifyItemRangeChanged(0, itemCount)
+                if (itemCount > 0 && changedIds.isNotEmpty()) {
+                    currentList.forEachIndexed { index, flatItem ->
+                        val item = flatItem.item
+                        if (item is CategoryData && item.id in changedIds) {
+                            notifyItemChanged(index, PAYLOAD_EXPAND_STATE)
+                        }
+                    }
+                }
             }
         }
 
@@ -158,6 +170,15 @@ class LibraryAdapter(
             layoutDirection = View.LAYOUT_DIRECTION_RTL
         }
         return ViewHolder(view)
+    }
+
+    override fun onBindViewHolder(holder: ViewHolder, position: Int, payloads: MutableList<Any>) {
+        if (payloads.contains(PAYLOAD_EXPAND_STATE)) {
+            val item = getItem(position).item as? CategoryData ?: return
+            holder.updateExpandState(expandedCategories.contains(item.id))
+        } else {
+            super.onBindViewHolder(holder, position, payloads)
+        }
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
@@ -249,6 +270,14 @@ class LibraryAdapter(
 
         init {
             itemView.background = com.maktabah.utils.ItemHighlightDrawable { itemView.parent as? View }
+            itemView.outlineProvider = null
+        }
+
+        fun updateExpandState(isExpanded: Boolean) {
+            val isRotating = arrowIcon?.getTag(R.id.tag_animating_rotation) != null
+            if (!isRotating) {
+                arrowIcon?.rotation = if (isExpanded) 0f else 90f
+            }
         }
 
         private fun getPrimaryColor(): Int = primaryColor
@@ -269,18 +298,19 @@ class LibraryAdapter(
         }
 
         fun updateDividerForLast(isLast: Boolean) {
+            val div = divider ?: return
             if (isLast) {
-                divider?.animate()?.cancel()
-                divider?.visibility = View.INVISIBLE
+                div.animate().cancel()
+                div.visibility = View.INVISIBLE
             } else {
-                if (divider?.visibility == View.INVISIBLE) {
-                    divider.alpha = 0f
-                    divider.visibility = View.VISIBLE
-                    divider.animate()?.alpha(0.35f)?.setDuration(250)?.start()
+                if (div.visibility == View.INVISIBLE) {
+                    div.alpha = 0f
+                    div.visibility = View.VISIBLE
+                    div.animate().alpha(0.35f).setDuration(250).start()
                 } else {
-                    divider?.animate()?.cancel()
-                    divider?.visibility = View.VISIBLE
-                    divider?.animate()?.alpha(0.35f)?.setDuration(250)?.start()
+                    div.animate().cancel()
+                    div.visibility = View.VISIBLE
+                    div.alpha = 0.35f
                 }
             }
         }
@@ -302,7 +332,7 @@ class LibraryAdapter(
             onCategorySelectionToggle: (CategoryData) -> Unit,
             onSetExpandClick: (View, Int, Boolean) -> Unit
         ) {
-            itemView.translationZ = (100 - flatItem.level).toFloat()
+            itemView.translationZ = (20 - flatItem.level) * 0.1f
 
             val density = itemView.context.resources.displayMetrics.density
             val item = flatItem.item
@@ -327,15 +357,17 @@ class LibraryAdapter(
             val dividerParams = divider?.layoutParams as? ViewGroup.MarginLayoutParams
             if (dividerParams != null) {
                 val strokeWidth = (1 * density).toInt()
-                if (item is LoadMoreData || item is LoadMoreAuthors) {
-                    dividerParams.marginStart = strokeWidth
-                    dividerParams.marginEnd = strokeWidth
+                val targetStart = if (item is LoadMoreData || item is LoadMoreAuthors) {
+                    strokeWidth
                 } else {
                     val dividerIndent = (80 + (flatItem.level * 16)) * density
-                    dividerParams.marginStart = dividerIndent.toInt()
-                    dividerParams.marginEnd = strokeWidth
+                    dividerIndent.toInt()
                 }
-                divider.layoutParams = dividerParams
+                if (dividerParams.marginStart != targetStart || dividerParams.marginEnd != strokeWidth) {
+                    dividerParams.marginStart = targetStart
+                    dividerParams.marginEnd = strokeWidth
+                    divider.layoutParams = dividerParams
+                }
             }
 
             val wasSelectionMode = itemView.getTag(R.id.tag_selection_mode) as? Boolean
@@ -347,8 +379,11 @@ class LibraryAdapter(
                 is CategoryData -> {
                     nameText?.text = item.name
                     val indent = (16 + (flatItem.level * 16)) * density
-                    indentSpace?.layoutParams?.width = indent.toInt()
-                    indentSpace?.requestLayout()
+                    val targetIndent = indent.toInt()
+                    if (indentSpace != null && indentSpace.layoutParams.width != targetIndent) {
+                        indentSpace.layoutParams.width = targetIndent
+                        indentSpace.requestLayout()
+                    }
 
                     val isExpanded = expandedCategories.contains(item.id)
 
@@ -419,7 +454,7 @@ class LibraryAdapter(
                     arrowIcon?.isClickable = false
 
                     itemView.setOnClickListener {
-                        val isCurrentlyExpanded = expandedCategories.contains(item.id)
+                        val isCurrentlyExpanded = this@LibraryAdapter.expandedCategories.contains(item.id)
                         val targetRotation = if (isCurrentlyExpanded) 90f else 0f
 
                         val existingAnimator = arrowIcon?.getTag(R.id.tag_animating_rotation) as? ObjectAnimator
@@ -444,8 +479,11 @@ class LibraryAdapter(
                 is BooksData -> {
                     nameText?.text = item.name
                     val indent = (16 + (flatItem.level * 16) + 32) * density
-                    indentSpace?.layoutParams?.width = indent.toInt()
-                    indentSpace?.requestLayout()
+                    val targetIndent = indent.toInt()
+                    if (indentSpace != null && indentSpace.layoutParams.width != targetIndent) {
+                        indentSpace.layoutParams.width = targetIndent
+                        indentSpace.requestLayout()
+                    }
 
                     typeIcon?.isClickable = false
 

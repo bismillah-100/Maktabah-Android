@@ -157,11 +157,11 @@ class AnnotationsAdapter(
 
     private fun applyDecorationState(view: View, item: AnnotationFlatItem) {
         view.translationZ = when (item) {
-            is AnnotationFlatItem.TagFilter -> 97f
-            is AnnotationFlatItem.EmptyPlaceholder -> 97f
-            is AnnotationFlatItem.Header -> 100f
-            is AnnotationFlatItem.Item -> 99f
-            is AnnotationFlatItem.Spacer -> 98f
+            is AnnotationFlatItem.TagFilter -> 9.7f
+            is AnnotationFlatItem.EmptyPlaceholder -> 9.7f
+            is AnnotationFlatItem.Header -> 10.0f
+            is AnnotationFlatItem.Item -> 9.9f
+            is AnnotationFlatItem.Spacer -> 9.8f
         }
 
         when (item) {
@@ -283,7 +283,7 @@ class AnnotationsAdapter(
                     onToggle = {
                         val currentPos = holder.bindingAdapterPosition
                         if (currentPos == RecyclerView.NO_POSITION) return@bind
-                        val isExpanded = item.isExpanded
+                        val isExpanded = (getItem(currentPos) as? AnnotationFlatItem.Header)?.isExpanded ?: item.isExpanded
                         val animator = recyclerView.itemAnimator as? com.maktabah.ui.library.TreeItemAnimator
                         if (isExpanded) {
                             // collapsing — tag children so they animate toward header
@@ -332,6 +332,7 @@ class AnnotationsAdapter(
 
         init {
             itemView.background = com.maktabah.utils.ItemHighlightDrawable { itemView.parent as? View }
+            itemView.outlineProvider = null
         }
 
         fun unbind() {
@@ -439,6 +440,7 @@ class AnnotationsAdapter(
 
         init {
             itemView.background = com.maktabah.utils.ItemHighlightDrawable { itemView.parent as? View }
+            itemView.outlineProvider = null
         }
 
         fun unbind() {
@@ -544,7 +546,7 @@ class AnnotationsAdapter(
                 } else {
                     divider.animate().cancel()
                     divider.visibility = View.VISIBLE
-                    divider.animate().alpha(0.35f).setDuration(250).start()
+                    divider.alpha = 0.35f
                 }
             }
         }
