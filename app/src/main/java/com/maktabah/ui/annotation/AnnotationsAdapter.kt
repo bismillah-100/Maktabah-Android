@@ -341,6 +341,7 @@ class AnnotationsAdapter(
             typeIcon.setOnClickListener(null)
             typeIcon.animate().cancel()
             arrowIcon.animate().cancel()
+            (arrowIcon.getTag(R.id.tag_animating_rotation) as? android.animation.Animator)?.cancel()
             arrowIcon.setTag(R.id.tag_animating_rotation, null)
             divider.animate().cancel()
         }
@@ -381,7 +382,7 @@ class AnnotationsAdapter(
             }
 
             // Only set rotation if not currently performing a rotation animation
-            val isRotating = arrowIcon.getTag(R.id.tag_animating_rotation) as? Boolean ?: false
+            val isRotating = arrowIcon.getTag(R.id.tag_animating_rotation) != null
             if (!isRotating) {
                 arrowIcon.rotation = if (item.isExpanded) 0f else 90f
             }
@@ -407,12 +408,15 @@ class AnnotationsAdapter(
             itemContainer.isFocusable = false
 
             itemView.setOnClickListener {
+                val existingAnimator = arrowIcon.getTag(R.id.tag_animating_rotation) as? ObjectAnimator
+                existingAnimator?.cancel()
+
                 val current = arrowIcon.rotation
-                val target = if (current == 0f) 90f else 0f
+                val target = if (item.isExpanded) 90f else 0f
                 val animator = ObjectAnimator.ofFloat(arrowIcon, "rotation", current, target).setDuration(250)
                 animator.addListener(object : android.animation.AnimatorListenerAdapter() {
                     override fun onAnimationStart(animation: android.animation.Animator) {
-                        arrowIcon.setTag(R.id.tag_animating_rotation, true)
+                        arrowIcon.setTag(R.id.tag_animating_rotation, animator)
                     }
                     override fun onAnimationEnd(animation: android.animation.Animator) {
                         arrowIcon.setTag(R.id.tag_animating_rotation, null)
