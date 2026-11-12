@@ -72,17 +72,19 @@ object BookImportManager {
         val result = mutableListOf<AuthorRow>()
         try {
             SQLiteDB(specialDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
-                db.prepare("SELECT authid, auth, COALESCE(Lng,''), COALESCE(inf,''), COALESCE(HigriD,''), COALESCE(oVer,1) FROM Auth ORDER BY auth ASC")
+                db.prepare("SELECT authid, auth, COALESCE(Lng,'') FROM Auth")
                     ?.use { stmt ->
                         while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                            val authName = stmt.columnText(1) ?: ""
+                            val fullName = stmt.columnText(2) ?: ""
                             result.add(
                                 AuthorRow(
                                     id = stmt.columnInt(0),
-                                    name = stmt.columnText(1) ?: "",
-                                    lng = stmt.columnText(2) ?: "",
-                                    inf = stmt.columnText(3) ?: "",
-                                    higriD = stmt.columnText(4) ?: "",
-                                    oVer = stmt.columnInt(5),
+                                    name = authName.ifEmpty { fullName },
+                                    lng = fullName,
+                                    inf = "",
+                                    higriD = "",
+                                    oVer = 1,
                                 )
                             )
                         }
@@ -91,7 +93,7 @@ object BookImportManager {
         } catch (e: Exception) {
             Log.e(TAG, "getAuthors", e)
         }
-        return result
+        return result.sortedBy { it.name }
     }
 
     fun getBooks(context: Context): List<BooksData> {
