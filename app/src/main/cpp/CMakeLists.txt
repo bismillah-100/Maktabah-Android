@@ -17,4 +17,5 @@ target_compile_definitions(
     maktabah_sqlite
     PRIVATE
     SQLITE_ENABLE_FTS5
+    SQLITE_TEMP_STORE=2
 )
