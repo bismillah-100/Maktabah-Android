@@ -7,40 +7,50 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import com.maktabah.ui.common.MaktabahTextField
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,6 +62,7 @@ import com.maktabah.models.Annotation
 import com.maktabah.models.BookContent
 import com.maktabah.ui.annotation.AnnotationCoordinator
 import com.maktabah.ui.common.ColorPickerDialog
+import com.maktabah.ui.common.MaktabahTextField
 import com.maktabah.utils.ColorPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -84,7 +95,7 @@ fun AnnotationEditorDialog(
     }
     var tagsText by remember(active) { mutableStateOf(active.annotation?.tags ?: "") }
 
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     var recentColors by remember { mutableStateOf(ColorPreferences.DEFAULT_COLORS) }
     LaunchedEffect(active) {
         recentColors = withContext(Dispatchers.IO) {
@@ -103,21 +114,154 @@ fun AnnotationEditorDialog(
             .distinct()
     }
 
-    AlertDialog(
-        onDismissRequest = onDismissRequest,
-        containerColor = MaterialTheme.colorScheme.surface,
-        title = {
-            Text(
-                if (active.annotation == null) stringResource(R.string.reader_ann_editor_add_title) else stringResource(
-                    R.string.reader_ann_editor_edit_title
-                )
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scrollState = rememberScrollState()
+    val isAtTop by remember { derivedStateOf { scrollState.value == 0 } }
+    var sheetGesturesEnabled by remember { mutableStateOf(isAtTop) }
+    LaunchedEffect(isAtTop) {
+        if (!isAtTop) {
+            sheetGesturesEnabled = false
+        }
+    }
+    LaunchedEffect(scrollState.isScrollInProgress, isAtTop) {
+        if (isAtTop && !scrollState.isScrollInProgress) {
+            sheetGesturesEnabled = true
+        }
+    }
+
+    val onSave: () -> Unit = {
+        if (active.annotation != null || content != null) {
+            val (diacLoc, diacLen, plainLoc, plainLen) =
+                if (active.annotation == null) {
+                    AnnotationCoordinator.calculateBothRanges(
+                        active.loc,
+                        active.len,
+                        content!!.nass,
+                        showHarakat
+                    )
+                } else {
+                    intArrayOf(
+                        active.annotation.rangeDiacLocation,
+                        active.annotation.rangeDiacLength,
+                        active.annotation.rangeLocation,
+                        active.annotation.rangeLength,
+                    )
+                }
+
+            val annotationToSave = Annotation(
+                id = active.annotation?.id,
+                bkId = bookId,
+                contentId = active.annotation?.contentId ?: content!!.id,
+                colorHex = if (selectedType == 1) "#000000" else selectedColor,
+                note = noteText.ifBlank { null },
+                type = selectedType,
+                createdAt = active.annotation?.createdAt?.let {
+                    if (it in 1L..9999999999L) it * 1000L else it
+                } ?: System.currentTimeMillis(),
+                page = active.annotation?.page ?: content!!.page,
+                context = active.annotation?.context ?: active.selectedText,
+                rangeLocation = plainLoc,
+                rangeLength = plainLen,
+                rangeDiacLocation = diacLoc,
+                rangeDiacLength = diacLen,
+                part = active.annotation?.part ?: content!!.part,
+                tags = tagsText
+                    .replace("،", ",")
+                    .split(",")
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .joinToString(","),
+                ckRecordId = active.annotation?.ckRecordId ?: UUID.randomUUID().toString(),
             )
-        },
-        text = {
+
+            scope.launch(Dispatchers.IO) {
+                annotationManager.insertOrUpdate(annotationToSave)
+                withContext(Dispatchers.Main) {
+                    onSyncRequested()
+                    onDismissRequest()
+                }
+            }
+        }
+    }
+
+    val onDelete: () -> Unit = {
+        scope.launch(Dispatchers.IO) {
+            active.annotation?.id?.let {
+                annotationManager.deleteAnnotation(
+                    it,
+                    active.annotation.ckRecordId
+                )
+            }
+            withContext(Dispatchers.Main) {
+                onSyncRequested()
+                onDismissRequest()
+            }
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        sheetState = sheetState,
+        sheetGesturesEnabled = sheetGesturesEnabled,
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentWindowInsets = { WindowInsets(0.dp) },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .imePadding(),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 12.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = if (active.annotation == null) {
+                        stringResource(R.string.reader_ann_editor_add_title)
+                    } else {
+                        stringResource(R.string.reader_ann_editor_edit_title)
+                    },
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+
+                if (active.annotation != null) {
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = stringResource(R.string.reader_ann_editor_delete),
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = onSave,
+                    shape = CircleShape,
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                    modifier = Modifier.height(36.dp),
+                ) {
+                    Text(stringResource(R.string.reader_ann_editor_save))
+                }
+            }
+
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
+                    .weight(1f, fill = false)
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Column {
@@ -175,7 +319,7 @@ fun AnnotationEditorDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState()),
-                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             recentColors.forEach { colorHex ->
                                 val color = Color(colorHex.toColorInt())
@@ -200,7 +344,7 @@ fun AnnotationEditorDialog(
                                         ),
                                 )
                             }
-                            
+
                             // Color Picker Trigger
                             val isCustomColor = selectedColor !in recentColors
                             Box(
@@ -216,9 +360,9 @@ fun AnnotationEditorDialog(
                                         color = if (isCustomColor) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                                         shape = CircleShape
                                     ),
-                                contentAlignment = androidx.compose.ui.Alignment.Center
+                                contentAlignment = Alignment.Center
                             ) {
-                                androidx.compose.material3.Icon(
+                                Icon(
                                     imageVector = Icons.Default.Add,
                                     contentDescription = "Color Picker",
                                     modifier = Modifier.size(20.dp),
@@ -257,6 +401,7 @@ fun AnnotationEditorDialog(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = false,
                     maxLines = 4,
+                    maxLines = 8,
                 )
 
                 Column {
@@ -299,93 +444,6 @@ fun AnnotationEditorDialog(
                     }
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (active.annotation == null && content == null) return@Button
-                    val (diacLoc, diacLen, plainLoc, plainLen) =
-                        if (active.annotation == null) {
-                            AnnotationCoordinator.calculateBothRanges(
-                                active.loc,
-                                active.len,
-                                content!!.nass,
-                                showHarakat
-                            )
-                        } else {
-                            intArrayOf(
-                                active.annotation.rangeDiacLocation,
-                                active.annotation.rangeDiacLength,
-                                active.annotation.rangeLocation,
-                                active.annotation.rangeLength,
-                            )
-                        }
-
-                    val annotationToSave = Annotation(
-                        id = active.annotation?.id,
-                        bkId = bookId,
-                        contentId = active.annotation?.contentId ?: content!!.id,
-                        colorHex = if (selectedType == 1) "#000000" else selectedColor,
-                        note = noteText.ifBlank { null },
-                        type = selectedType,
-                        createdAt = active.annotation?.createdAt?.let {
-                            if (it in 1L..9999999999L) it * 1000L else it
-                        } ?: System.currentTimeMillis(),
-                        page = active.annotation?.page ?: content!!.page,
-                        context = active.annotation?.context ?: active.selectedText,
-                        rangeLocation = plainLoc,
-                        rangeLength = plainLen,
-                        rangeDiacLocation = diacLoc,
-                        rangeDiacLength = diacLen,
-                        part = active.annotation?.part ?: content!!.part,
-                        tags = tagsText
-                            .replace("،", ",")
-                            .split(",")
-                            .map { it.trim() }
-                            .filter { it.isNotEmpty() }
-                            .joinToString(","),
-                        ckRecordId = active.annotation?.ckRecordId ?: UUID.randomUUID().toString(),
-                    )
-
-                    scope.launch(Dispatchers.IO) {
-                        annotationManager.insertOrUpdate(annotationToSave)
-                        withContext(Dispatchers.Main) {
-                            onSyncRequested()
-                            onDismissRequest()
-                        }
-                    }
-                },
-            ) {
-                Text(stringResource(R.string.reader_ann_editor_save))
-            }
-        },
-        dismissButton = {
-            Row {
-                if (active.annotation != null) {
-                    TextButton(
-                        onClick = {
-                            scope.launch(Dispatchers.IO) {
-                                active.annotation.id?.let {
-                                    annotationManager.deleteAnnotation(
-                                        it,
-                                        active.annotation.ckRecordId
-                                    )
-                                }
-                                withContext(Dispatchers.Main) {
-                                    onSyncRequested()
-                                    onDismissRequest()
-                                }
-                            }
-                        },
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                    ) {
-                        Text(stringResource(R.string.reader_ann_editor_delete))
-                    }
-                }
-                TextButton(onClick = onDismissRequest) {
-                    Text(stringResource(R.string.reader_ann_editor_cancel))
-                }
-            }
-        },
-    )
+        }
+    }
 }
