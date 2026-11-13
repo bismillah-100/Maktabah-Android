@@ -33,6 +33,7 @@ import com.maktabah.models.Annotation
 import com.maktabah.models.AnnotationSearchScope
 import com.maktabah.models.FlashTarget
 import com.maktabah.ui.annotation.AnnotationItem
+import com.maktabah.ui.common.consumeBottomSheetNestedScroll
 import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.search.SearchWithScope
 import com.maktabah.utils.normalizeArabic
@@ -68,28 +69,9 @@ fun BookAnnotationsSheet(
     val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
         skipPartiallyExpanded = true
     )
-    val isAtTop by remember {
-        androidx.compose.runtime.derivedStateOf {
-            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
-        }
-    }
-    var sheetGesturesEnabled by remember {
-        mutableStateOf(isAtTop)
-    }
-    LaunchedEffect(isAtTop) {
-        if (!isAtTop) {
-            sheetGesturesEnabled = false
-        }
-    }
-    LaunchedEffect(listState.isScrollInProgress, isAtTop) {
-        if (isAtTop && !listState.isScrollInProgress) {
-            sheetGesturesEnabled = true
-        }
-    }
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
-        sheetGesturesEnabled = sheetGesturesEnabled,
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = { WindowInsets(0.dp) },
     ) {
@@ -147,6 +129,7 @@ fun BookAnnotationsSheet(
                 ) {
                     LazyColumn(
                         modifier = Modifier
+                            .consumeBottomSheetNestedScroll()
                             .fillMaxSize()
                             .fadingEdge(listState, topPadding),
                         state = listState,

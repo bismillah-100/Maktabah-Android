@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import com.maktabah.ui.common.MaktabahTextField
+import com.maktabah.ui.common.consumeBottomSheetNestedScroll
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -109,6 +110,7 @@ fun ResultWriterSheet(
 
             LazyColumn(
                 modifier = Modifier
+                    .consumeBottomSheetNestedScroll()
                     .fillMaxWidth()
                     .weight(1f, fill = false)
             ) {

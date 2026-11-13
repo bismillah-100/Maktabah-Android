@@ -45,6 +45,7 @@ import com.maktabah.R
 import com.maktabah.models.FlashTarget
 import com.maktabah.models.SearchMode
 import com.maktabah.ui.common.InsetGroupedItem
+import com.maktabah.ui.common.consumeBottomSheetNestedScroll
 import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.library.LibraryViewModel
 import com.maktabah.ui.search.QueryInputBar
@@ -110,29 +111,9 @@ fun BookSearchSheet(
         }
     }
 
-    val isAtTop by remember {
-        androidx.compose.runtime.derivedStateOf {
-            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
-        }
-    }
-    var sheetGesturesEnabled by remember {
-        mutableStateOf(isAtTop)
-    }
-    LaunchedEffect(isAtTop) {
-        if (!isAtTop) {
-            sheetGesturesEnabled = false
-        }
-    }
-    LaunchedEffect(listState.isScrollInProgress, isAtTop) {
-        if (!listState.isScrollInProgress && isAtTop) {
-            sheetGesturesEnabled = true
-        }
-    }
-
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
-        sheetGesturesEnabled = sheetGesturesEnabled,
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = { WindowInsets(0.dp) },
     ) {
@@ -166,6 +147,7 @@ fun BookSearchSheet(
             ) {
                 androidx.compose.foundation.lazy.LazyColumn(
                     modifier = Modifier
+                        .consumeBottomSheetNestedScroll()
                         .fillMaxSize()
                         .fadingEdge(listState, topPadding),
                     state = listState,

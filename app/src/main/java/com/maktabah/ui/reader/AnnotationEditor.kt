@@ -39,7 +39,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +62,7 @@ import com.maktabah.models.BookContent
 import com.maktabah.ui.annotation.AnnotationCoordinator
 import com.maktabah.ui.common.ColorPickerDialog
 import com.maktabah.ui.common.MaktabahTextField
+import com.maktabah.ui.common.consumeBottomSheetNestedScroll
 import com.maktabah.utils.ColorPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -116,18 +116,6 @@ fun AnnotationEditorDialog(
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scrollState = rememberScrollState()
-    val isAtTop by remember { derivedStateOf { scrollState.value == 0 } }
-    var sheetGesturesEnabled by remember { mutableStateOf(isAtTop) }
-    LaunchedEffect(isAtTop) {
-        if (!isAtTop) {
-            sheetGesturesEnabled = false
-        }
-    }
-    LaunchedEffect(scrollState.isScrollInProgress, isAtTop) {
-        if (isAtTop && !scrollState.isScrollInProgress) {
-            sheetGesturesEnabled = true
-        }
-    }
 
     val onSave: () -> Unit = {
         if (active.annotation != null || content != null) {
@@ -202,7 +190,6 @@ fun AnnotationEditorDialog(
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
-        sheetGesturesEnabled = sheetGesturesEnabled,
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = { WindowInsets(0.dp) },
     ) {
@@ -260,6 +247,7 @@ fun AnnotationEditorDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f, fill = false)
+                    .consumeBottomSheetNestedScroll()
                     .verticalScroll(scrollState)
                     .padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -398,9 +386,10 @@ fun AnnotationEditorDialog(
                     value = noteText,
                     onValueChange = { noteText = it },
                     label = { Text(stringResource(R.string.reader_ann_editor_notes_label)) },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .consumeBottomSheetNestedScroll(),
                     singleLine = false,
-                    maxLines = 4,
                     maxLines = 8,
                 )
 

@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import com.maktabah.R
 import com.maktabah.models.ReaderTab
 import com.maktabah.ui.common.SwipeDeleteBackground
+import com.maktabah.ui.common.consumeBottomSheetNestedScroll
 import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.common.isSwipeTargetReached
 import com.maktabah.ui.search.SearchTextField
@@ -106,20 +107,10 @@ fun ReaderTabsListSheet(
     val listState = androidx.compose.foundation.lazy.rememberLazyListState(
         initialFirstVisibleItemIndex = initialIndex
     )
-    var sheetGesturesEnabled by remember {
-        mutableStateOf(listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0)
-    }
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (!listState.isScrollInProgress) {
-            sheetGesturesEnabled =
-                listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
-        }
-    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        sheetGesturesEnabled = sheetGesturesEnabled,
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = { WindowInsets(0.dp) },
     ) {
@@ -149,6 +140,7 @@ fun ReaderTabsListSheet(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier
+                            .consumeBottomSheetNestedScroll()
                             .fillMaxSize()
                             .fadingEdge(listState, topPadding),
                         contentPadding = PaddingValues(

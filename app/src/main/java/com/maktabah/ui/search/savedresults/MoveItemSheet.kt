@@ -13,6 +13,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.maktabah.R
 import com.maktabah.models.FolderNode
+import com.maktabah.ui.common.consumeBottomSheetNestedScroll
 import com.maktabah.ui.search.ResultsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,6 +44,7 @@ fun MoveItemSheet(
             
             LazyColumn(
                 modifier = Modifier
+                    .consumeBottomSheetNestedScroll()
                     .fillMaxWidth()
                     .weight(1f, fill = false)
             ) {
