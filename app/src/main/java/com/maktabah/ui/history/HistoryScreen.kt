@@ -81,6 +81,7 @@ import com.maktabah.ui.common.DonationIconButton
 import com.maktabah.ui.common.InsetGroupedItem
 import com.maktabah.ui.common.PopoverMenuAction
 import com.maktabah.ui.common.TapCenteredPopover
+import com.maktabah.ui.common.consumeBottomSheetNestedScroll
 import com.maktabah.ui.common.fadingEdge
 import com.maktabah.ui.library.LibraryViewModel
 import com.maktabah.ui.search.SearchTextField
@@ -651,24 +652,6 @@ private fun AddFavoriteSheet(
     val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
         skipPartiallyExpanded = true
     )
-    val isAtTop by remember {
-        androidx.compose.runtime.derivedStateOf {
-            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
-        }
-    }
-    var sheetGesturesEnabled by remember {
-        mutableStateOf(isAtTop)
-    }
-    LaunchedEffect(isAtTop) {
-        if (!isAtTop) {
-            sheetGesturesEnabled = false
-        }
-    }
-    LaunchedEffect(listState.isScrollInProgress, isAtTop) {
-        if (isAtTop && !listState.isScrollInProgress) {
-            sheetGesturesEnabled = true
-        }
-    }
     var searchFavQuery by remember { mutableStateOf("") }
     var debouncedQuery by remember { mutableStateOf(searchFavQuery) }
 
@@ -696,7 +679,6 @@ private fun AddFavoriteSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        sheetGesturesEnabled = sheetGesturesEnabled,
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = { WindowInsets(0.dp) },
     ) {
@@ -725,6 +707,7 @@ private fun AddFavoriteSheet(
                 ) {
                     LazyColumn(
                         modifier = Modifier
+                            .consumeBottomSheetNestedScroll()
                             .fillMaxSize()
                             .fadingEdge(listState, 48.dp),
                         state = listState,
