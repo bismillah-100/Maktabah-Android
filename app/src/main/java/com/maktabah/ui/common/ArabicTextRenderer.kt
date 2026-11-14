@@ -56,55 +56,206 @@ object ArabicTextRenderer {
 
     private val parsedCache = LruCache<CacheKey, CachedParsedData>(100)
 
-    private val tagRegex =
-        Regex(
-            """<span[^>]*data-type=(?:['"]?)title(?:['"]?)[^>]*>(.*?)</span>|<a\s[^>]*href="inr://[^"]*"[^>]*>(.*?)</a>|<hadeeth[^>]*>|<man[^>]*>(.*?)</man>""",
-            RegexOption.DOT_MATCHES_ALL,
-        )
     private val structRegex = Regex("""^\s*\([^)]+\)|^\s*\S+\s*-""", RegexOption.MULTILINE)
     private val separatorRegex = Regex("""^[ \t]*(_{3,})[^\p{L}\r\n]*$""", RegexOption.MULTILINE)
 
-    /**
-     * Hapus HTML tags, kumpulkan [headerRanges] untuk span title. Mengembalikan (cleanText,
-     * headerRanges) dalam UTF-16 units.
-     */
-    private fun String.stripSpanTagsWithRanges(): Pair<String, List<IntRange>> {
-        if (!contains('<')) return this to emptyList()
+    private enum class SpanTagKind {
+        HEADER,
+        ANCHOR_B,
+        OTHER,
+    }
 
-        data class MatchInfo(
-            val fullRange: IntRange,
-            val inner: String,
-            val isHeader: Boolean,
-        )
+    private data class ParsedTag(
+        val tagName: String,
+        val attributes: String,
+        val isClosing: Boolean,
+        val isSelfClosing: Boolean,
+    ) {
+        val isSpan: Boolean
+            get() = tagName.equals("span", ignoreCase = true)
+    }
 
-        val allMatches =
-            tagRegex
-                .findAll(this)
-                .map { m ->
-                    val spanText = m.groups[1]?.value
-                    val anchorText = m.groups[2]?.value
-                    val manText = m.groups[3]?.value
-                    val inner = spanText ?: anchorText ?: manText ?: ""
-                    MatchInfo(m.range, inner, spanText != null)
-                }.sortedBy { it.fullRange.first }
-
-        if (allMatches.none()) return this to emptyList()
-
-        val sb = StringBuilder()
-        val headerRanges = mutableListOf<IntRange>()
-        var cursor = 0
-
-        for (m in allMatches) {
-            sb.append(this, cursor, m.fullRange.first)
-            val insertStart = sb.length
-            sb.append(m.inner)
-            if (m.isHeader && m.inner.isNotEmpty()) {
-                headerRanges.add(insertStart until insertStart + m.inner.length)
-            }
-            cursor = m.fullRange.last + 1
+    private fun spanKind(attributes: String): SpanTagKind {
+        if (attributes.isEmpty()) return SpanTagKind.OTHER
+        val lower = attributes.lowercase()
+        if (lower.contains("data-type=\"title\"") ||
+            lower.contains("data-type='title'") ||
+            lower.contains("data-type=title") ||
+            lower.contains("id=\"aya-") ||
+            lower.contains("id='aya-") ||
+            lower.contains("id=aya-")
+        ) {
+            return SpanTagKind.HEADER
         }
-        sb.append(this, cursor, length)
-        return sb.toString() to headerRanges
+        if (lower.contains("id=\"b-") ||
+            lower.contains("id='b-") ||
+            lower.contains("id=b-")
+        ) {
+            return SpanTagKind.ANCHOR_B
+        }
+        return SpanTagKind.OTHER
+    }
+
+    private fun parseTagDetails(tagContent: String): ParsedTag {
+        val trimmed = tagContent.trim { it.isWhitespace() }
+        val isClosing = trimmed.startsWith('/')
+        val isSelfClosing = !isClosing && trimmed.endsWith('/')
+
+        val body =
+            when {
+                isClosing -> trimmed.drop(1).trim { it.isWhitespace() }
+                isSelfClosing -> trimmed.dropLast(1).trim { it.isWhitespace() }
+                else -> trimmed
+            }
+
+        var firstDelim = body.length
+        for (i in body.indices) {
+            val ch = body[i]
+            if (ch.isWhitespace() || ch == '/') {
+                firstDelim = i
+                break
+            }
+        }
+
+        return ParsedTag(
+            tagName = body.substring(0, firstDelim),
+            attributes = body.substring(firstDelim),
+            isClosing = isClosing,
+            isSelfClosing = isSelfClosing,
+        )
+    }
+
+    private class SpanTagScanner(capacity: Int) {
+        private val sb = StringBuilder(capacity)
+        private val headerRanges = mutableListOf<IntRange>()
+        private var headerDepth = 0
+        private var currentHeaderStart: Int? = null
+        private var skipInnerDepth = 0
+
+        fun processSpanTag(
+            attributes: String,
+            isClosing: Boolean,
+            isSelfClosing: Boolean,
+        ) {
+            if (isClosing) {
+                handleClosingSpan()
+            } else if (!isSelfClosing) {
+                handleOpeningSpan(attributes)
+            }
+        }
+
+        private fun handleClosingSpan() {
+            if (skipInnerDepth > 0) {
+                skipInnerDepth--
+            } else if (headerDepth > 0) {
+                headerDepth--
+                if (headerDepth == 0) {
+                    val start = currentHeaderStart
+                    if (start != null && sb.length > start) {
+                        headerRanges.add(start until sb.length)
+                    }
+                    currentHeaderStart = null
+                }
+            }
+        }
+
+        private fun handleOpeningSpan(attributes: String) {
+            when (spanKind(attributes)) {
+                SpanTagKind.HEADER -> {
+                    headerDepth++
+                    if (headerDepth == 1) {
+                        currentHeaderStart = sb.length
+                    }
+                }
+
+                SpanTagKind.ANCHOR_B -> {
+                    skipInnerDepth++
+                }
+
+                SpanTagKind.OTHER -> Unit
+            }
+        }
+
+        fun appendChunk(
+            source: String,
+            start: Int,
+            end: Int,
+        ) {
+            if (start >= end) return
+
+            if (skipInnerDepth > 0) {
+                var newlineIdx = -1
+                for (i in start until end) {
+                    val ch = source[i]
+                    if (ch == '\n' || ch == '\r' || ch == '\u0085' || ch == '\u2028' || ch == '\u2029') {
+                        newlineIdx = i
+                        break
+                    }
+                }
+                if (newlineIdx == -1) return
+                skipInnerDepth = 0
+                sb.append(source, newlineIdx, end)
+                return
+            }
+
+            sb.append(source, start, end)
+        }
+
+        fun finalizeResult(): Pair<String, List<IntRange>> {
+            if (headerDepth > 0) {
+                val start = currentHeaderStart
+                if (start != null && sb.length > start) {
+                    headerRanges.add(start until sb.length)
+                }
+            }
+            return sb.toString() to headerRanges
+        }
+    }
+
+    /**
+     * Hapus HTML tags dengan single-pass scanner, kumpulkan [headerRanges] untuk span title/aya.
+     * Mengembalikan (cleanText, headerRanges) dalam UTF-16 units.
+     */
+    internal fun String.stripSpanTagsWithRanges(): Pair<String, List<IntRange>> {
+        var ltIndex = indexOf('<')
+        if (ltIndex == -1) return this to emptyList()
+
+        val scanner = SpanTagScanner(length)
+        var textStart = 0
+
+        while (true) {
+            if (textStart < ltIndex) {
+                scanner.appendChunk(this, textStart, ltIndex)
+            }
+
+            val afterLt = ltIndex + 1
+            val tagEnd = indexOf('>', afterLt)
+            if (tagEnd == -1) {
+                scanner.appendChunk(this, ltIndex, length)
+                break
+            }
+
+            val tag = parseTagDetails(substring(afterLt, tagEnd))
+            if (tag.isSpan) {
+                scanner.processSpanTag(
+                    attributes = tag.attributes,
+                    isClosing = tag.isClosing,
+                    isSelfClosing = tag.isSelfClosing,
+                )
+            }
+
+            textStart = tagEnd + 1
+            val nextLt = indexOf('<', textStart)
+            if (nextLt == -1) {
+                if (textStart < length) {
+                    scanner.appendChunk(this, textStart, length)
+                }
+                break
+            }
+            ltIndex = nextLt
+        }
+
+        return scanner.finalizeResult()
     }
 
     /**
