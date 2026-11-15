@@ -50,7 +50,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -108,7 +107,6 @@ fun ReaderScreen(
     val isMultiLanguage by viewModel.isMultiLanguage.collectAsState()
     val flashTarget by viewModel.flashTarget.collectAsState()
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         viewModel.initialize(context, annotationManager, libraryViewModel.dataManager)
@@ -577,14 +575,31 @@ fun ReaderScreen(
     }
 
     if (activeAnnotationForEdit != null) {
+        val active = activeAnnotationForEdit!!
         AnnotationEditorDialog(
-            active = activeAnnotationForEdit!!,
-            bookId = bookId,
-            content = content,
-            showHarakat = showHarakat,
-            annotationManager = annotationManager,
-            scope = scope,
-            onSyncRequested = onSyncRequested,
+            active = active,
+            onLoadTags = { viewModel.getTagsForBook(bookId) },
+            onSaveAnnotation = { selectedType, selectedColor, noteText, tagsText ->
+                viewModel.saveEditedAnnotation(
+                    active = active,
+                    bookId = bookId,
+                    content = content,
+                    showHarakat = showHarakat,
+                    selectedType = selectedType,
+                    selectedColor = selectedColor,
+                    noteText = noteText,
+                    tagsText = tagsText,
+                ) {
+                    onSyncRequested()
+                }
+            },
+            onDeleteAnnotation = active.annotation?.let { ann ->
+                {
+                    viewModel.deleteAnnotationDirectly(ann) {
+                        onSyncRequested()
+                    }
+                }
+            },
             onDismissRequest = { viewModel.showAnnotationEditor(null) },
         )
     }

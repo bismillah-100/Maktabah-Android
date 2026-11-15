@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.maktabah.database.AnnotationManager
 import com.maktabah.manager.LibraryDataManager
+import com.maktabah.models.ActiveAnnotationState
 import com.maktabah.models.Annotation
 import com.maktabah.models.AnnotationChange
 import com.maktabah.models.AnnotationGroup
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 class AnnotationsViewModel : ViewModel() {
@@ -457,6 +459,52 @@ class AnnotationsViewModel : ViewModel() {
 
     fun forceReload(annotationManager: AnnotationManager) {
         loadAnnotations(annotationManager)
+    }
+
+    suspend fun getTagsForBook(bookId: Int): List<String> =
+        annotationManager?.getTagsForBook(bookId) ?: emptyList()
+
+    fun saveEditedAnnotation(
+        active: ActiveAnnotationState,
+        bookId: Int,
+        selectedType: Int,
+        selectedColor: String,
+        noteText: String,
+        tagsText: String,
+        onComplete: (() -> Unit)? = null,
+    ) {
+        val manager = annotationManager ?: return
+        val annotationToSave =
+            AnnotationCoordinator.buildEditedAnnotation(
+                active = active,
+                bookId = bookId,
+                content = null,
+                showHarakat = true,
+                selectedType = selectedType,
+                selectedColor = selectedColor,
+                noteText = noteText,
+                tagsText = tagsText,
+            ) ?: return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            manager.insertOrUpdate(annotationToSave)
+            withContext(Dispatchers.Main) {
+                forceReload(manager)
+                onComplete?.invoke()
+            }
+        }
+    }
+
+    fun deleteAnnotation(annotation: Annotation, onComplete: (() -> Unit)? = null) {
+        val manager = annotationManager ?: return
+        val id = annotation.id ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            manager.deleteAnnotation(id, annotation.ckRecordId)
+            withContext(Dispatchers.Main) {
+                forceReload(manager)
+                onComplete?.invoke()
+            }
+        }
     }
 
     private val sortState =

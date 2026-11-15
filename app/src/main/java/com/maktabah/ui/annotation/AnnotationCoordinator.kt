@@ -1,8 +1,12 @@
 package com.maktabah.ui.annotation
 
+import com.maktabah.models.ActiveAnnotationState
+import com.maktabah.models.Annotation
+import com.maktabah.models.BookContent
 import com.maktabah.ui.common.ArabicTextRenderer
 import com.maktabah.utils.calculateRangeWithoutHarakat
 import com.maktabah.utils.findRangeInOriginal
+import java.util.UUID
 
 object AnnotationCoordinator {
     /**
@@ -48,4 +52,60 @@ object AnnotationCoordinator {
             val (diacLoc, diacLen) = hrDiac.sourceText.findRangeInOriginal(selectedText, srcStart)
             intArrayOf(diacLoc, diacLen, srcStart, srcLen)
         }
+
+    fun buildEditedAnnotation(
+        active: ActiveAnnotationState,
+        bookId: Int,
+        content: BookContent?,
+        showHarakat: Boolean,
+        selectedType: Int,
+        selectedColor: String,
+        noteText: String,
+        tagsText: String,
+    ): Annotation? {
+        if (active.annotation == null && content == null) return null
+
+        val (diacLoc, diacLen, plainLoc, plainLen) =
+            if (active.annotation == null) {
+                calculateBothRanges(
+                    active.loc,
+                    active.len,
+                    content!!.nass,
+                    showHarakat,
+                )
+            } else {
+                intArrayOf(
+                    active.annotation.rangeDiacLocation,
+                    active.annotation.rangeDiacLength,
+                    active.annotation.rangeLocation,
+                    active.annotation.rangeLength,
+                )
+            }
+
+        return Annotation(
+            id = active.annotation?.id,
+            bkId = bookId,
+            contentId = active.annotation?.contentId ?: content!!.id,
+            colorHex = if (selectedType == 1) "#000000" else selectedColor,
+            note = noteText.ifBlank { null },
+            type = selectedType,
+            createdAt = active.annotation?.createdAt?.let {
+                if (it in 1L..9999999999L) it * 1000L else it
+            } ?: System.currentTimeMillis(),
+            page = active.annotation?.page ?: content!!.page,
+            context = active.annotation?.context ?: active.selectedText,
+            rangeLocation = plainLoc,
+            rangeLength = plainLen,
+            rangeDiacLocation = diacLoc,
+            rangeDiacLength = diacLen,
+            part = active.annotation?.part ?: content!!.part,
+            tags = tagsText
+                .replace("،", ",")
+                .split(",")
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .joinToString(","),
+            ckRecordId = active.annotation?.ckRecordId ?: UUID.randomUUID().toString(),
+        )
+    }
 }

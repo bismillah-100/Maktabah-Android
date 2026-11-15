@@ -354,14 +354,24 @@ fun AnnotationsScreen(
     )
 
     if (editingAnnotation != null) {
+        val editing = editingAnnotation!!
+        val active = com.maktabah.models.ActiveAnnotationState(annotation = editing)
         com.maktabah.ui.reader.AnnotationEditorDialog(
-            active = com.maktabah.models.ActiveAnnotationState(annotation = editingAnnotation!!),
-            bookId = editingAnnotation!!.bkId,
-            content = null,
-            showHarakat = true,
-            annotationManager = annotationManager,
-            scope = scope,
-            onSyncRequested = { viewModel.forceReload(annotationManager) },
+            active = active,
+            onLoadTags = { viewModel.getTagsForBook(editing.bkId) },
+            onSaveAnnotation = { selectedType, selectedColor, noteText, tagsText ->
+                viewModel.saveEditedAnnotation(
+                    active = active,
+                    bookId = editing.bkId,
+                    selectedType = selectedType,
+                    selectedColor = selectedColor,
+                    noteText = noteText,
+                    tagsText = tagsText,
+                )
+            },
+            onDeleteAnnotation = {
+                viewModel.deleteAnnotation(editing)
+            },
             onDismissRequest = { editingAnnotation = null }
         )
     }

@@ -472,6 +472,41 @@ class ReaderViewModel : ViewModel() {
         }
     }
 
+    suspend fun getTagsForBook(bookId: Int): List<String> =
+        annotationManager?.getTagsForBook(bookId) ?: emptyList()
+
+    fun saveEditedAnnotation(
+        active: ActiveAnnotationState,
+        bookId: Int,
+        content: BookContent?,
+        showHarakat: Boolean,
+        selectedType: Int,
+        selectedColor: String,
+        noteText: String,
+        tagsText: String,
+        onComplete: (() -> Unit)? = null,
+    ) {
+        val manager = annotationManager ?: return
+        val annotationToSave =
+            AnnotationCoordinator.buildEditedAnnotation(
+                active = active,
+                bookId = bookId,
+                content = content,
+                showHarakat = showHarakat,
+                selectedType = selectedType,
+                selectedColor = selectedColor,
+                noteText = noteText,
+                tagsText = tagsText,
+            ) ?: return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            manager.insertOrUpdate(annotationToSave)
+            withContext(Dispatchers.Main) {
+                onComplete?.invoke()
+            }
+        }
+    }
+
     fun importFont(uri: Uri, context: Context, onSuccess: () -> Unit) {
         viewModelScope.launch {
             try {

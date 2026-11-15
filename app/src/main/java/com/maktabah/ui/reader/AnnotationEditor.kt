@@ -43,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,31 +56,22 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.toColorInt
 import com.maktabah.R
-import com.maktabah.database.AnnotationManager
 import com.maktabah.models.ActiveAnnotationState
-import com.maktabah.models.Annotation
-import com.maktabah.models.BookContent
-import com.maktabah.ui.annotation.AnnotationCoordinator
 import com.maktabah.ui.common.ColorPickerDialog
 import com.maktabah.ui.common.MaktabahTextField
 import com.maktabah.ui.common.consumeBottomSheetNestedScroll
 import com.maktabah.utils.ColorPreferences
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AnnotationEditorDialog(
     active: ActiveAnnotationState,
-    bookId: Int,
-    content: BookContent?,
-    showHarakat: Boolean,
-    annotationManager: AnnotationManager,
-    scope: CoroutineScope,
-    onSyncRequested: () -> Unit,
+    onLoadTags: suspend () -> List<String>,
+    onSaveAnnotation: (selectedType: Int, selectedColor: String, noteText: String, tagsText: String) -> Unit,
+    onDeleteAnnotation: (() -> Unit)? = null,
     onDismissRequest: () -> Unit,
 ) {
     var noteText by remember(active) { mutableStateOf(active.annotation?.note ?: "") }
@@ -96,6 +88,7 @@ fun AnnotationEditorDialog(
     var tagsText by remember(active) { mutableStateOf(active.annotation?.tags ?: "") }
 
     val context = LocalContext.current
+    val uiScope = rememberCoroutineScope()
     var recentColors by remember { mutableStateOf(ColorPreferences.DEFAULT_COLORS) }
     LaunchedEffect(active) {
         recentColors = withContext(Dispatchers.IO) {
@@ -105,86 +98,21 @@ fun AnnotationEditorDialog(
     var showColorPicker by remember { mutableStateOf(false) }
 
     var existingTags by remember { mutableStateOf<List<String>>(emptyList()) }
-    LaunchedEffect(bookId) {
-        existingTags = annotationManager
-            .getAnnotationsForBook(bookId)
-            .flatMap { it.tags.replace("،", ",").split(",") }
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .distinct()
+    LaunchedEffect(active) {
+        existingTags = onLoadTags()
     }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scrollState = rememberScrollState()
 
     val onSave: () -> Unit = {
-        if (active.annotation != null || content != null) {
-            val (diacLoc, diacLen, plainLoc, plainLen) =
-                if (active.annotation == null) {
-                    AnnotationCoordinator.calculateBothRanges(
-                        active.loc,
-                        active.len,
-                        content!!.nass,
-                        showHarakat
-                    )
-                } else {
-                    intArrayOf(
-                        active.annotation.rangeDiacLocation,
-                        active.annotation.rangeDiacLength,
-                        active.annotation.rangeLocation,
-                        active.annotation.rangeLength,
-                    )
-                }
-
-            val annotationToSave = Annotation(
-                id = active.annotation?.id,
-                bkId = bookId,
-                contentId = active.annotation?.contentId ?: content!!.id,
-                colorHex = if (selectedType == 1) "#000000" else selectedColor,
-                note = noteText.ifBlank { null },
-                type = selectedType,
-                createdAt = active.annotation?.createdAt?.let {
-                    if (it in 1L..9999999999L) it * 1000L else it
-                } ?: System.currentTimeMillis(),
-                page = active.annotation?.page ?: content!!.page,
-                context = active.annotation?.context ?: active.selectedText,
-                rangeLocation = plainLoc,
-                rangeLength = plainLen,
-                rangeDiacLocation = diacLoc,
-                rangeDiacLength = diacLen,
-                part = active.annotation?.part ?: content!!.part,
-                tags = tagsText
-                    .replace("،", ",")
-                    .split(",")
-                    .map { it.trim() }
-                    .filter { it.isNotEmpty() }
-                    .joinToString(","),
-                ckRecordId = active.annotation?.ckRecordId ?: UUID.randomUUID().toString(),
-            )
-
-            scope.launch(Dispatchers.IO) {
-                annotationManager.insertOrUpdate(annotationToSave)
-                withContext(Dispatchers.Main) {
-                    onSyncRequested()
-                    onDismissRequest()
-                }
-            }
-        }
+        onSaveAnnotation(selectedType, selectedColor, noteText, tagsText)
+        onDismissRequest()
     }
 
     val onDelete: () -> Unit = {
-        scope.launch(Dispatchers.IO) {
-            active.annotation?.id?.let {
-                annotationManager.deleteAnnotation(
-                    it,
-                    active.annotation.ckRecordId
-                )
-            }
-            withContext(Dispatchers.Main) {
-                onSyncRequested()
-                onDismissRequest()
-            }
-        }
+        onDeleteAnnotation?.invoke()
+        onDismissRequest()
     }
 
     ModalBottomSheet(
@@ -317,7 +245,7 @@ fun AnnotationEditorDialog(
                                         .background(color, shape = CircleShape)
                                         .clickable {
                                             selectedColor = colorHex
-                                            scope.launch(Dispatchers.IO) {
+                                            uiScope.launch(Dispatchers.IO) {
                                                 ColorPreferences.selectColor(context, colorHex)
                                             }
                                         }
@@ -379,7 +307,7 @@ fun AnnotationEditorDialog(
                         initialColor = selectedColor,
                         onColorSelected = { hex ->
                             selectedColor = hex
-                            scope.launch(Dispatchers.IO) {
+                            uiScope.launch(Dispatchers.IO) {
                                 ColorPreferences.selectColor(context, hex)
                             }
                             showColorPicker = false

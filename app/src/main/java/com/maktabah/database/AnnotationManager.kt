@@ -3,7 +3,9 @@ package com.maktabah.database
 import com.maktabah.models.Annotation
 import com.maktabah.models.AnnotationChange
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import java.io.File
 
@@ -269,38 +271,47 @@ class AnnotationManager(
         return getAnnotationsWithLimit(limit)
     }
 
-    private suspend fun getAnnotationsWithLimit(limit: Int): List<Annotation> {
-        val list = mutableListOf<Annotation>()
-        SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
-            val sql = if (limit > 0) {
-                "SELECT * FROM annotations_v2 ORDER BY createdAt DESC LIMIT $limit"
-            } else {
-                "SELECT * FROM annotations_v2 ORDER BY createdAt DESC"
-            }
-            db.prepare(sql)?.use { stmt ->
-                while (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                    yield()
-                    list.add(mapRowToAnnotation(stmt))
+    private suspend fun getAnnotationsWithLimit(limit: Int): List<Annotation> =
+        withContext(Dispatchers.IO) {
+            val list = mutableListOf<Annotation>()
+            SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
+                val sql = if (limit > 0) {
+                    "SELECT * FROM annotations_v2 ORDER BY createdAt DESC LIMIT $limit"
+                } else {
+                    "SELECT * FROM annotations_v2 ORDER BY createdAt DESC"
                 }
-            }
-        }
-        return list
-    }
-
-    suspend fun getAnnotationsForBook(bkId: Int): List<Annotation> {
-        val list = mutableListOf<Annotation>()
-        SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
-            db.prepare("SELECT * FROM annotations_v2 WHERE bkId = ? ORDER BY createdAt DESC")
-                ?.use { stmt ->
-                    stmt.bindInt(1, bkId)
+                db.prepare(sql)?.use { stmt ->
                     while (stmt.step() == SQLiteDB.SQLITE_ROW) {
                         yield()
                         list.add(mapRowToAnnotation(stmt))
                     }
                 }
+            }
+            list
         }
-        return list
-    }
+
+    suspend fun getAnnotationsForBook(bkId: Int): List<Annotation> =
+        withContext(Dispatchers.IO) {
+            val list = mutableListOf<Annotation>()
+            SQLiteDB(dbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
+                db.prepare("SELECT * FROM annotations_v2 WHERE bkId = ? ORDER BY createdAt DESC")
+                    ?.use { stmt ->
+                        stmt.bindInt(1, bkId)
+                        while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                            yield()
+                            list.add(mapRowToAnnotation(stmt))
+                        }
+                    }
+            }
+            list
+        }
+
+    suspend fun getTagsForBook(bkId: Int): List<String> =
+        getAnnotationsForBook(bkId)
+            .flatMap { it.tags.replace("،", ",").split(",") }
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
 
     private fun mapRowToAnnotation(stmt: SQLiteStmt): Annotation = Annotation(
         id = stmt.columnLong(0),
