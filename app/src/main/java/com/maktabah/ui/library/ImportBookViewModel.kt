@@ -15,11 +15,13 @@ import com.maktabah.models.BooksData
 import com.maktabah.models.CategoryData
 import com.maktabah.models.ImportBookMetadata
 import com.maktabah.models.ImportMode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -197,6 +199,30 @@ class ImportBookViewModel(application: Application) : AndroidViewModel(applicati
         _importResult.value = null
     }
 
+    fun resetForm() {
+        _importResult.value = null
+        _importMode.value = ImportMode.NEW
+        _selectedFileUri.value = null
+        _selectedFileName.value = null
+        _customBookIdText.value = if (_maxBkid.value > 0) "${_maxBkid.value + 1}" else ""
+        _selectedBookId.value = null
+        _bookName.value = ""
+        _categoryId.value = 0
+        _archiveId.value = 20
+        _isMultiLanguage.value = true
+        _betaka.value = ""
+        _inf.value = ""
+        _tafseerNam.value = ""
+        _bVerText.value = "1"
+        _authorMode.value = AuthorMode.EXISTING
+        _selectedAuthorId.value = null
+        _authorName.value = ""
+        _authorInf.value = ""
+        _authorLng.value = ""
+        _authorHigriD.value = ""
+        _oVerText.value = "1"
+    }
+
     fun setSelectedFile(uri: Uri, displayName: String) {
         _selectedFileUri.value = uri
         _selectedFileName.value = displayName
@@ -206,7 +232,8 @@ class ImportBookViewModel(application: Application) : AndroidViewModel(applicati
     val isBookIdTaken: StateFlow<Boolean> = _customBookIdText.map { text ->
         val id = text.toIntOrNull() ?: return@map false
         BookImportManager.isBookIdTaken(context, id)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    }.flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val isValid: StateFlow<Boolean> = combine(
         _importMode,
@@ -259,7 +286,7 @@ class ImportBookViewModel(application: Application) : AndroidViewModel(applicati
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
-    fun setupData(context: Context) {
+    fun setupData() {
         viewModelScope.launch {
             _isLoadingData.value = true
             val (maxBk, maxAuth, cats, auths, bks) = withContext(Dispatchers.IO) {
@@ -281,7 +308,6 @@ class ImportBookViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun performImport(
-        context: Context,
         annotationManager: AnnotationManager,
         onReloadLibrary: suspend () -> Unit
     ) {
@@ -290,10 +316,12 @@ class ImportBookViewModel(application: Application) : AndroidViewModel(applicati
             val result = withContext(Dispatchers.IO) {
                 try {
                     if (_importMode.value == ImportMode.CHANGE_ID) {
-                        performChangeBookId(context, annotationManager)
+                        performChangeBookId(annotationManager)
                     } else {
-                        performBookImport(context)
+                        performBookImport()
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Result.failure(e)
                 }
@@ -304,7 +332,7 @@ class ImportBookViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    private suspend fun performBookImport(context: Context): Result<Unit> {
+    private suspend fun performBookImport(): Result<Unit> {
         val uri = _selectedFileUri.value
             ?: return Result.failure(Exception(context.getString(R.string.error_file_not_selected)))
         val finalBookId = if (_importMode.value == ImportMode.NEW)
@@ -330,15 +358,20 @@ class ImportBookViewModel(application: Application) : AndroidViewModel(applicati
 
         // Salin file ke temp agar bisa diakses setelah URI dilepas
         val tempFile = File(context.cacheDir, "import_${System.currentTimeMillis()}.sqlite")
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            tempFile.outputStream().use { output -> input.copyTo(output) }
-        } ?: return Result.failure(Exception(context.getString(R.string.error_cannot_read_file)))
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                tempFile.outputStream().use { output -> input.copyTo(output) }
+            } ?: return Result.failure(Exception(context.getString(R.string.error_cannot_read_file)))
 
-        return BookImportManager.importBook(context, tempFile, metadata, newAuthor)
+            BookImportManager.importBook(context, tempFile, metadata, newAuthor)
+        } finally {
+            if (tempFile.exists()) {
+                tempFile.delete()
+            }
+        }
     }
 
-    private fun performChangeBookId(
-        context: Context,
+    private suspend fun performChangeBookId(
         annotationManager: AnnotationManager
     ): Result<Unit> {
         val oldId = _selectedBookId.value

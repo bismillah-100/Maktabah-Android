@@ -145,10 +145,20 @@ object BookImportManager {
         newAuthor: AuthorRow?,
     ): Result<Unit> {
         return try {
+            // 1. Integrasikan konten (tabel bX, tX, FTS) terlebih dahulu agar kegagalan tidak
+            // meninggalkan metadata yatim di main.sqlite / special.sqlite
+            val success = BookArchiveIntegrator.integrateDatabase(
+                context = context,
+                bookId = metadata.bkid,
+                archiveId = metadata.archiveId,
+                downloadedDbFile = sourceFile,
+            )
+            if (!success) return Result.failure(Exception("Gagal mengintegrasikan konten buku"))
+
             val mainDbFile = File(context.filesDir, "main.sqlite")
             val specialDbFile = File(context.filesDir, "special.sqlite")
 
-            // 1. Insert author baru jika diperlukan
+            // 2. Insert author baru jika diperlukan
             if (newAuthor != null && specialDbFile.exists()) {
                 SQLiteDB(specialDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { specDb ->
                     specDb.prepare(
@@ -165,7 +175,7 @@ object BookImportManager {
                 }
             }
 
-            // 2. Insert/replace metadata buku ke main.sqlite
+            // 3. Insert/replace metadata buku ke main.sqlite
             SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
                 db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
                 try {
@@ -200,29 +210,37 @@ object BookImportManager {
                 }
             }
 
-            // 3. Integrasikan konten (tabel bX, tX, FTS)
-            val success = BookArchiveIntegrator.integrateDatabase(
-                context = context,
-                bookId = metadata.bkid,
-                archiveId = metadata.archiveId,
-                downloadedDbFile = sourceFile,
-            )
-            if (!success) return Result.failure(Exception("Gagal mengintegrasikan konten buku"))
-
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "importBook", e)
             Result.failure(e)
+        } finally {
+            if (sourceFile.exists()) {
+                sourceFile.delete()
+            }
         }
     }
 
     /**
-     * Mengubah ID buku di tabel 0bok. Anotasi diupdate oleh pemanggil.
+     * Mengubah ID buku di arsip konten, FTS, dan tabel 0bok. Anotasi diupdate oleh pemanggil.
      */
-    fun changeBookId(context: Context, oldId: Int, newId: Int): Result<Unit> {
+    suspend fun changeBookId(context: Context, oldId: Int, newId: Int): Result<Unit> {
         return try {
+            val archiveId = BookArchiveIntegrator.getArchiveIdForBook(context, oldId)
+            if (archiveId != null && archiveId > 0) {
+                val migrated = BookArchiveIntegrator.migrateBookId(
+                    context = context,
+                    oldId = oldId,
+                    newId = newId,
+                    archiveId = archiveId,
+                )
+                if (!migrated) {
+                    return Result.failure(Exception("Gagal memigrasikan konten buku ke ID baru"))
+                }
+            }
+
             val mainDbFile = File(context.filesDir, "main.sqlite")
             SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
                 db.prepare("UPDATE \"0bok\" SET bkid = ? WHERE bkid = ?")?.use { stmt ->
@@ -232,6 +250,8 @@ object BookImportManager {
                 }
             }
             Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "changeBookId", e)
             Result.failure(e)

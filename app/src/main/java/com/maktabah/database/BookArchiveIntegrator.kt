@@ -128,6 +128,77 @@ object BookArchiveIntegrator {
         }
     }
 
+    suspend fun migrateBookId(
+        context: Context,
+        oldId: Int,
+        newId: Int,
+        archiveId: Int,
+    ): Boolean = BookArchiveSingleFlight.run(archiveId) {
+        val archiveFile = File(context.filesDir, "$archiveId.sqlite")
+        if (!archiveFile.exists()) return@run true
+
+        val archiveFtsFile = File(context.filesDir, "${archiveId}_fts.sqlite")
+        var db: SQLiteDB? = null
+        var ftsDb: SQLiteDB? = null
+
+        try {
+            db =
+                SQLiteDB(
+                    archiveFile.absolutePath,
+                    SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
+                )
+            val oldBookTable = "b$oldId"
+            val newBookTable = "b$newId"
+            val oldTocTable = "t$oldId"
+            val newTocTable = "t$newId"
+
+            val hasBookTable = tableExists(db, oldBookTable)
+            val hasTocTable = tableExists(db, oldTocTable)
+
+            db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
+            try {
+                if (hasBookTable) {
+                    db.prepare("DROP TABLE IF EXISTS main.\"$newBookTable\";")?.use { it.step() }
+                    db.prepare("ALTER TABLE main.\"$oldBookTable\" RENAME TO \"$newBookTable\";")?.use { it.step() }
+                }
+                if (hasTocTable) {
+                    db.prepare("DROP TABLE IF EXISTS main.\"$newTocTable\";")?.use { it.step() }
+                    db.prepare("ALTER TABLE main.\"$oldTocTable\" RENAME TO \"$newTocTable\";")?.use { it.step() }
+                }
+                db.prepare("COMMIT;")?.use { it.step() }
+            } catch (e: Exception) {
+                db.prepare("ROLLBACK;")?.use { it.step() }
+                throw e
+            }
+
+            if (hasBookTable && archiveFtsFile.exists()) {
+                ftsDb =
+                    SQLiteDB(
+                        archiveFtsFile.absolutePath,
+                        SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
+                    )
+                deleteBookFts(ftsDb, oldId)
+                buildFtsIndex(db, ftsDb, newBookTable, newId)
+            }
+            return@run true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Error migrating book $oldId to $newId in archive $archiveId", e)
+            return@run false
+        } finally {
+            db?.close()
+            ftsDb?.close()
+        }
+    }
+
+    private fun tableExists(db: SQLiteDB, tableName: String): Boolean {
+        return db.prepare("SELECT 1 FROM main.sqlite_master WHERE type='table' AND name = ? LIMIT 1;")?.use { stmt ->
+            stmt.bindText(1, tableName)
+            stmt.step() == SQLiteDB.SQLITE_ROW
+        } ?: false
+    }
+
     private suspend fun findSourceTableId(db: SQLiteDB): String? {
         var sourceTableId: String? = null
         db.prepare("SELECT name FROM sourceDB.sqlite_master WHERE type='table' AND name LIKE 'b%' AND name NOT LIKE '%_fts' LIMIT 1;")?.use { stmt ->
@@ -292,22 +363,7 @@ object BookArchiveIntegrator {
             "CREATE VIRTUAL TABLE IF NOT EXISTS main.archive_fts USING fts5(nass_clean, content='', contentless_delete=1, tokenize='unicode61');"
         )?.use { it.step() }
 
-        try {
-            ftsDb.prepare("DELETE FROM main.archive_fts WHERE rowid IN (SELECT rowid FROM main.archive_index WHERE book_id = ?);")?.use { stmt ->
-                stmt.bindLong(1, bookId.toLong())
-                stmt.step()
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Error cleaning archive_fts: ${e.message}")
-        }
-        try {
-            ftsDb.prepare("DELETE FROM main.archive_index WHERE book_id = ?;")?.use { stmt ->
-                stmt.bindLong(1, bookId.toLong())
-                stmt.step()
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Error cleaning archive_index: ${e.message}")
-        }
+        deleteBookFts(ftsDb, bookId)
 
         ftsDb.prepare("BEGIN TRANSACTION;")?.use { it.step() }
 
@@ -362,6 +418,25 @@ object BookArchiveIntegrator {
         }
         ftsDb.prepare("COMMIT;")?.use { it.step() }
         Log.d(TAG, "Built Unified FTS for $ftsCount rows (Book $bookId)")
+    }
+
+    private fun deleteBookFts(ftsDb: SQLiteDB, bookId: Int) {
+        try {
+            ftsDb.prepare("DELETE FROM main.archive_fts WHERE rowid IN (SELECT rowid FROM main.archive_index WHERE book_id = ?);")?.use { stmt ->
+                stmt.bindLong(1, bookId.toLong())
+                stmt.step()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error cleaning archive_fts: ${e.message}")
+        }
+        try {
+            ftsDb.prepare("DELETE FROM main.archive_index WHERE book_id = ?;")?.use { stmt ->
+                stmt.bindLong(1, bookId.toLong())
+                stmt.step()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error cleaning archive_index: ${e.message}")
+        }
     }
 
     private fun makeCreateTableSQL(

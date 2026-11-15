@@ -122,10 +122,15 @@ fun ImportBookSheet(
     val isValid by vm.isValid.collectAsState()
     val isBookIdTaken by vm.isBookIdTaken.collectAsState()
 
-    BackHandler {
+    val dismissSheet: () -> Unit = {
         if (!isImporting) {
+            vm.resetForm()
             onDismiss()
         }
+    }
+
+    BackHandler {
+        dismissSheet()
     }
 
     // Handle import result
@@ -135,6 +140,7 @@ fun ImportBookSheet(
             Toast.makeText(context, context.getString(R.string.import_success), Toast.LENGTH_SHORT)
                 .show()
             onImportSuccess() // Trigger reload
+            vm.resetForm()
             onDismiss()
         } else {
             Toast.makeText(
@@ -142,11 +148,11 @@ fun ImportBookSheet(
                 context.getString(R.string.import_failed, result.exceptionOrNull()?.message ?: ""),
                 Toast.LENGTH_LONG
             ).show()
+            vm.clearResult()
         }
-        vm.clearResult()
     }
 
-    LaunchedEffect(Unit) { vm.setupData(context) }
+    LaunchedEffect(Unit) { vm.setupData() }
 
     // File picker
     val fileLauncher =
@@ -271,7 +277,10 @@ fun ImportBookSheet(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onDismiss) {
+                    IconButton(
+                        onClick = dismissSheet,
+                        enabled = !isImporting,
+                    ) {
                         Icon(
                             Icons.Default.Close,
                             contentDescription = stringResource(R.string.tutup)
@@ -305,7 +314,7 @@ fun ImportBookSheet(
                 ) {
                     Button(
                         onClick = {
-                            vm.performImport(context, annotationManager) {
+                            vm.performImport(annotationManager) {
                                 // callback after backend success, but before state update
                             }
                         },
