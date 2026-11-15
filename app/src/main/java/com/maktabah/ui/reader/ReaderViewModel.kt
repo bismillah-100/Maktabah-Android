@@ -470,11 +470,20 @@ class ReaderViewModel : ViewModel() {
     }
 
     fun deleteAnnotationDirectly(annotation: Annotation, onComplete: (() -> Unit)? = null) {
-        val manager = annotationManager ?: return
-        val id = annotation.id ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            manager.deleteAnnotation(id, annotation.ckRecordId)
-            withContext(Dispatchers.Main) {
+        val manager = annotationManager ?: run {
+            onComplete?.invoke()
+            return
+        }
+        val id = annotation.id ?: run {
+            onComplete?.invoke()
+            return
+        }
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    manager.deleteAnnotation(id, annotation.ckRecordId)
+                }
+            } finally {
                 onComplete?.invoke()
             }
         }
@@ -494,7 +503,10 @@ class ReaderViewModel : ViewModel() {
         tagsText: String,
         onComplete: (() -> Unit)? = null,
     ) {
-        val manager = annotationManager ?: return
+        val manager = annotationManager ?: run {
+            onComplete?.invoke()
+            return
+        }
         val annotationToSave =
             AnnotationCoordinator.buildEditedAnnotation(
                 active = active,
@@ -505,11 +517,17 @@ class ReaderViewModel : ViewModel() {
                 selectedColor = selectedColor,
                 noteText = noteText,
                 tagsText = tagsText,
-            ) ?: return
+            ) ?: run {
+                onComplete?.invoke()
+                return
+            }
 
-        viewModelScope.launch(Dispatchers.IO) {
-            manager.insertOrUpdate(annotationToSave)
-            withContext(Dispatchers.Main) {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    manager.insertOrUpdate(annotationToSave)
+                }
+            } finally {
                 onComplete?.invoke()
             }
         }

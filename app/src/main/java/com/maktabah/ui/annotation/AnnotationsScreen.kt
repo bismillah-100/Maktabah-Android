@@ -352,7 +352,7 @@ fun AnnotationsScreen(
         com.maktabah.ui.reader.AnnotationEditorDialog(
             active = active,
             onLoadTags = { viewModel.getTagsForBook(editing.bkId) },
-            onSaveAnnotation = { selectedType, selectedColor, noteText, tagsText ->
+            onSaveAnnotation = { selectedType, selectedColor, noteText, tagsText, onComplete ->
                 viewModel.saveEditedAnnotation(
                     active = active,
                     bookId = editing.bkId,
@@ -360,10 +360,11 @@ fun AnnotationsScreen(
                     selectedColor = selectedColor,
                     noteText = noteText,
                     tagsText = tagsText,
+                    onComplete = onComplete,
                 )
             },
-            onDeleteAnnotation = {
-                viewModel.deleteAnnotation(editing)
+            onDeleteAnnotation = { onComplete ->
+                viewModel.deleteAnnotation(editing, onComplete = onComplete)
             },
             onDismissRequest = { editingAnnotation = null }
         )

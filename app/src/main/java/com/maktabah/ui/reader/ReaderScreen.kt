@@ -578,7 +578,7 @@ fun ReaderScreen(
         AnnotationEditorDialog(
             active = active,
             onLoadTags = { viewModel.getTagsForBook(bookId) },
-            onSaveAnnotation = { selectedType, selectedColor, noteText, tagsText ->
+            onSaveAnnotation = { selectedType, selectedColor, noteText, tagsText, onComplete ->
                 viewModel.saveEditedAnnotation(
                     active = active,
                     bookId = bookId,
@@ -590,12 +590,14 @@ fun ReaderScreen(
                     tagsText = tagsText,
                 ) {
                     onSyncRequested()
+                    onComplete()
                 }
             },
             onDeleteAnnotation = active.annotation?.let { ann ->
-                {
+                { onComplete ->
                     viewModel.deleteAnnotationDirectly(ann) {
                         onSyncRequested()
+                        onComplete()
                     }
                 }
             },

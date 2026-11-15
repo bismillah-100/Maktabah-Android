@@ -473,7 +473,10 @@ class AnnotationsViewModel : ViewModel() {
         tagsText: String,
         onComplete: (() -> Unit)? = null,
     ) {
-        val manager = annotationManager ?: return
+        val manager = annotationManager ?: run {
+            onComplete?.invoke()
+            return
+        }
         val annotationToSave =
             AnnotationCoordinator.buildEditedAnnotation(
                 active = active,
@@ -484,24 +487,39 @@ class AnnotationsViewModel : ViewModel() {
                 selectedColor = selectedColor,
                 noteText = noteText,
                 tagsText = tagsText,
-            ) ?: return
+            ) ?: run {
+                onComplete?.invoke()
+                return
+            }
 
         viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                manager.insertOrUpdate(annotationToSave)
+            try {
+                withContext(Dispatchers.IO) {
+                    manager.insertOrUpdate(annotationToSave)
+                }
+            } finally {
+                onComplete?.invoke()
             }
-            onComplete?.invoke()
         }
     }
 
     fun deleteAnnotation(annotation: Annotation, onComplete: (() -> Unit)? = null) {
-        val manager = annotationManager ?: return
-        val id = annotation.id ?: return
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                manager.deleteAnnotation(id, annotation.ckRecordId)
-            }
+        val manager = annotationManager ?: run {
             onComplete?.invoke()
+            return
+        }
+        val id = annotation.id ?: run {
+            onComplete?.invoke()
+            return
+        }
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    manager.deleteAnnotation(id, annotation.ckRecordId)
+                }
+            } finally {
+                onComplete?.invoke()
+            }
         }
     }
 

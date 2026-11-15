@@ -70,8 +70,8 @@ import kotlinx.coroutines.withContext
 fun AnnotationEditorDialog(
     active: ActiveAnnotationState,
     onLoadTags: suspend () -> List<String>,
-    onSaveAnnotation: (selectedType: Int, selectedColor: String, noteText: String, tagsText: String) -> Unit,
-    onDeleteAnnotation: (() -> Unit)? = null,
+    onSaveAnnotation: (selectedType: Int, selectedColor: String, noteText: String, tagsText: String, onComplete: () -> Unit) -> Unit,
+    onDeleteAnnotation: ((onComplete: () -> Unit) -> Unit)? = null,
     onDismissRequest: () -> Unit,
 ) {
     var noteText by remember(active) { mutableStateOf(active.annotation?.note ?: "") }
@@ -104,15 +104,31 @@ fun AnnotationEditorDialog(
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scrollState = rememberScrollState()
+    var isSubmitting by remember(active) { mutableStateOf(false) }
 
     val onSave: () -> Unit = {
-        onSaveAnnotation(selectedType, selectedColor, noteText, tagsText)
-        onDismissRequest()
+        if (!isSubmitting) {
+            isSubmitting = true
+            onSaveAnnotation(selectedType, selectedColor, noteText, tagsText) {
+                isSubmitting = false
+                onDismissRequest()
+            }
+        }
     }
 
     val onDelete: () -> Unit = {
-        onDeleteAnnotation?.invoke()
-        onDismissRequest()
+        if (!isSubmitting) {
+            val deleteAction = onDeleteAnnotation
+            if (deleteAction != null) {
+                isSubmitting = true
+                deleteAction {
+                    isSubmitting = false
+                    onDismissRequest()
+                }
+            } else {
+                onDismissRequest()
+            }
+        }
     }
 
     ModalBottomSheet(
@@ -238,7 +254,7 @@ fun AnnotationEditorDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             recentColors.forEach { colorHex ->
-                                val color = Color(colorHex.toColorInt())
+                                val color = Color(parseColorIntOrDefault(colorHex))
                                 Box(
                                     modifier = Modifier
                                         .size(36.dp)
@@ -262,11 +278,11 @@ fun AnnotationEditorDialog(
                             }
 
                             // Color Picker Trigger
-                            val isCustomColor = selectedColor !in recentColors
+                            val isCustomColor = recentColors.none { it.equals(selectedColor, ignoreCase = true) }
                             val isCustomColorLight = remember(selectedColor, isCustomColor) {
                                 if (isCustomColor) {
                                     val hsv = FloatArray(3)
-                                    android.graphics.Color.colorToHSV(selectedColor.toColorInt(), hsv)
+                                    android.graphics.Color.colorToHSV(parseColorIntOrDefault(selectedColor), hsv)
                                     hsv[2] >= 0.5f
                                 } else {
                                     false
@@ -276,7 +292,7 @@ fun AnnotationEditorDialog(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .background(
-                                        if (isCustomColor) Color(selectedColor.toColorInt()) else MaterialTheme.colorScheme.surfaceVariant,
+                                        if (isCustomColor) Color(parseColorIntOrDefault(selectedColor)) else MaterialTheme.colorScheme.surfaceVariant,
                                         shape = CircleShape
                                     )
                                     .clickable { showColorPicker = true }
@@ -307,8 +323,11 @@ fun AnnotationEditorDialog(
                         initialColor = selectedColor,
                         onColorSelected = { hex ->
                             selectedColor = hex
-                            uiScope.launch(Dispatchers.IO) {
-                                ColorPreferences.selectColor(context, hex)
+                            uiScope.launch {
+                                recentColors = withContext(Dispatchers.IO) {
+                                    ColorPreferences.selectColor(context, hex)
+                                    ColorPreferences.getRecentColors(context)
+                                }
                             }
                             showColorPicker = false
                         },
@@ -367,4 +386,8 @@ fun AnnotationEditorDialog(
             }
         }
     }
+}
+
+private fun parseColorIntOrDefault(hex: String, fallbackHex: String = "#FFFF00"): Int {
+    return runCatching { hex.toColorInt() }.getOrElse { fallbackHex.toColorInt() }
 }
