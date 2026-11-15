@@ -246,7 +246,9 @@ fun MainScreen(
     var isBottomBarSuppressed by remember { mutableStateOf(false) }
     LaunchedEffect(currentRoute) {
         isBottomBarVisible = true
-        isBottomBarSuppressed = false
+        if (currentRoute != Tab.Library.route) {
+            isBottomBarSuppressed = false
+        }
     }
 
     val nestedScrollConnection = remember(hideTabsOnScroll) {
@@ -412,7 +414,14 @@ fun MainScreen(
                 hasDonated = hasDonated,
                 recordSearchHistory = recordSearchHistory,
                 onCheckForUpdates = onCheckForUpdates,
-                onToggleBottomBar = { isBottomBarSuppressed = !it },
+                onToggleBottomBar = { visible ->
+                    val shouldSuppress = !visible
+                    val wasSuppressed = isBottomBarSuppressed
+                    isBottomBarSuppressed = shouldSuppress
+                    if (wasSuppressed && !shouldSuppress) {
+                        isBottomBarVisible = true
+                    }
+                },
             )
 
             val downloadedBookIds by libraryViewModel.downloadedBookIds.collectAsState()

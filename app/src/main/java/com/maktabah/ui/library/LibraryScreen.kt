@@ -123,9 +123,9 @@ fun LibraryScreen(
     var showUpdateSheet by rememberSaveable { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
 
-    val importTransitionState = remember { MutableTransitionState(false) }
+    val importTransitionState = remember { MutableTransitionState(showImportSheet) }
     importTransitionState.targetState = showImportSheet
-    val updateTransitionState = remember { MutableTransitionState(false) }
+    val updateTransitionState = remember { MutableTransitionState(showUpdateSheet) }
     updateTransitionState.targetState = showUpdateSheet
     val isOverlayActive =
         showImportSheet || showUpdateSheet ||
