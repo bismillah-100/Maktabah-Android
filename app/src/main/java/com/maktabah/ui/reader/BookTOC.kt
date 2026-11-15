@@ -137,7 +137,7 @@ fun BookTOCSheet(
 
     val selectedNodeUuid = selectedNode?.uuid
 
-    val visibleNodesState = remember(filteredTOC, selectedNodeUuid) {
+    val visibleNodesState = remember(selectedNodeUuid) {
         derivedStateOf {
             val list = mutableListOf<VisibleTOCNode>()
             buildVisibleNodeList(filteredTOC, 0, expandedTOCNodes.value, selectedNodeUuid, list)
@@ -170,7 +170,7 @@ fun BookTOCSheet(
             fun findPath(nodes: List<TOCNode>, target: TOCNode): Boolean {
                 for (node in nodes) {
                     path.add(node)
-                    if (node.id == target.id) return true
+                    if (node.uuid == target.uuid) return true
                     if (findPath(node.children, target)) return true
                     path.removeAt(path.size - 1)
                 }
@@ -203,10 +203,13 @@ fun BookTOCSheet(
 
             val index = visibleNodesState.value.indexOfFirst { it.node.uuid == targetUuid }
             if (index != -1) {
-                val visibleItems = listState.layoutInfo.visibleItemsInfo
-                val isVisible = visibleItems.any { it.index == index }
+                val layoutInfo = listState.layoutInfo
+                val isVisible = layoutInfo.visibleItemsInfo.any { item ->
+                    item.index == index &&
+                        item.offset >= 0 &&
+                        (item.offset + item.size) <= (layoutInfo.viewportEndOffset - layoutInfo.afterContentPadding)
+                }
                 if (!isVisible) {
-                    delay(100.milliseconds)
                     listState.scrollToItem(index)
                 }
                 lastScrolledToUuid = targetUuid
