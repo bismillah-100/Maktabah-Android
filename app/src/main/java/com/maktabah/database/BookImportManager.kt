@@ -145,6 +145,8 @@ object BookImportManager {
         newAuthor: AuthorRow?,
     ): Result<Unit> {
         return try {
+            val oldArchiveId = BookArchiveIntegrator.getArchiveIdForBook(context, metadata.bkid)
+
             // 1. Integrasikan konten (tabel bX, tX, FTS) terlebih dahulu agar kegagalan tidak
             // meninggalkan metadata yatim di main.sqlite / special.sqlite
             val success = BookArchiveIntegrator.integrateDatabase(
@@ -210,6 +212,10 @@ object BookImportManager {
                 }
             }
 
+            if (oldArchiveId != null && oldArchiveId > 0 && oldArchiveId != metadata.archiveId) {
+                BookArchiveIntegrator.removeBookFromArchive(context, metadata.bkid, oldArchiveId)
+            }
+
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
@@ -227,6 +233,11 @@ object BookImportManager {
      * Mengubah ID buku di arsip konten, FTS, dan tabel 0bok. Anotasi diupdate oleh pemanggil.
      */
     suspend fun changeBookId(context: Context, oldId: Int, newId: Int): Result<Unit> {
+        if (oldId == newId) return Result.success(Unit)
+        if (isBookIdTaken(context, newId)) {
+            return Result.failure(Exception("ID buku $newId sudah digunakan"))
+        }
+
         return try {
             val archiveId = BookArchiveIntegrator.getArchiveIdForBook(context, oldId)
             if (archiveId != null && archiveId > 0) {
@@ -247,6 +258,17 @@ object BookImportManager {
                     stmt.bindInt(1, newId)
                     stmt.bindInt(2, oldId)
                     stmt.step()
+                }
+            }
+
+            val specialDbFile = File(context.filesDir, "special.sqlite")
+            if (specialDbFile.exists()) {
+                SQLiteDB(specialDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { specDb ->
+                    specDb.prepare("UPDATE shorts SET Bk = ? WHERE CAST(Bk AS INTEGER) = ?")?.use { stmt ->
+                        stmt.bindInt(1, newId)
+                        stmt.bindInt(2, oldId)
+                        stmt.step()
+                    }
                 }
             }
             Result.success(Unit)

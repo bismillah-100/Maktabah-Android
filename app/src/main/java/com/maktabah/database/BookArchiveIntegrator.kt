@@ -128,12 +128,59 @@ object BookArchiveIntegrator {
         }
     }
 
+    suspend fun removeBookFromArchive(
+        context: Context,
+        bookId: Int,
+        archiveId: Int,
+    ): Boolean = BookArchiveSingleFlight.run(archiveId) {
+        val archiveFile = File(context.filesDir, "$archiveId.sqlite")
+        val archiveFtsFile = File(context.filesDir, "${archiveId}_fts.sqlite")
+        var db: SQLiteDB? = null
+        var ftsDb: SQLiteDB? = null
+
+        try {
+            if (archiveFile.exists()) {
+                db = SQLiteDB(
+                    archiveFile.absolutePath,
+                    SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
+                )
+                db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
+                db.prepare("DROP TABLE IF EXISTS main.\"b$bookId\";")?.use { it.step() }
+                db.prepare("DROP TABLE IF EXISTS main.\"t$bookId\";")?.use { it.step() }
+                db.prepare("COMMIT;")?.use { it.step() }
+            }
+            if (archiveFtsFile.exists()) {
+                ftsDb = SQLiteDB(
+                    archiveFtsFile.absolutePath,
+                    SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
+                )
+                ftsDb.prepare("BEGIN TRANSACTION;")?.use { it.step() }
+                deleteBookFts(ftsDb, bookId)
+                ftsDb.prepare("COMMIT;")?.use { it.step() }
+            }
+            true
+        } catch (e: CancellationException) {
+            runCatching { db?.prepare("ROLLBACK;")?.use { it.step() } }
+            runCatching { ftsDb?.prepare("ROLLBACK;")?.use { it.step() } }
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Error removing book $bookId from archive $archiveId", e)
+            runCatching { db?.prepare("ROLLBACK;")?.use { it.step() } }
+            runCatching { ftsDb?.prepare("ROLLBACK;")?.use { it.step() } }
+            false
+        } finally {
+            db?.close()
+            ftsDb?.close()
+        }
+    }
+
     suspend fun migrateBookId(
         context: Context,
         oldId: Int,
         newId: Int,
         archiveId: Int,
     ): Boolean = BookArchiveSingleFlight.run(archiveId) {
+        if (oldId == newId) return@run true
         val archiveFile = File(context.filesDir, "$archiveId.sqlite")
         if (!archiveFile.exists()) return@run true
 
@@ -156,19 +203,13 @@ object BookArchiveIntegrator {
             val hasTocTable = tableExists(db, oldTocTable)
 
             db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-            try {
-                if (hasBookTable) {
-                    db.prepare("DROP TABLE IF EXISTS main.\"$newBookTable\";")?.use { it.step() }
-                    db.prepare("ALTER TABLE main.\"$oldBookTable\" RENAME TO \"$newBookTable\";")?.use { it.step() }
-                }
-                if (hasTocTable) {
-                    db.prepare("DROP TABLE IF EXISTS main.\"$newTocTable\";")?.use { it.step() }
-                    db.prepare("ALTER TABLE main.\"$oldTocTable\" RENAME TO \"$newTocTable\";")?.use { it.step() }
-                }
-                db.prepare("COMMIT;")?.use { it.step() }
-            } catch (e: Exception) {
-                db.prepare("ROLLBACK;")?.use { it.step() }
-                throw e
+            if (hasBookTable) {
+                db.prepare("DROP TABLE IF EXISTS main.\"$newBookTable\";")?.use { it.step() }
+                db.prepare("ALTER TABLE main.\"$oldBookTable\" RENAME TO \"$newBookTable\";")?.use { it.step() }
+            }
+            if (hasTocTable) {
+                db.prepare("DROP TABLE IF EXISTS main.\"$newTocTable\";")?.use { it.step() }
+                db.prepare("ALTER TABLE main.\"$oldTocTable\" RENAME TO \"$newTocTable\";")?.use { it.step() }
             }
 
             if (hasBookTable && archiveFtsFile.exists()) {
@@ -177,14 +218,18 @@ object BookArchiveIntegrator {
                         archiveFtsFile.absolutePath,
                         SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
                     )
-                deleteBookFts(ftsDb, oldId)
-                buildFtsIndex(db, ftsDb, newBookTable, newId)
+                buildFtsIndex(db, ftsDb, newBookTable, newId, oldBookId = oldId)
             }
+            db.prepare("COMMIT;")?.use { it.step() }
             return@run true
         } catch (e: CancellationException) {
+            runCatching { ftsDb?.prepare("ROLLBACK;")?.use { it.step() } }
+            runCatching { db?.prepare("ROLLBACK;")?.use { it.step() } }
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Error migrating book $oldId to $newId in archive $archiveId", e)
+            runCatching { ftsDb?.prepare("ROLLBACK;")?.use { it.step() } }
+            runCatching { db?.prepare("ROLLBACK;")?.use { it.step() } }
             return@run false
         } finally {
             db?.close()
@@ -251,17 +296,15 @@ object BookArchiveIntegrator {
         targetTableName: String,
         columns: List<TableColumnInfo>
     ) {
-        db.prepare("DROP TABLE IF EXISTS main.\"$targetTableName\";")?.use { it.step() }
-
         val createSql = makeCreateTableSQL(targetTableName, columns)
-        Log.d(TAG, "Creating table in archive: $createSql")
-        db.prepare(createSql)?.use { it.step() }
-
         val colNames = columns.joinToString(", ") { "\"${it.name}\"" }
         val placeholders = columns.joinToString(", ") { "?" }
         val insertSql = "INSERT INTO main.\"$targetTableName\" ($colNames) VALUES ($placeholders);"
 
         db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
+        db.prepare("DROP TABLE IF EXISTS main.\"$targetTableName\";")?.use { it.step() }
+        Log.d(TAG, "Creating table in archive: $createSql")
+        db.prepare(createSql)?.use { it.step() }
 
         var rowCount = 0
         db.prepare(insertSql)?.use { insertStmt ->
@@ -311,16 +354,15 @@ object BookArchiveIntegrator {
             return
         }
 
-        db.prepare("DROP TABLE IF EXISTS main.\"$targetTocTableName\";")?.use { it.step() }
         val createTocSql = makeCreateTableSQL(targetTocTableName, tocColumns)
-        Log.d(TAG, "Creating TOC table: $createTocSql")
-        db.prepare(createTocSql)?.use { it.step() }
-
         val tocColNames = tocColumns.joinToString(", ") { "\"${it.name}\"" }
         val tocPlaceholders = tocColumns.joinToString(", ") { "?" }
         val insertTocSql = "INSERT INTO main.\"$targetTocTableName\" ($tocColNames) VALUES ($tocPlaceholders);"
 
         db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
+        db.prepare("DROP TABLE IF EXISTS main.\"$targetTocTableName\";")?.use { it.step() }
+        Log.d(TAG, "Creating TOC table: $createTocSql")
+        db.prepare(createTocSql)?.use { it.step() }
 
         var tocRowCount = 0
         db.prepare(insertTocSql)?.use { insertTocStmt ->
@@ -347,7 +389,8 @@ object BookArchiveIntegrator {
         db: SQLiteDB,
         ftsDb: SQLiteDB,
         targetTableName: String,
-        bookId: Int
+        bookId: Int,
+        oldBookId: Int? = null,
     ) {
         ftsDb.prepare("PRAGMA synchronous = OFF;")?.use { it.step() }
         ftsDb.prepare("PRAGMA journal_mode = MEMORY;")?.use { it.step() }
@@ -363,9 +406,12 @@ object BookArchiveIntegrator {
             "CREATE VIRTUAL TABLE IF NOT EXISTS main.archive_fts USING fts5(nass_clean, content='', contentless_delete=1, tokenize='unicode61');"
         )?.use { it.step() }
 
-        deleteBookFts(ftsDb, bookId)
-
         ftsDb.prepare("BEGIN TRANSACTION;")?.use { it.step() }
+
+        if (oldBookId != null && oldBookId != bookId) {
+            deleteBookFts(ftsDb, oldBookId)
+        }
+        deleteBookFts(ftsDb, bookId)
 
         var ftsCount = 0
         ftsDb.prepare("INSERT INTO main.archive_fts (rowid, nass_clean) VALUES (?, ?);")?.use { ftsInsertStmt ->

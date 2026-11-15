@@ -19,6 +19,9 @@ class LibraryDataManager(
 
     fun loadData() {
         if (!mainDbFile.exists()) return
+        synchronized(shortsCache) {
+            shortsCache.clear()
+        }
 
         val categories = mutableListOf<CategoryData>()
         val catMap = mutableMapOf<Int, CategoryData>()

@@ -311,6 +311,7 @@ class ImportBookViewModel(application: Application) : AndroidViewModel(applicati
         annotationManager: AnnotationManager,
         onReloadLibrary: suspend () -> Unit
     ) {
+        if (_isImporting.value) return
         viewModelScope.launch {
             _isImporting.value = true
             val result = withContext(Dispatchers.IO) {
