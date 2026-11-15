@@ -341,14 +341,7 @@ fun AnnotationsScreen(
         onDismiss = { popoverAnchor = null; popoverAnnotation = null },
         onEdit = { ann -> editingAnnotation = ann; popoverAnchor = null; popoverAnnotation = null },
         onDelete = { ann ->
-            scope.launch {
-                withContext(Dispatchers.IO) {
-                    ann.id?.let { id ->
-                        annotationManager.deleteAnnotation(id, ann.ckRecordId)
-                    }
-                }
-                viewModel.forceReload(annotationManager)
-            }
+            viewModel.deleteAnnotation(ann)
             popoverAnchor = null; popoverAnnotation = null
         }
     )

@@ -557,7 +557,6 @@ fun ReaderScreen(
     if (showAnnotationsSheet) {
         BookAnnotationsSheet(
             bookAnnotations = bookAnnotations,
-            annotationManager = annotationManager,
             viewModel = viewModel,
             onDismissRequest = { showAnnotationsSheet = false },
         )

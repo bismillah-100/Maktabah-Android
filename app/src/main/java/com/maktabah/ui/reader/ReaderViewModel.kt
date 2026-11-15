@@ -372,7 +372,7 @@ class ReaderViewModel : ViewModel() {
         val manager = annotationManager ?: return
         val bid = currentBookId
         val cid = _currentContent.value?.id ?: return
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             val all = manager.getAnnotationsForBook(bid)
             _bookAnnotations.value = all
             _currentAnnotations.value = all.filter { it.contentId == cid }
@@ -458,6 +458,14 @@ class ReaderViewModel : ViewModel() {
             withContext(Dispatchers.Main) {
                 onComplete?.invoke()
             }
+        }
+    }
+
+    suspend fun deleteAnnotation(annotation: Annotation) {
+        val manager = annotationManager ?: return
+        val id = annotation.id ?: return
+        withContext(Dispatchers.IO) {
+            manager.deleteAnnotation(id, annotation.ckRecordId)
         }
     }
 

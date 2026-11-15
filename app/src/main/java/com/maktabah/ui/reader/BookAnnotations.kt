@@ -28,7 +28,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.maktabah.R
-import com.maktabah.database.AnnotationManager
 import com.maktabah.models.Annotation
 import com.maktabah.models.AnnotationSearchScope
 import com.maktabah.models.FlashTarget
@@ -46,7 +45,6 @@ import kotlin.time.Duration.Companion.milliseconds
 @Composable
 fun BookAnnotationsSheet(
     bookAnnotations: List<Annotation>,
-    annotationManager: AnnotationManager,
     viewModel: ReaderViewModel,
     onDismissRequest: () -> Unit,
 ) {
@@ -159,12 +157,7 @@ fun BookAnnotationsSheet(
                                     onDismissRequest()
                                 },
                                 onDelete = {
-                                    withContext(Dispatchers.IO) {
-                                        ann.id?.let {
-                                            annotationManager.deleteAnnotation(it, ann.ckRecordId)
-                                        }
-                                    }
-                                    viewModel.refreshAnnotations()
+                                    viewModel.deleteAnnotation(ann)
                                     null
                                 },
                                 onDeleteComplete = {

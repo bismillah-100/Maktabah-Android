@@ -279,7 +279,7 @@ class AnnotationsViewModel : ViewModel() {
     }
 
     private fun observeAnnotationUpdates(annotationManager: AnnotationManager) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             AnnotationManager.updates.collect { change ->
                 handleAnnotationChange(change, annotationManager)
             }
@@ -443,7 +443,7 @@ class AnnotationsViewModel : ViewModel() {
     }
 
     private fun loadAnnotations(annotationManager: AnnotationManager, isInitial: Boolean = false) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             if (isInitial) {
                 _isLoading.value = true
             }
@@ -486,24 +486,22 @@ class AnnotationsViewModel : ViewModel() {
                 tagsText = tagsText,
             ) ?: return
 
-        viewModelScope.launch(Dispatchers.IO) {
-            manager.insertOrUpdate(annotationToSave)
-            withContext(Dispatchers.Main) {
-                forceReload(manager)
-                onComplete?.invoke()
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                manager.insertOrUpdate(annotationToSave)
             }
+            onComplete?.invoke()
         }
     }
 
     fun deleteAnnotation(annotation: Annotation, onComplete: (() -> Unit)? = null) {
         val manager = annotationManager ?: return
         val id = annotation.id ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            manager.deleteAnnotation(id, annotation.ckRecordId)
-            withContext(Dispatchers.Main) {
-                forceReload(manager)
-                onComplete?.invoke()
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                manager.deleteAnnotation(id, annotation.ckRecordId)
             }
+            onComplete?.invoke()
         }
     }
 
