@@ -63,6 +63,13 @@ class BookUpdateViewModel(
         _searchText.value = query
     }
 
+    fun resetSessionState() {
+        if (_isUpdating.value || _isLoadingList.value) return
+        _searchText.value = ""
+        _progressMessage.value = UiText.Empty
+        _availableUpdates.value = emptyList()
+    }
+
     fun loadAvailableUpdates() {
         if (_isLoadingList.value || _isUpdating.value) return
         viewModelScope.launch {

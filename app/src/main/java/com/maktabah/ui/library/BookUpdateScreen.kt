@@ -118,10 +118,15 @@ fun BookUpdateSheet(
         derivedStateOf { availableUpdates.isNotEmpty() }
     }
 
-    BackHandler {
+    val dismissSheet: () -> Unit = {
         if (!isUpdating) {
+            vm.resetSessionState()
             onDismiss()
         }
+    }
+
+    BackHandler {
+        dismissSheet()
     }
 
     LaunchedEffect(Unit) {
@@ -140,7 +145,7 @@ fun BookUpdateSheet(
                     },
                     navigationIcon = {
                         IconButton(
-                            onClick = onDismiss,
+                            onClick = dismissSheet,
                             enabled = !isUpdating,
                         ) {
                             Icon(
