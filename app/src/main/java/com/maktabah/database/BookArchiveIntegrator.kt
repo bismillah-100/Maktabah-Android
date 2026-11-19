@@ -38,6 +38,77 @@ object BookArchiveIntegrator {
         return archiveId
     }
 
+    suspend fun deleteBooksFromArchive(
+        context: Context,
+        archiveId: Int,
+        bookIds: List<Int>,
+    ): Set<Int> {
+        val targetIds = bookIds.distinct()
+        if (targetIds.isEmpty()) return emptySet()
+
+        return BookArchiveSingleFlight.run(archiveId) {
+            val filesDir = context.filesDir
+            val file = File(filesDir, "$archiveId.sqlite")
+            val ftsFile = File(filesDir, "${archiveId}_fts.sqlite")
+            val deletedContentIds = HashSet<Int>()
+
+            if (file.exists()) {
+                try {
+                    SQLiteDB(
+                        file.absolutePath,
+                        SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
+                    ).use { db ->
+                        db.inTransaction {
+                            for (bookId in targetIds) {
+                                db.prepare("DROP TABLE IF EXISTS main.\"b$bookId\";")?.use { it.step() }
+                                db.prepare("DROP TABLE IF EXISTS main.\"t$bookId\";")?.use { it.step() }
+                                deletedContentIds.add(bookId)
+                            }
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed deleting content tables from archive $archiveId", e)
+                }
+            }
+
+            if (ftsFile.exists()) {
+                try {
+                    SQLiteDB(
+                        ftsFile.absolutePath,
+                        SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
+                    ).use { db ->
+                        val hasUnifiedFts = ArchiveDatabaseTools.hasUnifiedFTS(db)
+                        db.inTransaction {
+                            for (bookId in targetIds) {
+                                db.prepare("DROP TABLE IF EXISTS main.\"b${bookId}_fts\";")?.use { it.step() }
+                                if (hasUnifiedFts) {
+                                    db.prepare(
+                                        "DELETE FROM archive_fts WHERE rowid IN (SELECT rowid FROM archive_index WHERE book_id = ?);"
+                                    )?.use { stmt ->
+                                        stmt.bindInt(1, bookId)
+                                        stmt.step()
+                                    }
+                                    db.prepare("DELETE FROM archive_index WHERE book_id = ?;")?.use { stmt ->
+                                        stmt.bindInt(1, bookId)
+                                        stmt.step()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed deleting FTS from archive $archiveId", e)
+                }
+            }
+
+            deletedContentIds
+        }
+    }
+
     suspend fun integrateDatabase(
         context: Context,
         bookId: Int,
