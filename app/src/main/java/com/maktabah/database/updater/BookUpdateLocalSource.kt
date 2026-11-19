@@ -144,8 +144,7 @@ class BookUpdateLocalSource {
             )?.use { it.step() == SQLiteDB.SQLITE_ROW } ?: false
 
             val verCol = resolveVersionColumn(db) ?: "bVer"
-            db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-            try {
+            db.inTransaction {
                 if (!exists) {
                     val sql = """
                         INSERT OR REPLACE INTO "0bok"
@@ -188,10 +187,6 @@ class BookUpdateLocalSource {
                         stmt.step()
                     }
                 }
-                db.prepare("COMMIT;")?.use { it.step() }
-            } catch (e: Exception) {
-                db.prepare("ROLLBACK;")?.use { it.step() }
-                throw e
             }
         }
     }

@@ -211,8 +211,7 @@ object BookImportManager {
             BookArchiveSingleFlight.runCatalogWrite {
                 if (newAuthor != null && specialDbFile.exists()) {
                     openDatabase(specialDbFile, WRITE_FLAGS).use { specDb ->
-                        specDb.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-                        try {
+                        insertedAuthorId = specDb.inTransaction {
                             specDb.prepare(
                                 "INSERT OR REPLACE INTO Auth (authid, auth, Lng, inf, HigriD, oVer) VALUES (?,?,?,?,?,?)"
                             )?.use { stmt ->
@@ -226,19 +225,14 @@ object BookImportManager {
                                     throw Exception("Gagal menyimpan author baru ke special.sqlite")
                                 }
                             }
-                            specDb.prepare("COMMIT;")?.use { it.step() }
-                            insertedAuthorId = newAuthor.id
-                        } catch (e: Exception) {
-                            specDb.prepare("ROLLBACK;")?.use { it.step() }
-                            throw e
+                            newAuthor.id
                         }
                     }
                 }
 
                 openDatabase(mainDbFile, WRITE_FLAGS).use { db ->
                     ensureTrackingTables(db)
-                    db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-                    try {
+                    catalogCommitted = db.inTransaction {
                         db.prepare("DELETE FROM \"0bok\" WHERE bkid = ?")?.use { stmt ->
                             stmt.bindInt(1, metadata.bkid)
                             stmt.step()
@@ -276,12 +270,7 @@ object BookImportManager {
                                 stmt.step()
                             }
                         }
-
-                        db.prepare("COMMIT;")?.use { it.step() }
-                        catalogCommitted = true
-                    } catch (e: Exception) {
-                        db.prepare("ROLLBACK;")?.use { it.step() }
-                        throw e
+                        true
                     }
                 }
             }
@@ -343,8 +332,7 @@ object BookImportManager {
                 if (mainDbFile.exists()) {
                     openDatabase(mainDbFile, WRITE_FLAGS).use { db ->
                         ensureTrackingTables(db)
-                        db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-                        try {
+                        db.inTransaction {
                             if (isNewBook) {
                                 db.prepare("DELETE FROM \"0bok\" WHERE bkid = ?;")?.use { stmt ->
                                     stmt.bindInt(1, bookId)
@@ -368,26 +356,17 @@ object BookImportManager {
                                     }
                                 }
                             }
-                            db.prepare("COMMIT;")?.use { it.step() }
-                        } catch (e: Exception) {
-                            db.prepare("ROLLBACK;")?.use { it.step() }
-                            throw e
                         }
                     }
                 }
 
                 if (deleteOrphanAuthor && insertedAuthorId != null && specialDbFile.exists()) {
                     openDatabase(specialDbFile, WRITE_FLAGS).use { specDb ->
-                        specDb.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-                        try {
+                        specDb.inTransaction {
                             specDb.prepare("DELETE FROM Auth WHERE authid = ?;")?.use { stmt ->
                                 stmt.bindInt(1, insertedAuthorId)
                                 stmt.step()
                             }
-                            specDb.prepare("COMMIT;")?.use { it.step() }
-                        } catch (e: Exception) {
-                            specDb.prepare("ROLLBACK;")?.use { it.step() }
-                            throw e
                         }
                     }
                 }
@@ -428,8 +407,7 @@ object BookImportManager {
             BookArchiveSingleFlight.runCatalogWrite {
                 openDatabase(mainDbFile, WRITE_FLAGS).use { db ->
                     ensureTrackingTables(db)
-                    db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-                    try {
+                    db.inTransaction {
                         db.prepare("UPDATE \"0bok\" SET bkid = ? WHERE bkid = ?")?.use { stmt ->
                             stmt.bindInt(1, newId)
                             stmt.bindInt(2, oldId)
@@ -449,10 +427,6 @@ object BookImportManager {
                                 stmt.step()
                             }
                         }
-                        db.prepare("COMMIT;")?.use { it.step() }
-                    } catch (e: Exception) {
-                        db.prepare("ROLLBACK;")?.use { it.step() }
-                        throw e
                     }
                 }
             }
@@ -496,8 +470,7 @@ object BookImportManager {
 
             openDatabase(mainDbFile, WRITE_FLAGS).use { db ->
                 ensureTrackingTables(db)
-                db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-                try {
+                db.inTransaction {
                     for (chunk in targetIds.chunked(900)) {
                         val placeholders = chunk.joinToString(",") { "?" }
                         db.prepare("SELECT bkid, COALESCE(authno, 0) FROM \"0bok\" WHERE bkid IN ($placeholders);")?.use { stmt ->
@@ -537,18 +510,12 @@ object BookImportManager {
                             }
                         }
                     }
-
-                    db.prepare("COMMIT;")?.use { it.step() }
-                } catch (e: Exception) {
-                    db.prepare("ROLLBACK;")?.use { it.step() }
-                    throw e
                 }
             }
 
             if (orphanedAuthorIds.isNotEmpty() && specialDbFile.exists()) {
                 openDatabase(specialDbFile, WRITE_FLAGS).use { specDb ->
-                    specDb.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-                    try {
+                    specDb.inTransaction {
                         for (chunk in orphanedAuthorIds.toList().chunked(900)) {
                             val placeholders = chunk.joinToString(",") { "?" }
                             specDb.prepare("DELETE FROM Auth WHERE authid IN ($placeholders);")?.use { stmt ->
@@ -556,10 +523,6 @@ object BookImportManager {
                                 stmt.step()
                             }
                         }
-                        specDb.prepare("COMMIT;")?.use { it.step() }
-                    } catch (e: Exception) {
-                        specDb.prepare("ROLLBACK;")?.use { it.step() }
-                        throw e
                     }
                 }
             }

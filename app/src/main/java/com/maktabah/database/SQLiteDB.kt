@@ -26,6 +26,31 @@ class SQLiteDB(path: String, flags: Int) : Closeable {
 
     fun lastInsertRowId(): Long = lastInsertRowId(dbPtr)
 
+    inline fun <T> inTransaction(block: () -> T): T {
+        val beginStmt = prepare("BEGIN TRANSACTION;")
+            ?: throw IllegalStateException("Failed to prepare BEGIN TRANSACTION (database closed)")
+        val beginRc = beginStmt.use { it.step() }
+        if (beginRc != SQLITE_DONE && beginRc != SQLITE_OK) {
+            throw IllegalStateException("Failed to begin transaction (code=$beginRc)")
+        }
+        return try {
+            val result = block()
+            val commitStmt = prepare("COMMIT;")
+                ?: throw IllegalStateException("Failed to prepare COMMIT (database closed)")
+            val commitRc = commitStmt.use { it.step() }
+            if (commitRc != SQLITE_DONE && commitRc != SQLITE_OK) {
+                throw IllegalStateException("Failed to commit transaction (code=$commitRc)")
+            }
+            result
+        } catch (t: Throwable) {
+            try {
+                prepare("ROLLBACK;")?.use { it.step() }
+            } catch (_: Throwable) {
+            }
+            throw t
+        }
+    }
+
     private external fun open(path: String, flags: Int): Long
     private external fun close(dbPtr: Long): Int
     private external fun prepare(dbPtr: Long, sql: String): Long

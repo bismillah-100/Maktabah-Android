@@ -7,8 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.maktabah.R
 import com.maktabah.config.AppConfig
-import com.maktabah.database.ArchiveDatabaseTools
-import com.maktabah.database.BookArchiveSingleFlight
+import com.maktabah.database.BookArchiveIntegrator
 import com.maktabah.database.BookImportManager
 import com.maktabah.database.SQLiteDB
 import com.maktabah.database.updater.BookUpdateCheckWorker
@@ -43,7 +42,6 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 
 private val SQLITE_FILE_REGEX = Regex("\\d+\\.sqlite")
@@ -786,7 +784,6 @@ class LibraryViewModel(
         viewModelScope.launch {
             try {
                 val executionResult = withContext(Dispatchers.IO) {
-                    val filesDir = appContext.filesDir
                     val allTargets = (summary.importedBookIds + summary.downloadedServerBookIds).distinct()
                     val booksByIdSnapshot = dataManager.booksById
                     val groupedByArchive = HashMap<Int, MutableList<Int>>()
@@ -800,81 +797,13 @@ class LibraryViewModel(
                     val deletedContentIds = HashSet<Int>()
                     for ((archiveId, bookIdsInArchive) in groupedByArchive) {
                         coroutineContext.ensureActive()
-                        BookArchiveSingleFlight.run(archiveId) {
-                            val file = File(filesDir, "$archiveId.sqlite")
-                            val ftsFile = File(filesDir, "${archiveId}_fts.sqlite")
-
-                            if (file.exists()) {
-                                try {
-                                    SQLiteDB(
-                                        file.absolutePath,
-                                        SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
-                                    ).use { db ->
-                                        db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
-                                        db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-                                        try {
-                                            for (bookId in bookIdsInArchive) {
-                                                db.prepare("DROP TABLE IF EXISTS main.\"b$bookId\";")?.use { it.step() }
-                                                db.prepare("DROP TABLE IF EXISTS main.\"t$bookId\";")?.use { it.step() }
-                                                deletedContentIds.add(bookId)
-                                            }
-                                            db.prepare("COMMIT;")?.use { it.step() }
-                                        } catch (e: CancellationException) {
-                                            db.prepare("ROLLBACK;")?.use { it.step() }
-                                            throw e
-                                        } catch (e: Exception) {
-                                            db.prepare("ROLLBACK;")?.use { it.step() }
-                                            throw e
-                                        }
-                                    }
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Exception) {
-                                    Log.e("LibraryViewModel", "Failed deleting content tables from archive $archiveId", e)
-                                }
-                            }
-
-                            if (ftsFile.exists()) {
-                                try {
-                                    SQLiteDB(
-                                        ftsFile.absolutePath,
-                                        SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
-                                    ).use { db ->
-                                        db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
-                                        val hasUnifiedFts = ArchiveDatabaseTools.hasUnifiedFTS(db)
-                                        db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-                                        try {
-                                            for (bookId in bookIdsInArchive) {
-                                                db.prepare("DROP TABLE IF EXISTS main.\"b${bookId}_fts\";")?.use { it.step() }
-                                                if (hasUnifiedFts) {
-                                                    db.prepare(
-                                                        "DELETE FROM archive_fts WHERE rowid IN (SELECT rowid FROM archive_index WHERE book_id = ?);"
-                                                    )?.use { stmt ->
-                                                        stmt.bindInt(1, bookId)
-                                                        stmt.step()
-                                                    }
-                                                    db.prepare("DELETE FROM archive_index WHERE book_id = ?;")?.use { stmt ->
-                                                        stmt.bindInt(1, bookId)
-                                                        stmt.step()
-                                                    }
-                                                }
-                                            }
-                                            db.prepare("COMMIT;")?.use { it.step() }
-                                        } catch (e: CancellationException) {
-                                            db.prepare("ROLLBACK;")?.use { it.step() }
-                                            throw e
-                                        } catch (e: Exception) {
-                                            db.prepare("ROLLBACK;")?.use { it.step() }
-                                            throw e
-                                        }
-                                    }
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Exception) {
-                                    Log.e("LibraryViewModel", "Failed deleting FTS from archive $archiveId", e)
-                                }
-                            }
-                        }
+                        deletedContentIds.addAll(
+                            BookArchiveIntegrator.deleteBooksFromArchive(
+                                context = appContext,
+                                archiveId = archiveId,
+                                bookIds = bookIdsInArchive,
+                            )
+                        )
                     }
 
                     val deletedImportedMetadataIds = if (summary.importedBookIds.isNotEmpty()) {
