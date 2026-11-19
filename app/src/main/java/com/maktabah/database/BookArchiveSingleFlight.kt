@@ -19,4 +19,14 @@ object BookArchiveSingleFlight {
             action()
         }
     }
+
+    /**
+     * Serializes catalog database writes (main.sqlite / special.sqlite) across
+     * imports, updates, and deletions.
+     */
+    suspend fun <T> runCatalogWrite(action: suspend () -> T): T {
+        return globalLock.withLock {
+            action()
+        }
+    }
 }

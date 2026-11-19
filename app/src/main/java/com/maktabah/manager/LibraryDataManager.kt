@@ -11,8 +11,11 @@ import java.io.File
 class LibraryDataManager(
     private val mainDbFile: File,
 ) {
+    @Volatile
     var allRootCategories = listOf<CategoryData>()
+    @Volatile
     var categoryMap = mapOf<Int, CategoryData>()
+    @Volatile
     var booksById = mapOf<Int, BooksData>()
 
     private val shortsCache = mutableMapOf<String, ShortsMapping>()
@@ -33,6 +36,7 @@ class LibraryDataManager(
             mainDbFile.absolutePath,
             SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
         ).use { db ->
+            db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
             // Load Categories
             db.prepare("SELECT id, name, Lvl, catord FROM \"0cat\" ORDER BY catord ASC")?.use { stmt ->
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
@@ -67,6 +71,7 @@ class LibraryDataManager(
                         specialDbFile.absolutePath,
                         SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
                     ).use { specDb ->
+                        specDb.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
                         specDb.prepare("SELECT authid, auth, Lng, inf FROM Auth")?.use { authStmt ->
                             while (authStmt.step() == SQLiteDB.SQLITE_ROW) {
                                 val authId = authStmt.columnInt(0)

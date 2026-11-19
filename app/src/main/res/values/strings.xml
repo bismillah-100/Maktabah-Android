@@ -78,6 +78,13 @@
     <string name="library_selected_books_count">%1$d Books Selected</string>
     <string name="library_delete_success">Successfully deleted %1$d books.</string>
     <string name="library_delete_no_result">No books were deleted.</string>
+    <string name="library_delete_confirm_title">Delete Selected Books?</string>
+    <string name="library_delete_confirm_downloaded_only">%1$d downloaded book(s) will be removed from local storage. They will remain in the catalog and can be downloaded again later.</string>
+    <string name="library_delete_confirm_imported_only">%1$d imported book(s) and their catalog entries (including missing/unlinked entries and unused imported authors) will be permanently deleted and cannot be re-downloaded from the server.</string>
+    <string name="library_delete_confirm_mixed">%1$d imported book(s) will be permanently deleted from the local catalog (cannot be re-downloaded), and %2$d downloaded book(s) will have their local content removed (can be re-downloaded).</string>
+    <string name="library_delete_confirm_skipped_note">\n\n%1$d book(s) currently downloading will be skipped.</string>
+    <string name="library_delete_confirm_action">Delete</string>
+    <string name="library_delete_skipped_downloading">Cannot delete %1$d book(s) while downloading.</string>
     <string name="library_fallback_book_name">Book</string>
     <string name="library_download_failed">Failed to download book.</string>
     <string name="library_book_not_found_index">Book not found in index.</string>

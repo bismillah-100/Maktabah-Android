@@ -76,6 +76,13 @@
     <string name="library_selected_books_count">%1$d Buku Terpilih</string>
     <string name="library_delete_success">Berhasil menghapus %1$d buku.</string>
     <string name="library_delete_no_result">Tidak ada buku yang dihapus.</string>
+    <string name="library_delete_confirm_title">Hapus Buku Terpilih?</string>
+    <string name="library_delete_confirm_downloaded_only">%1$d buku unduhan akan dihapus dari penyimpanan lokal. Buku tetap tersedia di katalog dan dapat diunduh ulang kapan saja.</string>
+    <string name="library_delete_confirm_imported_only">%1$d buku import beserta datanya di katalog lokal (termasuk entri yang kontennya hilang/nyangkut dan author import yang tidak lagi terpakai) akan dihapus permanen dan tidak dapat diunduh ulang dari server.</string>
+    <string name="library_delete_confirm_mixed">%1$d buku import akan dihapus permanen dari katalog lokal (tidak dapat diunduh ulang), dan %2$d buku unduhan server akan dihapus konten lokalnya (tetap bisa diunduh ulang).</string>
+    <string name="library_delete_confirm_skipped_note">\n\n%1$d buku yang sedang diunduh akan dilewati.</string>
+    <string name="library_delete_confirm_action">Hapus</string>
+    <string name="library_delete_skipped_downloading">Tidak dapat menghapus %1$d buku yang sedang diunduh.</string>
     <string name="library_fallback_book_name">Buku</string>
     <string name="library_download_failed">Gagal mengunduh buku.</string>
     <string name="library_book_not_found_index">Buku tidak ditemukan di index.</string>

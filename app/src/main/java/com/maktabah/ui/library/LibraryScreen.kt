@@ -1,5 +1,6 @@
 package com.maktabah.ui.library
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.Spring
@@ -12,14 +13,15 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowRight
 import androidx.compose.material.icons.filled.CheckCircleOutline
@@ -34,6 +36,9 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.ImportContacts
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -45,9 +50,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -55,15 +60,18 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import com.maktabah.R
@@ -97,7 +105,11 @@ fun LibraryScreen(
     onToggleBottomBar: ((Boolean) -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val currentContext by rememberUpdatedState(context)
     val downloadedBookIds by viewModel.downloadedBookIds.collectAsState()
+    val importedBookIds by viewModel.importedBookIds.collectAsState()
+    val pendingDeleteSummary by viewModel.pendingDeleteSummary.collectAsState()
+    val isDeleting by viewModel.isDeleting.collectAsState()
     val flatVisibleItems by viewModel.flatVisibleItems.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val showOnlyDownloaded by viewModel.showOnlyDownloaded.collectAsState()
@@ -109,6 +121,12 @@ fun LibraryScreen(
     val expandedCategories by viewModel.expandedCategories.collectAsState()
     val focusManager = LocalFocusManager.current
     var isSearchFocused by remember { mutableStateOf(false) }
+
+    LaunchedEffect(viewModel) {
+        viewModel.deleteMessages.collect { msg ->
+            Toast.makeText(currentContext, msg, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val searchPaddingEnd by animateDpAsState(
         targetValue = if (isSearchFocused) 16.dp else 12.dp,
@@ -248,24 +266,13 @@ fun LibraryScreen(
                             ) {
                                 Row {
                                     if (isSelectionMode && selectedBookIds.isNotEmpty()) {
-                                        val hasDownloadedSelected =
-                                            selectedBookIds.any { downloadedBookIds.contains(it) }
-                                        if (hasDownloadedSelected) {
+                                        val hasDeletableSelected = selectedBookIds.any {
+                                            downloadedBookIds.contains(it) || importedBookIds.contains(it)
+                                        }
+                                        if (hasDeletableSelected) {
                                             IconButton(
-                                                onClick = {
-                                                    viewModel.deleteSelectedBooks(
-                                                        context,
-                                                        tabManager
-                                                    ) { msg ->
-                                                        android.widget.Toast
-                                                            .makeText(
-                                                                context,
-                                                                msg,
-                                                                android.widget.Toast.LENGTH_SHORT,
-                                                            ).show()
-                                                    }
-                                                },
-                                                enabled = !isBulkDownloading,
+                                                onClick = { viewModel.requestDeleteConfirmation(context) },
+                                                enabled = !isBulkDownloading && !isDeleting,
                                             ) {
                                                 Icon(
                                                     Icons.Default.Delete,
@@ -472,6 +479,59 @@ fun LibraryScreen(
                 },
             )
         }
+    }
+
+    pendingDeleteSummary?.let { summary ->
+        val importedCount = summary.importedBookIds.size
+        val downloadedCount = summary.downloadedServerBookIds.size
+        val baseMessage = when {
+            importedCount > 0 && downloadedCount > 0 ->
+                stringResource(R.string.library_delete_confirm_mixed, importedCount, downloadedCount)
+            importedCount > 0 ->
+                stringResource(R.string.library_delete_confirm_imported_only, importedCount)
+            else ->
+                stringResource(R.string.library_delete_confirm_downloaded_only, downloadedCount)
+        }
+        val skippedNote = if (summary.skippedDownloadingBookIds.isNotEmpty()) {
+            stringResource(
+                R.string.library_delete_confirm_skipped_note,
+                summary.skippedDownloadingBookIds.size,
+            )
+        } else {
+            ""
+        }
+
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissDeleteConfirmation() },
+            title = {
+                Text(
+                    text = stringResource(R.string.library_delete_confirm_title),
+                    fontWeight = FontWeight.SemiBold,
+                )
+            },
+            text = {
+                Text(text = baseMessage + skippedNote)
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.confirmDeleteSelection(context, tabManager) },
+                    shape = RoundedCornerShape(30.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError,
+                    ),
+                ) {
+                    Text(stringResource(R.string.library_delete_confirm_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissDeleteConfirmation() }) {
+                    Text(stringResource(R.string.batal))
+                }
+            },
+            shape = RoundedCornerShape(30.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+        )
     }
 }
 }

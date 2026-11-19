@@ -34,7 +34,25 @@ class BookUpdateRepository(
     }
 
     suspend fun fetchAvailableUpdates(): List<BookUpdateItem> = withContext(Dispatchers.IO) {
-        updateManager.fetchAvailableUpdates(context)
+        val items = updateManager.fetchAvailableUpdates(context)
+        if (items.isNotEmpty()) {
+            val prefs = context.getSharedPreferences(AppConfig.Prefs.LIBRARY_PREFS, Context.MODE_PRIVATE)
+            val idStrings = items.mapTo(HashSet(items.size)) { it.id.toString() }
+            prefs.edit {
+                putStringSet(AppConfig.Prefs.KEY_CACHED_UPDATE_BOOK_IDS, idStrings)
+            }
+        }
+        items
+    }
+
+    fun getKnownUpdateServerBookIds(): Set<Int> {
+        val knownIds = HashSet<Int>()
+        val prefs = context.getSharedPreferences(AppConfig.Prefs.LIBRARY_PREFS, Context.MODE_PRIVATE)
+        prefs.getStringSet(AppConfig.Prefs.KEY_CACHED_UPDATE_BOOK_IDS, null)?.forEach { raw ->
+            raw.toIntOrNull()?.let { knownIds.add(it) }
+        }
+        knownIds.addAll(BookUpdateLocalSource().getServerUpdatedBookIds(context))
+        return knownIds
     }
 
     suspend fun fetchAuthIndexEntries(): List<AuthIndexEntry> = withContext(Dispatchers.IO) {

@@ -1,15 +1,22 @@
 package com.maktabah.ui.library
 
 import android.content.Context
+import android.util.Log
 import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.maktabah.R
 import com.maktabah.config.AppConfig
+import com.maktabah.database.ArchiveDatabaseTools
+import com.maktabah.database.BookArchiveSingleFlight
+import com.maktabah.database.BookImportManager
 import com.maktabah.database.SQLiteDB
 import com.maktabah.database.updater.BookUpdateCheckWorker
 import com.maktabah.database.updater.BookUpdateRepository
 import com.maktabah.downloader.BookDownloadManager
+import com.maktabah.downloader.BookDownloadNotifier
+import com.maktabah.downloader.BookDownloadService
+import com.maktabah.manager.BookCatalogClassifier
 import com.maktabah.manager.LibraryDataManager
 import com.maktabah.models.BookDownloadState
 import com.maktabah.models.BooksData
@@ -21,13 +28,18 @@ import com.maktabah.models.LoadMoreAuthors
 import com.maktabah.models.LoadMoreData
 import com.maktabah.ui.reader.ReaderTabManager
 import com.maktabah.utils.normalizeArabic
+import com.maktabah.widget.DashboardWidget
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -44,20 +56,27 @@ class LibraryViewModel(
     private val _downloadedBookIds = MutableStateFlow<Set<Int>>(emptySet())
     val downloadedBookIds: StateFlow<Set<Int>> = _downloadedBookIds
 
-    val activeDownloadStates: StateFlow<List<BookDownloadState>> = com.maktabah.downloader.BookDownloadService.activeDownloadStates
+    private val _importedBookIds = MutableStateFlow<Set<Int>>(emptySet())
+    val importedBookIds: StateFlow<Set<Int>> = _importedBookIds
+
+    val activeDownloadStates: StateFlow<List<BookDownloadState>> = BookDownloadService.activeDownloadStates
 
     init {
         viewModelScope.launch {
-            com.maktabah.downloader.BookDownloadNotifier.downloadedBookEvents.collect { bookId ->
+            BookDownloadNotifier.downloadedBookEvents.collect { bookId ->
                 markBookAsDownloaded(bookId)
             }
         }
     }
 
+    @Volatile
     private var downloadIndex: List<BundleBookIndexEntry>? = null
 
     private val _isDataLoaded = MutableStateFlow(false)
     val isDataLoaded: StateFlow<Boolean> = _isDataLoaded
+
+    private val _catalogRevision = MutableStateFlow(0L)
+    val catalogRevision: StateFlow<Long> = _catalogRevision
 
     private val _rootCategories = MutableStateFlow<List<CategoryData>>(emptyList())
 
@@ -96,10 +115,20 @@ class LibraryViewModel(
     private val _selectedBookIds = MutableStateFlow<Set<Int>>(emptySet())
     val selectedBookIds: StateFlow<Set<Int>> = _selectedBookIds
 
+    private val _pendingDeleteSummary = MutableStateFlow<BookCatalogClassifier.DeleteSelectionSummary?>(null)
+    val pendingDeleteSummary: StateFlow<BookCatalogClassifier.DeleteSelectionSummary?> = _pendingDeleteSummary
+
+    private val _isDeleting = MutableStateFlow(false)
+    val isDeleting: StateFlow<Boolean> = _isDeleting
+
+    private val _deleteMessages = Channel<String>(Channel.BUFFERED)
+    val deleteMessages: Flow<String> = _deleteMessages.receiveAsFlow()
+
     fun loadData(context: Context) {
         if (_isDataLoaded.value) return
+        val appContext = context.applicationContext
         if (prefs == null) {
-            prefs = context.getSharedPreferences(AppConfig.Prefs.LIBRARY_PREFS, Context.MODE_PRIVATE)
+            prefs = appContext.getSharedPreferences(AppConfig.Prefs.LIBRARY_PREFS, Context.MODE_PRIVATE)
             _showOnlyDownloaded.value = prefs?.getBoolean("show_only_downloaded", false) ?: false
         }
         viewModelScope.launch {
@@ -107,33 +136,54 @@ class LibraryViewModel(
             withContext(Dispatchers.IO) {
                 dataManager.loadData()
             }
+            val authors = withContext(Dispatchers.Default) {
+                dataManager.buildAuthorHierarchy()
+            }
+            val downloadedIds = scanDownloadedBookIds(appContext)
+            val importedIds = withContext(Dispatchers.IO) {
+                computeImportedBookIds(appContext)
+            }
             _rootCategories.value = dataManager.allRootCategories
-            _authorCategories.value = dataManager.buildAuthorHierarchy()
+            _authorCategories.value = authors
+            _downloadedBookIds.value = downloadedIds
+            _importedBookIds.value = importedIds
             updateFlatItems()
+            _catalogRevision.value += 1
             _isDataLoaded.value = true
+            updateSelectionDownloadState(appContext)
         }
-        loadDownloadedBooks(context)
-        loadDownloadIndex(context)
-        BookUpdateCheckWorker.enqueuePeriodicCheck(context)
-        checkBookUpdatesPeriodically(context, force = false)
+        loadDownloadIndex(appContext)
+        BookUpdateCheckWorker.enqueuePeriodicCheck(appContext)
+        checkBookUpdatesPeriodically(appContext, force = false)
     }
 
-    fun getBookFlow(bookId: Int): kotlinx.coroutines.flow.Flow<BooksData?> {
-        return _isDataLoaded.map { dataManager.booksById[bookId] }
+    fun getBookFlow(bookId: Int): Flow<BooksData?> {
+        return _catalogRevision.map { dataManager.booksById[bookId] }
     }
 
     fun reloadData(context: Context) {
+        val appContext = context.applicationContext
         viewModelScope.launch {
             _isDataLoaded.value = false
             withContext(Dispatchers.IO) { dataManager.loadData() }
+            val authors = withContext(Dispatchers.Default) {
+                dataManager.buildAuthorHierarchy()
+            }
+            val downloadedIds = scanDownloadedBookIds(appContext)
+            val importedIds = withContext(Dispatchers.IO) {
+                computeImportedBookIds(appContext)
+            }
             _rootCategories.value = dataManager.allRootCategories
-            _authorCategories.value = dataManager.buildAuthorHierarchy()
+            _authorCategories.value = authors
+            _downloadedBookIds.value = downloadedIds
+            _importedBookIds.value = importedIds
             updateFlatItems()
-            loadDownloadedBooks(context)
+            _catalogRevision.value += 1
             _isDataLoaded.value = true
+            updateSelectionDownloadState(appContext)
         }
-        loadDownloadIndex(context)
-        checkBookUpdatesPeriodically(context, force = true)
+        loadDownloadIndex(appContext)
+        checkBookUpdatesPeriodically(appContext, force = true)
     }
 
     fun checkBookUpdatesPeriodically(context: Context? = null, force: Boolean = false) {
@@ -155,6 +205,8 @@ class LibraryViewModel(
                 withContext(Dispatchers.Main) {
                     _availableUpdateCount.value = count
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Ignore if offline during background check
             }
@@ -162,12 +214,21 @@ class LibraryViewModel(
     }
 
     fun loadDownloadIndex(context: Context) {
+        val appContext = context.applicationContext
         viewModelScope.launch {
             if (downloadIndex == null) {
                 try {
-                    val manager = BookDownloadManager(context)
+                    val manager = BookDownloadManager(appContext)
                     downloadIndex = manager.fetchIndex()
-                    updateSelectionDownloadState(context)
+                    if (_isDataLoaded.value) {
+                        val importedIds = withContext(Dispatchers.IO) {
+                            computeImportedBookIds(appContext)
+                        }
+                        _importedBookIds.value = importedIds
+                    }
+                    updateSelectionDownloadState(appContext)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -175,35 +236,60 @@ class LibraryViewModel(
         }
     }
 
+    private fun computeImportedBookIds(appContext: Context): Set<Int> {
+        val catalogIds = dataManager.booksById.keys.toSet()
+        if (catalogIds.isEmpty()) return emptySet()
 
-    fun loadDownloadedBooks(context: Context) {
-        viewModelScope.launch {
-            val ids = withContext(Dispatchers.IO) {
-                val downloadedIds = mutableSetOf<Int>()
-                val files = context.filesDir.listFiles { _, name ->
-                    name.endsWith(".sqlite") && name.matches(SQLITE_FILE_REGEX)
-                }
-                files?.forEach { file ->
-                    try {
-                        SQLiteDB(file.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
-                            db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'b%';")
-                                ?.use { stmt ->
-                                    while (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                                        val tableName = stmt.columnText(0)
-                                        if (tableName != null && tableName.startsWith("b")) {
-                                            tableName.substring(1).toIntOrNull()?.let {
-                                                downloadedIds.add(it)
-                                            }
-                                        }
+        val explicitImported = BookImportManager.getImportedBookIds(appContext)
+        val cachedIndexIds = downloadIndex?.takeIf { it.isNotEmpty() }?.mapTo(HashSet()) { it.bkid }
+        val serverIndexIds = cachedIndexIds ?: BookDownloadManager(appContext).readLocalIndexBookIds()
+        val repo = updateRepository ?: BookUpdateRepository(appContext)
+        val updateServerIds = repo.getKnownUpdateServerBookIds()
+
+        return BookCatalogClassifier.classifyImportedBookIds(
+            allCatalogBookIds = catalogIds,
+            explicitImportedIds = explicitImported,
+            serverIndexIds = serverIndexIds,
+            updateServerIds = updateServerIds,
+        )
+    }
+
+    private suspend fun scanDownloadedBookIds(appContext: Context): Set<Int> = withContext(Dispatchers.IO) {
+        val downloadedIds = HashSet<Int>()
+        val files = appContext.filesDir.listFiles { _, name ->
+            name.endsWith(".sqlite") && name.matches(SQLITE_FILE_REGEX)
+        }
+        files?.forEach { file ->
+            coroutineContext.ensureActive()
+            try {
+                SQLiteDB(
+                    file.absolutePath,
+                    SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
+                ).use { db ->
+                    db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
+                    db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'b%';")
+                        ?.use { stmt ->
+                            while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                                val tableName = stmt.columnText(0)
+                                if (tableName != null && tableName.startsWith("b")) {
+                                    tableName.substring(1).toIntOrNull()?.let {
+                                        downloadedIds.add(it)
                                     }
                                 }
+                            }
                         }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
                 }
-                downloadedIds
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
+        }
+        downloadedIds
+    }
+
+    fun loadDownloadedBooks(context: Context) {
+        val appContext = context.applicationContext
+        viewModelScope.launch {
+            val ids = scanDownloadedBookIds(appContext)
             _downloadedBookIds.value = ids
             updateFlatItems()
         }
@@ -368,20 +454,25 @@ class LibraryViewModel(
     }
 
     fun updateSelectionDownloadState(context: Context) {
+        val appContext = context.applicationContext
         val isSelection = _isSelectionMode.value
         val selected = _selectedBookIds.value
         val downloaded = _downloadedBookIds.value
 
         if (!isSelection || selected.isEmpty()) {
-            com.maktabah.downloader.BookDownloadService.updateStates { states -> states.filter { !(it.isBulk && !it.isDownloading) } }
+            BookDownloadService.updateStates { states -> states.filter { !(it.isBulk && !it.isDownloading) } }
             return
         }
 
         // If currently downloading bulk, don't overwrite/add another bulk confirmation
-        if (com.maktabah.downloader.BookDownloadService.activeDownloadStates.value.any { it.isBulk && it.isDownloading }) return
+        if (BookDownloadService.activeDownloadStates.value.any { it.isBulk && it.isDownloading }) return
 
-        val existingBulkState = com.maktabah.downloader.BookDownloadService.activeDownloadStates.value.find { it.isBulk && !it.isDownloading }
-        val needDownload = selected.filter { !downloaded.contains(it) }
+        val existingBulkState = BookDownloadService.activeDownloadStates.value.find { it.isBulk && !it.isDownloading }
+        val needDownload = BookCatalogClassifier.filterBooksNeedingDownload(
+            selectedBookIds = selected,
+            downloadedBookIds = downloaded,
+            importedBookIds = _importedBookIds.value,
+        )
 
         // Compute total size
         var totalSize = 0L
@@ -398,17 +489,17 @@ class LibraryViewModel(
         }
 
         val sizeText = if (needDownload.isEmpty()) {
-            context.getString(R.string.library_all_downloaded)
+            appContext.getString(R.string.library_all_downloaded)
         } else if (hasSizes && totalSize > 0) {
-            context.getString(R.string.format_mb, totalSize / (1024f * 1024f))
+            appContext.getString(R.string.format_mb, totalSize / (1024f * 1024f))
         } else {
-            context.getString(R.string.library_unknown_size)
+            appContext.getString(R.string.library_unknown_size)
         }
 
         val newState = BookDownloadState(
             id = existingBulkState?.id ?: java.util.UUID.randomUUID().toString(),
             bookId = -1,
-            bookName = context.getString(R.string.library_selected_books_count, selected.size),
+            bookName = appContext.getString(R.string.library_selected_books_count, selected.size),
             sizeText = sizeText,
             isDownloading = false,
             progress = 0,
@@ -649,82 +740,224 @@ class LibraryViewModel(
         updateFlatItems()
     }
 
-    fun deleteSelectedBooks(
+    fun requestDeleteConfirmation(context: Context) {
+        if (_isDeleting.value) return
+        val appContext = context.applicationContext
+        val activeDownloadingIds = BookDownloadService.activeDownloadStates.value
+            .filter { it.isDownloading }
+            .flatMapTo(HashSet()) { state ->
+                if (state.isBulk) state.bulkBookIds else listOf(state.bookId)
+            }
+
+        val summary = BookCatalogClassifier.summarizeDeletionSelection(
+            selectedBookIds = _selectedBookIds.value,
+            downloadedBookIds = _downloadedBookIds.value,
+            importedBookIds = _importedBookIds.value,
+            activeDownloadingBookIds = activeDownloadingIds,
+        )
+
+        if (summary.totalDeletableCount > 0) {
+            _pendingDeleteSummary.value = summary
+        } else if (summary.skippedDownloadingBookIds.isNotEmpty()) {
+            _deleteMessages.trySend(
+                appContext.getString(
+                    R.string.library_delete_skipped_downloading,
+                    summary.skippedDownloadingBookIds.size,
+                )
+            )
+        }
+    }
+
+    fun dismissDeleteConfirmation() {
+        _pendingDeleteSummary.value = null
+    }
+
+    fun confirmDeleteSelection(
         context: Context,
         tabManager: ReaderTabManager? = null,
-        onResult: (String) -> Unit
     ) {
-        val selected = _selectedBookIds.value.toList()
-        if (selected.isEmpty()) return
+        val summary = _pendingDeleteSummary.value ?: return
+        if (_isDeleting.value) return
 
-        viewModelScope.launch(Dispatchers.IO) {
-            var deletedCount = 0
-            val deletedBookIds = mutableListOf<Int>()
-            val filesDir = context.filesDir
-            for (bookId in selected) {
-                if (_downloadedBookIds.value.contains(bookId)) {
-                    val archiveId = dataManager.booksById[bookId]?.archive
-                    if (archiveId != null) {
-                        val file = File(filesDir, "${archiveId}.sqlite")
-                        val ftsFile = File(filesDir, "${archiveId}_fts.sqlite")
-                        
-                        var deleted = false
-                        if (file.exists()) {
-                            try {
-                                com.maktabah.database.SQLiteDB(file.absolutePath, com.maktabah.database.SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
-                                    db.prepare("DROP TABLE IF EXISTS main.\"b$bookId\";")?.use { it.step() }
-                                    db.prepare("DROP TABLE IF EXISTS main.\"t$bookId\";")?.use { it.step() }
-                                }
-                                deleted = true
-                            } catch (e: Exception) {
-                                // Ignore
-                            }
-                        }
-                        
-                        if (ftsFile.exists()) {
-                            try {
-                                com.maktabah.database.SQLiteDB(ftsFile.absolutePath, com.maktabah.database.SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
-                                    // Hapus Legacy FTS
-                                    db.prepare("DROP TABLE IF EXISTS main.\"b${bookId}_fts\";")?.use { it.step() }
-                                    
-                                    // Hapus Unified FTS Tokens
-                                    if (com.maktabah.database.ArchiveDatabaseTools.hasUnifiedFTS(db)) {
-                                        db.prepare("DELETE FROM archive_fts WHERE rowid IN (SELECT rowid FROM archive_index WHERE book_id = ?);")?.use { stmt ->
-                                            stmt.bindInt(1, bookId)
-                                            stmt.step()
-                                        }
-                                        db.prepare("DELETE FROM archive_index WHERE book_id = ?;")?.use { stmt ->
-                                            stmt.bindInt(1, bookId)
-                                            stmt.step()
-                                        }
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                // Ignore
-                            }
-                        }
+        val appContext = context.applicationContext
+        _pendingDeleteSummary.value = null
+        _isDeleting.value = true
 
-                        if (deleted) {
-                            deletedCount++
-                            deletedBookIds.add(bookId)
+        viewModelScope.launch {
+            try {
+                val executionResult = withContext(Dispatchers.IO) {
+                    val filesDir = appContext.filesDir
+                    val allTargets = (summary.importedBookIds + summary.downloadedServerBookIds).distinct()
+                    val booksByIdSnapshot = dataManager.booksById
+                    val groupedByArchive = HashMap<Int, MutableList<Int>>()
+                    for (bookId in allTargets) {
+                        val archiveId = booksByIdSnapshot[bookId]?.archive
+                        if (archiveId != null) {
+                            groupedByArchive.getOrPut(archiveId) { mutableListOf() }.add(bookId)
                         }
                     }
+
+                    val deletedContentIds = HashSet<Int>()
+                    for ((archiveId, bookIdsInArchive) in groupedByArchive) {
+                        coroutineContext.ensureActive()
+                        BookArchiveSingleFlight.run(archiveId) {
+                            val file = File(filesDir, "$archiveId.sqlite")
+                            val ftsFile = File(filesDir, "${archiveId}_fts.sqlite")
+
+                            if (file.exists()) {
+                                try {
+                                    SQLiteDB(
+                                        file.absolutePath,
+                                        SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
+                                    ).use { db ->
+                                        db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
+                                        db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
+                                        try {
+                                            for (bookId in bookIdsInArchive) {
+                                                db.prepare("DROP TABLE IF EXISTS main.\"b$bookId\";")?.use { it.step() }
+                                                db.prepare("DROP TABLE IF EXISTS main.\"t$bookId\";")?.use { it.step() }
+                                                deletedContentIds.add(bookId)
+                                            }
+                                            db.prepare("COMMIT;")?.use { it.step() }
+                                        } catch (e: CancellationException) {
+                                            db.prepare("ROLLBACK;")?.use { it.step() }
+                                            throw e
+                                        } catch (e: Exception) {
+                                            db.prepare("ROLLBACK;")?.use { it.step() }
+                                            throw e
+                                        }
+                                    }
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    Log.e("LibraryViewModel", "Failed deleting content tables from archive $archiveId", e)
+                                }
+                            }
+
+                            if (ftsFile.exists()) {
+                                try {
+                                    SQLiteDB(
+                                        ftsFile.absolutePath,
+                                        SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
+                                    ).use { db ->
+                                        db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
+                                        val hasUnifiedFts = ArchiveDatabaseTools.hasUnifiedFTS(db)
+                                        db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
+                                        try {
+                                            for (bookId in bookIdsInArchive) {
+                                                db.prepare("DROP TABLE IF EXISTS main.\"b${bookId}_fts\";")?.use { it.step() }
+                                                if (hasUnifiedFts) {
+                                                    db.prepare(
+                                                        "DELETE FROM archive_fts WHERE rowid IN (SELECT rowid FROM archive_index WHERE book_id = ?);"
+                                                    )?.use { stmt ->
+                                                        stmt.bindInt(1, bookId)
+                                                        stmt.step()
+                                                    }
+                                                    db.prepare("DELETE FROM archive_index WHERE book_id = ?;")?.use { stmt ->
+                                                        stmt.bindInt(1, bookId)
+                                                        stmt.step()
+                                                    }
+                                                }
+                                            }
+                                            db.prepare("COMMIT;")?.use { it.step() }
+                                        } catch (e: CancellationException) {
+                                            db.prepare("ROLLBACK;")?.use { it.step() }
+                                            throw e
+                                        } catch (e: Exception) {
+                                            db.prepare("ROLLBACK;")?.use { it.step() }
+                                            throw e
+                                        }
+                                    }
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    Log.e("LibraryViewModel", "Failed deleting FTS from archive $archiveId", e)
+                                }
+                            }
+                        }
+                    }
+
+                    val deletedImportedMetadataIds = if (summary.importedBookIds.isNotEmpty()) {
+                        BookImportManager.deleteImportedBookMetadata(appContext, summary.importedBookIds)
+                    } else {
+                        emptySet()
+                    }
+
+                    val serverTargetSet = summary.downloadedServerBookIds.toHashSet()
+                    val importedTargetSet = summary.importedBookIds.toHashSet()
+                    val deletedBookIds = (
+                        deletedContentIds.filter { it in serverTargetSet } +
+                            deletedImportedMetadataIds +
+                            deletedContentIds.filter { it in importedTargetSet }
+                        ).distinct()
+
+                    if (deletedBookIds.isNotEmpty()) {
+                        val deletedSet = deletedBookIds.toHashSet()
+                        BookDownloadService.updateStates { states ->
+                            states.filter { it.isDownloading || it.isBulk || !deletedSet.contains(it.bookId) }
+                        }
+                    }
+
+                    var refreshedAuthors: List<CategoryData>? = null
+                    if (deletedImportedMetadataIds.isNotEmpty()) {
+                        dataManager.loadData()
+                        refreshedAuthors = withContext(Dispatchers.Default) {
+                            dataManager.buildAuthorHierarchy()
+                        }
+                    }
+
+                    val newDownloadedIds = scanDownloadedBookIds(appContext)
+                    val newImportedIds = computeImportedBookIds(appContext)
+
+                    DeleteExecutionOutcome(
+                        deletedBookIds = deletedBookIds,
+                        catalogMutated = deletedImportedMetadataIds.isNotEmpty(),
+                        refreshedAuthors = refreshedAuthors,
+                        newDownloadedIds = newDownloadedIds,
+                        newImportedIds = newImportedIds,
+                    )
                 }
-            }
-            withContext(Dispatchers.Main) {
-                if (deletedCount > 0) {
-                    tabManager?.closeTabsForBooks(deletedBookIds)
-                    loadDownloadedBooks(context)
+
+                if (executionResult.deletedBookIds.isNotEmpty()) {
+                    tabManager?.closeTabsForBooks(executionResult.deletedBookIds)
+                    if (executionResult.catalogMutated) {
+                        _rootCategories.value = dataManager.allRootCategories
+                        executionResult.refreshedAuthors?.let { _authorCategories.value = it }
+                        _catalogRevision.value += 1
+                    }
+                    _downloadedBookIds.value = executionResult.newDownloadedIds
+                    _importedBookIds.value = executionResult.newImportedIds
+                    updateFlatItems()
                     _isSelectionMode.value = false
                     _selectedBookIds.value = emptySet()
-                    updateSelectionDownloadState(context)
-                    onResult(context.getString(R.string.library_delete_success, deletedCount))
+                    updateSelectionDownloadState(appContext)
+                    _deleteMessages.trySend(
+                        appContext.getString(R.string.library_delete_success, executionResult.deletedBookIds.size)
+                    )
+                    launch(Dispatchers.IO) {
+                        DashboardWidget.updateWidget(appContext)
+                    }
                 } else {
-                    onResult(context.getString(R.string.library_delete_no_result))
+                    _deleteMessages.trySend(appContext.getString(R.string.library_delete_no_result))
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("LibraryViewModel", "confirmDeleteSelection failed", e)
+                _deleteMessages.trySend(appContext.getString(R.string.library_delete_no_result))
+            } finally {
+                _isDeleting.value = false
             }
         }
     }
+
+    private data class DeleteExecutionOutcome(
+        val deletedBookIds: List<Int>,
+        val catalogMutated: Boolean,
+        val refreshedAuthors: List<CategoryData>?,
+        val newDownloadedIds: Set<Int>,
+        val newImportedIds: Set<Int>,
+    )
 
     fun showDownloadConfirmation(
         context: Context,

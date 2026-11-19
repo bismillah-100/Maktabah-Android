@@ -17,24 +17,59 @@ import java.net.URL
 class BookDownloadManager(private val context: Context) {
     private val indexUrl = com.maktabah.BuildConfig.GITHUB_KITAB_INDEX_URL
 
+    fun readLocalIndexBookIds(): Set<Int>? {
+        val indexFile = File(context.filesDir, "index.json")
+        if (!indexFile.exists()) return null
+        return try {
+            val entries = parseIndexEntries(indexFile.readText())
+            if (entries.isEmpty()) null else entries.mapTo(HashSet()) { it.bkid }
+        } catch (e: Exception) {
+            Log.w("BookDownloadManager", "Failed to read local index.json", e)
+            null
+        }
+    }
+
     suspend fun fetchIndex(): List<BundleBookIndexEntry> = withContext(Dispatchers.IO) {
         val indexFile = File(context.filesDir, "index.json")
+        val downloadedFromNetwork: Boolean
         val jsonString = if (indexFile.exists()) {
+            downloadedFromNetwork = false
             indexFile.readText()
         } else {
+            downloadedFromNetwork = true
             val url = URL(indexUrl)
             val conn = url.openConnection() as HttpURLConnection
-            conn.connect()
-
-            if (conn.responseCode != HttpURLConnection.HTTP_OK) {
-                return@withContext emptyList()
+            try {
+                conn.connect()
+                if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+                    return@withContext emptyList()
+                }
+                conn.inputStream.bufferedReader().use { it.readText() }
+            } finally {
+                conn.disconnect()
             }
-            conn.inputStream.bufferedReader().use { it.readText() }
         }
 
+        val entries = parseIndexEntries(jsonString)
+        if (downloadedFromNetwork && entries.isNotEmpty()) {
+            try {
+                val tempFile = File(context.filesDir, "index.json.tmp")
+                tempFile.writeText(jsonString)
+                if (!tempFile.renameTo(indexFile)) {
+                    tempFile.copyTo(indexFile, overwrite = true)
+                    tempFile.delete()
+                }
+            } catch (e: Exception) {
+                Log.w("BookDownloadManager", "Failed to cache index.json locally", e)
+            }
+        }
+        entries
+    }
+
+    private fun parseIndexEntries(jsonString: String): List<BundleBookIndexEntry> {
+        if (jsonString.isBlank()) return emptyList()
         val jsonArray = JSONArray(jsonString)
         val entries = mutableListOf<BundleBookIndexEntry>()
-
         for (i in 0 until jsonArray.length()) {
             val obj = jsonArray.getJSONObject(i)
             entries.add(
@@ -46,7 +81,7 @@ class BookDownloadManager(private val context: Context) {
                 )
             )
         }
-        entries
+        return entries
     }
 
     suspend fun downloadBook(
