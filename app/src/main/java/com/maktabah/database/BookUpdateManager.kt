@@ -162,8 +162,10 @@ object BookUpdateManager {
                 throw IllegalStateException("Gagal mengintegrasikan database untuk buku ${staged.metadata.bkid}")
             }
 
-            // 3. Simpan metadata ke main.sqlite (0bok)
-            localSource.saveBookMetadata(context, staged.metadata, exists)
+            // 3. Simpan metadata ke main.sqlite (0bok) dalam single-flight katalog
+            BookArchiveSingleFlight.runCatalogWrite {
+                localSource.saveBookMetadata(context, staged.metadata, exists)
+            }
 
             BookUpdateResult(
                 bookId = staged.metadata.bkid,
@@ -175,7 +177,7 @@ object BookUpdateManager {
         }
     }
 
-    private fun ensureAuthor(
+    private suspend fun ensureAuthor(
         context: Context,
         authId: Int,
         downloadUrl: String,
@@ -192,7 +194,9 @@ object BookUpdateManager {
         )
         try {
             val authorRow = localSource.readAuthorFromDownloadedDb(downloadedAuthFile, authId) ?: return
-            localSource.saveAuthor(context, authorRow)
+            BookArchiveSingleFlight.runCatalogWrite {
+                localSource.saveAuthor(context, authorRow)
+            }
         } finally {
             localSource.removeDatabaseAndSidecars(downloadedAuthFile)
         }

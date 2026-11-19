@@ -137,6 +137,7 @@ fun SearchScreen(
     val selectedBookIds by viewModel.selectedBookIds.collectAsState()
     val flatVisibleItems by viewModel.flatVisibleItems.collectAsState()
     val isDataLoaded by libraryViewModel.isDataLoaded.collectAsState()
+    val catalogRevision by libraryViewModel.catalogRevision.collectAsState()
     val isTreeLoaded by viewModel.isTreeLoaded.collectAsState()
     val completedBooks by viewModel.completedBooks.collectAsState()
     val totalBooks by viewModel.totalBooks.collectAsState()
@@ -148,7 +149,7 @@ fun SearchScreen(
         resultsViewModel.initialize(context, libraryViewModel.dataManager)
     }
 
-    LaunchedEffect(isDataLoaded) {
+    LaunchedEffect(isDataLoaded, catalogRevision) {
         if (isDataLoaded) {
             viewModel.refreshData(libraryViewModel.dataManager)
         }

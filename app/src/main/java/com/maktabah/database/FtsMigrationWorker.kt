@@ -15,6 +15,7 @@ import com.maktabah.utils.cleaningLineBreaks
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.removingHarakat
 import com.maktabah.utils.stemArabicLight10
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
@@ -95,15 +96,20 @@ class FtsMigrationWorker(
         archiveFile: File,
         ftsFile: File,
         onBookProgress: suspend (Int, Int) -> Unit
-    ) {
+    ): Unit = BookArchiveSingleFlight.run(archiveId) {
         var db: SQLiteDB? = null
         var ftsDb: SQLiteDB? = null
         try {
-            db = SQLiteDB(archiveFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY)
+            db = SQLiteDB(
+                archiveFile.absolutePath,
+                SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX
+            )
+            db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
             ftsDb = SQLiteDB(
                 ftsFile.absolutePath,
-                SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_CREATE
+                SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_CREATE or SQLiteDB.SQLITE_OPEN_FULLMUTEX
             )
+            ftsDb.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
 
             ftsDb.prepare("PRAGMA synchronous = OFF;")?.use { it.step() }
             ftsDb.prepare("PRAGMA journal_mode = MEMORY;")?.use { it.step() }
@@ -130,7 +136,7 @@ class FtsMigrationWorker(
             Log.i(tag, "Arsip $archiveId berisi ${bookIds.size} buku untuk diindeks.")
             if (bookIds.isEmpty()) {
                 ftsDb.prepare("INSERT OR REPLACE INTO main.metadata (key, value) VALUES ('fts_version', ${FtsMigrationManager.CURRENT_FTS_VERSION});")?.use { it.step() }
-                return
+                return@run
             }
 
             ftsDb.prepare("BEGIN TRANSACTION;")?.use { it.step() }
@@ -214,6 +220,9 @@ class FtsMigrationWorker(
             ftsDb.prepare("COMMIT;")?.use { it.step() }
             ftsDb.prepare("VACUUM;")?.use { it.step() }
             Log.i(tag, "Sukses migrasi Arsip $archiveId ke FTS v${FtsMigrationManager.CURRENT_FTS_VERSION}.")
+        } catch (e: CancellationException) {
+            ftsDb?.prepare("ROLLBACK;")?.use { it.step() }
+            throw e
         } catch (e: Exception) {
             Log.e(tag, "Error saat migrasi Arsip $archiveId", e)
             ftsDb?.prepare("ROLLBACK;")?.use { it.step() }

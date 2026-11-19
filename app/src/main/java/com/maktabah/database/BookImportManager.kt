@@ -8,16 +8,26 @@ import com.maktabah.models.CategoryData
 import com.maktabah.models.ImportBookMetadata
 import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import java.io.File
 
 object BookImportManager {
     private const val TAG = "BookImportManager"
+    private const val READ_FLAGS = SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX
+    private const val WRITE_FLAGS = SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX
+
+    private fun openDatabase(file: File, flags: Int): SQLiteDB {
+        return SQLiteDB(file.absolutePath, flags).apply {
+            prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
+        }
+    }
 
     fun getMaxBookId(context: Context): Int {
         val mainDbFile = File(context.filesDir, "main.sqlite")
         if (!mainDbFile.exists()) return 0
         return try {
-            SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
+            openDatabase(mainDbFile, READ_FLAGS).use { db ->
                 db.prepare("SELECT MAX(bkid) FROM \"0bok\";")?.use { stmt ->
                     if (stmt.step() == SQLiteDB.SQLITE_ROW) stmt.columnInt(0) else 0
                 } ?: 0
@@ -31,7 +41,7 @@ object BookImportManager {
         val specialDbFile = File(context.filesDir, "special.sqlite")
         if (!specialDbFile.exists()) return 0
         return try {
-            SQLiteDB(specialDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
+            openDatabase(specialDbFile, READ_FLAGS).use { db ->
                 db.prepare("SELECT MAX(authid) FROM Auth;")?.use { stmt ->
                     if (stmt.step() == SQLiteDB.SQLITE_ROW) stmt.columnInt(0) else 0
                 } ?: 0
@@ -46,7 +56,7 @@ object BookImportManager {
         if (!mainDbFile.exists()) return emptyList()
         val result = mutableListOf<CategoryData>()
         try {
-            SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
+            openDatabase(mainDbFile, READ_FLAGS).use { db ->
                 db.prepare("SELECT id, name, Lvl, catord FROM \"0cat\" ORDER BY catord ASC")
                     ?.use { stmt ->
                         while (stmt.step() == SQLiteDB.SQLITE_ROW) {
@@ -72,7 +82,7 @@ object BookImportManager {
         if (!specialDbFile.exists()) return emptyList()
         val result = mutableListOf<AuthorRow>()
         try {
-            SQLiteDB(specialDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
+            openDatabase(specialDbFile, READ_FLAGS).use { db ->
                 db.prepare("SELECT authid, auth, COALESCE(Lng,''), COALESCE(inf,''), COALESCE(HigriD,''), COALESCE(oVer,1) FROM Auth")
                     ?.use { stmt ->
                         while (stmt.step() == SQLiteDB.SQLITE_ROW) {
@@ -105,7 +115,7 @@ object BookImportManager {
         if (!mainDbFile.exists()) return emptyList()
         val result = mutableListOf<BooksData>()
         try {
-            SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
+            openDatabase(mainDbFile, READ_FLAGS).use { db ->
                 db.prepare("SELECT bkid, cat, bk, Archive, COALESCE(inf,''), COALESCE(betaka,''), COALESCE(authno,0) FROM \"0bok\" ORDER BY bk ASC")
                     ?.use { stmt ->
                         while (stmt.step() == SQLiteDB.SQLITE_ROW) {
@@ -137,13 +147,18 @@ object BookImportManager {
      * @param sourceFile file SQLite sumber yang dipilih user
      * @param metadata   metadata buku yang akan di-insert/update
      * @param newAuthor  jika tidak null, author baru akan di-insert ke special.sqlite
+     * @param isNewBook  true untuk mode import buku baru, false untuk replace buku existing
      */
     suspend fun importBook(
         context: Context,
         sourceFile: File,
         metadata: ImportBookMetadata,
         newAuthor: AuthorRow?,
+        isNewBook: Boolean = true,
     ): Result<Unit> {
+        var catalogCommitted = false
+        var contentIntegrated = false
+        var insertedAuthorId: Int? = null
         return try {
             val oldArchiveId = BookArchiveIntegrator.getArchiveIdForBook(context, metadata.bkid)
 
@@ -156,59 +171,62 @@ object BookImportManager {
                 downloadedDbFile = sourceFile,
             )
             if (!success) return Result.failure(Exception("Gagal mengintegrasikan konten buku"))
+            contentIntegrated = true
 
             val mainDbFile = File(context.filesDir, "main.sqlite")
             val specialDbFile = File(context.filesDir, "special.sqlite")
 
-            // 2. Insert author baru jika diperlukan
-            if (newAuthor != null && specialDbFile.exists()) {
-                SQLiteDB(specialDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { specDb ->
-                    specDb.prepare(
-                        "INSERT OR REPLACE INTO Auth (authid, auth, Lng, inf, HigriD, oVer) VALUES (?,?,?,?,?,?)"
-                    )?.use { stmt ->
-                        stmt.bindInt(1, newAuthor.id)
-                        stmt.bindText(2, newAuthor.name)
-                        stmt.bindText(3, newAuthor.lng)
-                        stmt.bindText(4, newAuthor.inf)
-                        stmt.bindText(5, newAuthor.higriD)
-                        stmt.bindInt(6, newAuthor.oVer)
-                        stmt.step()
-                    }
-                }
-            }
-
-            // 3. Insert/replace metadata buku ke main.sqlite
-            SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
-                db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-                try {
-                    db.prepare("DELETE FROM \"0bok\" WHERE bkid = ?")?.use { stmt ->
-                        stmt.bindInt(1, metadata.bkid)
-                        stmt.step()
-                    }
-
-                    db.prepare(
-                        """INSERT OR REPLACE INTO "0bok"
-                            (bkid, cat, bk, Archive, betaka, authno, inf, TafseerNam, bVer, PdfCs)
-                            VALUES (?,?,?,?,?,?,?,?,?,?)"""
-                    )?.use { stmt ->
-                        stmt.bindInt(1, metadata.bkid)
-                        stmt.bindInt(2, metadata.categoryId)
-                        stmt.bindText(3, metadata.bookName)
-                        stmt.bindInt(4, metadata.archiveId)
-                        if (metadata.betaka != null) stmt.bindText(5, metadata.betaka) else stmt.bindNull(5)
-                        if (metadata.authno != null) stmt.bindInt(6, metadata.authno) else stmt.bindNull(6)
-                        if (metadata.inf != null) stmt.bindText(7, metadata.inf) else stmt.bindNull(7)
-                        if (metadata.tafseerNam != null) stmt.bindText(8, metadata.tafseerNam) else stmt.bindNull(8)
-                        stmt.bindInt(9, metadata.bVer)
-                        stmt.bindInt(10, if (metadata.isMultiLanguage) 3 else 0)
-                        if (stmt.step() != SQLiteDB.SQLITE_DONE) {
-                             throw Exception("Gagal menyimpan metadata buku ke 0bok")
+            // 2 & 3. Tulis author baru (jika ada) & metadata buku dalam single-flight katalog
+            BookArchiveSingleFlight.runCatalogWrite {
+                if (newAuthor != null && specialDbFile.exists()) {
+                    openDatabase(specialDbFile, WRITE_FLAGS).use { specDb ->
+                        insertedAuthorId = specDb.inTransaction {
+                            specDb.prepare(
+                                "INSERT OR REPLACE INTO Auth (authid, auth, Lng, inf, HigriD, oVer) VALUES (?,?,?,?,?,?)"
+                            )?.use { stmt ->
+                                stmt.bindInt(1, newAuthor.id)
+                                stmt.bindText(2, newAuthor.name)
+                                stmt.bindText(3, newAuthor.lng)
+                                stmt.bindText(4, newAuthor.inf)
+                                stmt.bindText(5, newAuthor.higriD)
+                                stmt.bindInt(6, newAuthor.oVer)
+                                if (stmt.step() != SQLiteDB.SQLITE_DONE) {
+                                    throw Exception("Gagal menyimpan author baru ke special.sqlite")
+                                }
+                            }
+                            newAuthor.id
                         }
                     }
-                    db.prepare("COMMIT;")?.use { it.step() }
-                } catch (e: Exception) {
-                    db.prepare("ROLLBACK;")?.use { it.step() }
-                    throw e
+                }
+
+                openDatabase(mainDbFile, WRITE_FLAGS).use { db ->
+                    catalogCommitted = db.inTransaction {
+                        db.prepare("DELETE FROM \"0bok\" WHERE bkid = ?")?.use { stmt ->
+                            stmt.bindInt(1, metadata.bkid)
+                            stmt.step()
+                        }
+
+                        db.prepare(
+                            """INSERT OR REPLACE INTO "0bok"
+                                (bkid, cat, bk, Archive, betaka, authno, inf, TafseerNam, bVer, PdfCs)
+                                VALUES (?,?,?,?,?,?,?,?,?,?)"""
+                        )?.use { stmt ->
+                            stmt.bindInt(1, metadata.bkid)
+                            stmt.bindInt(2, metadata.categoryId)
+                            stmt.bindText(3, metadata.bookName)
+                            stmt.bindInt(4, metadata.archiveId)
+                            if (metadata.betaka != null) stmt.bindText(5, metadata.betaka) else stmt.bindNull(5)
+                            if (metadata.authno != null) stmt.bindInt(6, metadata.authno) else stmt.bindNull(6)
+                            if (metadata.inf != null) stmt.bindText(7, metadata.inf) else stmt.bindNull(7)
+                            if (metadata.tafseerNam != null) stmt.bindText(8, metadata.tafseerNam) else stmt.bindNull(8)
+                            stmt.bindInt(9, metadata.bVer)
+                            stmt.bindInt(10, if (metadata.isMultiLanguage) 3 else 0)
+                            if (stmt.step() != SQLiteDB.SQLITE_DONE) {
+                                throw Exception("Gagal menyimpan metadata buku ke 0bok")
+                            }
+                        }
+                        true
+                    }
                 }
             }
 
@@ -218,8 +236,32 @@ object BookImportManager {
 
             Result.success(Unit)
         } catch (e: CancellationException) {
+            withContext(NonCancellable) {
+                if (contentIntegrated && isNewBook) {
+                    BookArchiveIntegrator.removeBookFromArchive(context, metadata.bkid, metadata.archiveId)
+                }
+                if (catalogCommitted || insertedAuthorId != null) {
+                    rollbackFailedNewImport(
+                        context = context,
+                        bookId = metadata.bkid,
+                        isNewBook = isNewBook,
+                        insertedAuthorId = insertedAuthorId,
+                    )
+                }
+            }
             throw e
         } catch (e: Exception) {
+            if (contentIntegrated && isNewBook) {
+                BookArchiveIntegrator.removeBookFromArchive(context, metadata.bkid, metadata.archiveId)
+            }
+            if (catalogCommitted || insertedAuthorId != null) {
+                rollbackFailedNewImport(
+                    context = context,
+                    bookId = metadata.bkid,
+                    isNewBook = isNewBook,
+                    insertedAuthorId = insertedAuthorId,
+                )
+            }
             Log.e(TAG, "importBook", e)
             Result.failure(e)
         } finally {
@@ -229,8 +271,60 @@ object BookImportManager {
         }
     }
 
+    private suspend fun rollbackFailedNewImport(
+        context: Context,
+        bookId: Int,
+        isNewBook: Boolean,
+        insertedAuthorId: Int?,
+    ) {
+        if (!isNewBook && insertedAuthorId == null) return
+        try {
+            BookArchiveSingleFlight.runCatalogWrite {
+                val mainDbFile = File(context.filesDir, "main.sqlite")
+                val specialDbFile = File(context.filesDir, "special.sqlite")
+                var deleteOrphanAuthor = false
+
+                if (mainDbFile.exists()) {
+                    openDatabase(mainDbFile, WRITE_FLAGS).use { db ->
+                        db.inTransaction {
+                            if (isNewBook) {
+                                db.prepare("DELETE FROM \"0bok\" WHERE bkid = ?;")?.use { stmt ->
+                                    stmt.bindInt(1, bookId)
+                                    stmt.step()
+                                }
+                            }
+                            if (insertedAuthorId != null) {
+                                val stillUsed = db.prepare("SELECT 1 FROM \"0bok\" WHERE authno = ? LIMIT 1;")?.use { stmt ->
+                                    stmt.bindInt(1, insertedAuthorId)
+                                    stmt.step() == SQLiteDB.SQLITE_ROW
+                                } ?: false
+                                if (!stillUsed) {
+                                    deleteOrphanAuthor = true
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (deleteOrphanAuthor && insertedAuthorId != null && specialDbFile.exists()) {
+                    openDatabase(specialDbFile, WRITE_FLAGS).use { specDb ->
+                        specDb.inTransaction {
+                            specDb.prepare("DELETE FROM Auth WHERE authid = ?;")?.use { stmt ->
+                                stmt.bindInt(1, insertedAuthorId)
+                                stmt.step()
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "rollbackFailedNewImport", e)
+        }
+    }
+
     /**
-     * Mengubah ID buku di arsip konten, FTS, dan tabel 0bok. Anotasi diupdate oleh pemanggil.
+     * Mengubah ID buku di arsip konten, FTS, tabel 0bok, dan shorts.
+     * Anotasi dan saved results diupdate oleh pemanggil.
      */
     suspend fun changeBookId(context: Context, oldId: Int, newId: Int): Result<Unit> {
         if (oldId == newId) return Result.success(Unit)
@@ -239,6 +333,10 @@ object BookImportManager {
         }
 
         return try {
+            val mainDbFile = File(context.filesDir, "main.sqlite")
+            if (!mainDbFile.exists()) {
+                return Result.failure(IllegalStateException("main.sqlite tidak ditemukan"))
+            }
             val archiveId = BookArchiveIntegrator.getArchiveIdForBook(context, oldId)
             if (archiveId != null && archiveId > 0) {
                 val migrated = BookArchiveIntegrator.migrateBookId(
@@ -252,18 +350,21 @@ object BookImportManager {
                 }
             }
 
-            val mainDbFile = File(context.filesDir, "main.sqlite")
-            SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { db ->
-                db.prepare("UPDATE \"0bok\" SET bkid = ? WHERE bkid = ?")?.use { stmt ->
-                    stmt.bindInt(1, newId)
-                    stmt.bindInt(2, oldId)
-                    stmt.step()
+            BookArchiveSingleFlight.runCatalogWrite {
+                openDatabase(mainDbFile, WRITE_FLAGS).use { db ->
+                    db.inTransaction {
+                        db.prepare("UPDATE \"0bok\" SET bkid = ? WHERE bkid = ?")?.use { stmt ->
+                            stmt.bindInt(1, newId)
+                            stmt.bindInt(2, oldId)
+                            stmt.step()
+                        }
+                    }
                 }
             }
 
             val specialDbFile = File(context.filesDir, "special.sqlite")
             if (specialDbFile.exists()) {
-                SQLiteDB(specialDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE).use { specDb ->
+                openDatabase(specialDbFile, WRITE_FLAGS).use { specDb ->
                     specDb.prepare("UPDATE shorts SET Bk = ? WHERE CAST(Bk AS INTEGER) = ?")?.use { stmt ->
                         stmt.bindInt(1, newId)
                         stmt.bindInt(2, oldId)
@@ -280,11 +381,84 @@ object BookImportManager {
         }
     }
 
+    /**
+     * Menghapus metadata buku non-katalog-inti dari main.sqlite ("0bok") dan membersihkan
+     * author non-katalog yang menjadi yatim di special.sqlite (Auth).
+     * Mengembalikan himpunan bkid yang benar-benar terhapus dari katalog.
+     */
+    suspend fun deleteCatalogBookMetadata(
+        context: Context,
+        bookIds: List<Int>,
+        coreAuthorIds: Set<Int>?,
+    ): Set<Int> {
+        val targetIds = bookIds.distinct()
+        if (targetIds.isEmpty()) return emptySet()
+
+        val mainDbFile = File(context.filesDir, "main.sqlite")
+        if (!mainDbFile.exists()) return emptySet()
+        val specialDbFile = File(context.filesDir, "special.sqlite")
+
+        return BookArchiveSingleFlight.runCatalogWrite {
+            val deletedBookIds = HashSet<Int>()
+            val affectedAuthIds = HashSet<Int>()
+            val orphanedAuthorIds = HashSet<Int>()
+
+            openDatabase(mainDbFile, WRITE_FLAGS).use { db ->
+                db.inTransaction {
+                    for (chunk in targetIds.chunked(900)) {
+                        val placeholders = chunk.joinToString(",") { "?" }
+                        db.prepare("SELECT bkid, COALESCE(authno, 0) FROM \"0bok\" WHERE bkid IN ($placeholders);")?.use { stmt ->
+                            chunk.forEachIndexed { idx, id -> stmt.bindInt(idx + 1, id) }
+                            while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                                deletedBookIds.add(stmt.columnInt(0))
+                                val authNo = stmt.columnInt(1)
+                                if (authNo > 0) affectedAuthIds.add(authNo)
+                            }
+                        }
+                        db.prepare("DELETE FROM \"0bok\" WHERE bkid IN ($placeholders);")?.use { stmt ->
+                            chunk.forEachIndexed { idx, id -> stmt.bindInt(idx + 1, id) }
+                            stmt.step()
+                        }
+                    }
+
+                    if (!coreAuthorIds.isNullOrEmpty()) {
+                        for (authId in affectedAuthIds) {
+                            if (authId in coreAuthorIds) continue
+                            val isStillReferenced = db.prepare("SELECT 1 FROM \"0bok\" WHERE authno = ? LIMIT 1;")?.use { stmt ->
+                                stmt.bindInt(1, authId)
+                                stmt.step() == SQLiteDB.SQLITE_ROW
+                            } ?: false
+                            if (!isStillReferenced) {
+                                orphanedAuthorIds.add(authId)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (orphanedAuthorIds.isNotEmpty() && specialDbFile.exists()) {
+                openDatabase(specialDbFile, WRITE_FLAGS).use { specDb ->
+                    specDb.inTransaction {
+                        for (chunk in orphanedAuthorIds.toList().chunked(900)) {
+                            val placeholders = chunk.joinToString(",") { "?" }
+                            specDb.prepare("DELETE FROM Auth WHERE authid IN ($placeholders);")?.use { stmt ->
+                                chunk.forEachIndexed { idx, id -> stmt.bindInt(idx + 1, id) }
+                                stmt.step()
+                            }
+                        }
+                    }
+                }
+            }
+
+            deletedBookIds
+        }
+    }
+
     fun isBookIdTaken(context: Context, bookId: Int): Boolean {
         val mainDbFile = File(context.filesDir, "main.sqlite")
         if (!mainDbFile.exists()) return false
         return try {
-            SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY).use { db ->
+            openDatabase(mainDbFile, READ_FLAGS).use { db ->
                 db.prepare("SELECT 1 FROM \"0bok\" WHERE bkid = ? LIMIT 1")?.use { stmt ->
                     stmt.bindInt(1, bookId)
                     stmt.step() == SQLiteDB.SQLITE_ROW

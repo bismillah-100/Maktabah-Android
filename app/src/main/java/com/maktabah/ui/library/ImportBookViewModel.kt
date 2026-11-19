@@ -364,7 +364,13 @@ class ImportBookViewModel(application: Application) : AndroidViewModel(applicati
                 tempFile.outputStream().use { output -> input.copyTo(output) }
             } ?: return Result.failure(Exception(context.getString(R.string.error_cannot_read_file)))
 
-            BookImportManager.importBook(context, tempFile, metadata, newAuthor)
+            BookImportManager.importBook(
+                context = context,
+                sourceFile = tempFile,
+                metadata = metadata,
+                newAuthor = newAuthor,
+                isNewBook = (_importMode.value == ImportMode.NEW),
+            )
         } finally {
             if (tempFile.exists()) {
                 tempFile.delete()

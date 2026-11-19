@@ -34,6 +34,7 @@ class BookUpdateLocalSource {
 
         val categoriesMap = mutableMapOf<Int, String>()
         SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX).use { db ->
+            db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
             db.prepare("SELECT id, name FROM \"0cat\"")?.use { stmt ->
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
                     categoriesMap[stmt.columnInt(0)] = stmt.columnText(1) ?: ""
@@ -49,6 +50,7 @@ class BookUpdateLocalSource {
 
         val localBooksMap = mutableMapOf<Int, Pair<String, Long?>>()
         SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX).use { db ->
+            db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
             val verCol = resolveVersionColumn(db)
             val sql = if (verCol != null) {
                 "SELECT bkid, bk, \"$verCol\" FROM \"0bok\""
@@ -135,35 +137,39 @@ class BookUpdateLocalSource {
         if (!mainDbFile.exists()) throw IllegalStateException("main.sqlite tidak ditemukan")
 
         SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX).use { db ->
+            db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
+
             val verCol = resolveVersionColumn(db) ?: "bVer"
-            if (!exists) {
-                val sql = """
-                    INSERT OR REPLACE INTO "0bok"
-                    (bkid, cat, bk, Archive, betaka, authno, inf, TafseerNam, "$verCol", PdfCs)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                """.trimIndent()
-                db.prepare(sql)?.use { stmt ->
-                    stmt.bindInt(1, metadata.bkid)
-                    stmt.bindInt(2, metadata.cat ?: 0)
-                    stmt.bindText(3, metadata.bk)
-                    stmt.bindInt(4, metadata.archive)
-                    stmt.bindText(5, metadata.betaka ?: "")
-                    stmt.bindInt(6, metadata.authno ?: 0)
-                    stmt.bindText(7, metadata.inf ?: "")
-                    if (metadata.tafseerNam != null) stmt.bindText(8, metadata.tafseerNam) else stmt.bindNull(8)
-                    if (metadata.bVer != null) stmt.bindInt(9, metadata.bVer) else stmt.bindNull(9)
-                    if (metadata.pdfCs != null) stmt.bindInt(10, metadata.pdfCs) else stmt.bindNull(10)
-                    if (stmt.step() != SQLiteDB.SQLITE_DONE) {
-                        throw IllegalStateException("Gagal insert metadata buku ${metadata.bkid} ke 0bok")
+            db.inTransaction {
+                if (!exists) {
+                    val sql = """
+                        INSERT OR REPLACE INTO "0bok"
+                        (bkid, cat, bk, Archive, betaka, authno, inf, TafseerNam, "$verCol", PdfCs)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """.trimIndent()
+                    db.prepare(sql)?.use { stmt ->
+                        stmt.bindInt(1, metadata.bkid)
+                        stmt.bindInt(2, metadata.cat ?: 0)
+                        stmt.bindText(3, metadata.bk)
+                        stmt.bindInt(4, metadata.archive)
+                        stmt.bindText(5, metadata.betaka ?: "")
+                        stmt.bindInt(6, metadata.authno ?: 0)
+                        stmt.bindText(7, metadata.inf ?: "")
+                        if (metadata.tafseerNam != null) stmt.bindText(8, metadata.tafseerNam) else stmt.bindNull(8)
+                        if (metadata.bVer != null) stmt.bindInt(9, metadata.bVer) else stmt.bindNull(9)
+                        if (metadata.pdfCs != null) stmt.bindInt(10, metadata.pdfCs) else stmt.bindNull(10)
+                        if (stmt.step() != SQLiteDB.SQLITE_DONE) {
+                            throw IllegalStateException("Gagal insert metadata buku ${metadata.bkid} ke 0bok")
+                        }
                     }
-                }
-            } else {
-                val sql = "UPDATE \"0bok\" SET \"$verCol\" = ? WHERE bkid = ?;"
-                db.prepare(sql)?.use { stmt ->
-                    if (metadata.bVer != null) stmt.bindInt(1, metadata.bVer) else stmt.bindNull(1)
-                    stmt.bindInt(2, metadata.bkid)
-                    if (stmt.step() != SQLiteDB.SQLITE_DONE) {
-                        throw IllegalStateException("Gagal update versi buku ${metadata.bkid} di 0bok")
+                } else {
+                    val sql = "UPDATE \"0bok\" SET \"$verCol\" = ? WHERE bkid = ?;"
+                    db.prepare(sql)?.use { stmt ->
+                        if (metadata.bVer != null) stmt.bindInt(1, metadata.bVer) else stmt.bindNull(1)
+                        stmt.bindInt(2, metadata.bkid)
+                        if (stmt.step() != SQLiteDB.SQLITE_DONE) {
+                            throw IllegalStateException("Gagal update versi buku ${metadata.bkid} di 0bok")
+                        }
                     }
                 }
             }
@@ -175,6 +181,7 @@ class BookUpdateLocalSource {
         if (!mainDbFile.exists()) return BookVersionState.UnknownVersion
         return try {
             SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX).use { db ->
+                db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
                 val verCol = resolveVersionColumn(db) ?: return BookVersionState.UnknownVersion
                 db.prepare("SELECT \"$verCol\" FROM \"0bok\" WHERE bkid = ? LIMIT 1;")?.use { stmt ->
                     stmt.bindInt(1, bookId)
@@ -201,6 +208,7 @@ class BookUpdateLocalSource {
             specialDbFile.absolutePath,
             SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
         ).use { specialDb ->
+            specialDb.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
             var currentVer: Long? = null
             specialDb.prepare("SELECT oVer FROM Auth WHERE authid = ? LIMIT 1;")?.use { stmt ->
                 stmt.bindInt(1, authId)
@@ -242,16 +250,19 @@ class BookUpdateLocalSource {
             specialDbFile.absolutePath,
             SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
         ).use { specialDb ->
-            specialDb.prepare(
-                "INSERT OR REPLACE INTO Auth (authid, auth, inf, Lng, HigriD, oVer) VALUES (?, ?, ?, ?, ?, ?);"
-            )?.use { stmt ->
-                stmt.bindInt(1, authorRow.id)
-                stmt.bindText(2, authorRow.name)
-                stmt.bindText(3, authorRow.inf)
-                stmt.bindText(4, authorRow.lng)
-                stmt.bindText(5, authorRow.higriD)
-                stmt.bindInt(6, authorRow.oVer)
-                stmt.step()
+            specialDb.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
+            specialDb.inTransaction {
+                specialDb.prepare(
+                    "INSERT OR REPLACE INTO Auth (authid, auth, inf, Lng, HigriD, oVer) VALUES (?, ?, ?, ?, ?, ?);"
+                )?.use { stmt ->
+                    stmt.bindInt(1, authorRow.id)
+                    stmt.bindText(2, authorRow.name)
+                    stmt.bindText(3, authorRow.inf)
+                    stmt.bindText(4, authorRow.lng)
+                    stmt.bindText(5, authorRow.higriD)
+                    stmt.bindInt(6, authorRow.oVer)
+                    stmt.step()
+                }
             }
         }
     }
