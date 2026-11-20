@@ -57,6 +57,9 @@ class LibraryViewModel(
     private val _importedBookIds = MutableStateFlow<Set<Int>>(emptySet())
     val importedBookIds: StateFlow<Set<Int>> = _importedBookIds
 
+    private val _updateAddedBookIds = MutableStateFlow<Set<Int>>(emptySet())
+    val updateAddedBookIds: StateFlow<Set<Int>> = _updateAddedBookIds
+
     val activeDownloadStates: StateFlow<List<BookDownloadState>> = BookDownloadService.activeDownloadStates
 
     init {
@@ -138,13 +141,14 @@ class LibraryViewModel(
                 dataManager.buildAuthorHierarchy()
             }
             val downloadedIds = scanDownloadedBookIds(appContext)
-            val importedIds = withContext(Dispatchers.IO) {
-                computeImportedBookIds(appContext)
+            val classification = withContext(Dispatchers.IO) {
+                computeCatalogClassification(appContext)
             }
             _rootCategories.value = dataManager.allRootCategories
             _authorCategories.value = authors
             _downloadedBookIds.value = downloadedIds
-            _importedBookIds.value = importedIds
+            _importedBookIds.value = classification.importedBookIds
+            _updateAddedBookIds.value = classification.updateAddedBookIds
             updateFlatItems()
             _catalogRevision.value += 1
             _isDataLoaded.value = true
@@ -168,13 +172,14 @@ class LibraryViewModel(
                 dataManager.buildAuthorHierarchy()
             }
             val downloadedIds = scanDownloadedBookIds(appContext)
-            val importedIds = withContext(Dispatchers.IO) {
-                computeImportedBookIds(appContext)
+            val classification = withContext(Dispatchers.IO) {
+                computeCatalogClassification(appContext)
             }
             _rootCategories.value = dataManager.allRootCategories
             _authorCategories.value = authors
             _downloadedBookIds.value = downloadedIds
-            _importedBookIds.value = importedIds
+            _importedBookIds.value = classification.importedBookIds
+            _updateAddedBookIds.value = classification.updateAddedBookIds
             updateFlatItems()
             _catalogRevision.value += 1
             _isDataLoaded.value = true
@@ -185,7 +190,8 @@ class LibraryViewModel(
     }
 
     fun checkBookUpdatesPeriodically(context: Context? = null, force: Boolean = false) {
-        val repo = updateRepository ?: context?.let { BookUpdateRepository(it.applicationContext) } ?: return
+        val appContext = context?.applicationContext
+        val repo = updateRepository ?: appContext?.let { BookUpdateRepository(it) } ?: return
         val lastCheck = repo.getLastUpdateCheck()
         val oneDayMs = 86_400_000L
         val now = System.currentTimeMillis()
@@ -200,8 +206,18 @@ class LibraryViewModel(
                 val items = repo.fetchAvailableUpdates()
                 val count = items.count { it.needsUpdate }
                 repo.saveUpdateCheck(now, count)
+                val refreshedClassification = if (appContext != null && _isDataLoaded.value) {
+                    computeCatalogClassification(appContext)
+                } else {
+                    null
+                }
                 withContext(Dispatchers.Main) {
                     _availableUpdateCount.value = count
+                    if (refreshedClassification != null && appContext != null) {
+                        _importedBookIds.value = refreshedClassification.importedBookIds
+                        _updateAddedBookIds.value = refreshedClassification.updateAddedBookIds
+                        updateSelectionDownloadState(appContext)
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -219,10 +235,11 @@ class LibraryViewModel(
                     val manager = BookDownloadManager(appContext)
                     downloadIndex = manager.fetchIndex()
                     if (_isDataLoaded.value) {
-                        val importedIds = withContext(Dispatchers.IO) {
-                            computeImportedBookIds(appContext)
+                        val classification = withContext(Dispatchers.IO) {
+                            computeCatalogClassification(appContext)
                         }
-                        _importedBookIds.value = importedIds
+                        _importedBookIds.value = classification.importedBookIds
+                        _updateAddedBookIds.value = classification.updateAddedBookIds
                     }
                     updateSelectionDownloadState(appContext)
                 } catch (e: CancellationException) {
@@ -234,19 +251,23 @@ class LibraryViewModel(
         }
     }
 
-    private fun computeImportedBookIds(appContext: Context): Set<Int> {
+    private fun computeCatalogClassification(appContext: Context): BookCatalogClassifier.CatalogBookClassification {
         val catalogIds = dataManager.booksById.keys.toSet()
-        if (catalogIds.isEmpty()) return emptySet()
+        if (catalogIds.isEmpty()) {
+            return BookCatalogClassifier.CatalogBookClassification(emptySet(), emptySet())
+        }
 
         val explicitImported = BookImportManager.getImportedBookIds(appContext)
+        val repo = updateRepository ?: BookUpdateRepository(appContext)
+        val explicitUpdateAdded = repo.getUpdateAddedBookIds()
         val cachedIndexIds = downloadIndex?.takeIf { it.isNotEmpty() }?.mapTo(HashSet()) { it.bkid }
         val serverIndexIds = cachedIndexIds ?: BookDownloadManager(appContext).readLocalIndexBookIds()
-        val repo = updateRepository ?: BookUpdateRepository(appContext)
         val updateServerIds = repo.getKnownUpdateServerBookIds()
 
-        return BookCatalogClassifier.classifyImportedBookIds(
+        return BookCatalogClassifier.classifyCatalogBooks(
             allCatalogBookIds = catalogIds,
             explicitImportedIds = explicitImported,
+            explicitUpdateAddedIds = explicitUpdateAdded,
             serverIndexIds = serverIndexIds,
             updateServerIds = updateServerIds,
         )
@@ -469,7 +490,7 @@ class LibraryViewModel(
         val needDownload = BookCatalogClassifier.filterBooksNeedingDownload(
             selectedBookIds = selected,
             downloadedBookIds = downloaded,
-            importedBookIds = _importedBookIds.value,
+            nonServerDownloadableBookIds = _importedBookIds.value + _updateAddedBookIds.value,
         )
 
         // Compute total size
@@ -751,6 +772,7 @@ class LibraryViewModel(
             selectedBookIds = _selectedBookIds.value,
             downloadedBookIds = _downloadedBookIds.value,
             importedBookIds = _importedBookIds.value,
+            updateAddedBookIds = _updateAddedBookIds.value,
             activeDownloadingBookIds = activeDownloadingIds,
         )
 
@@ -784,7 +806,8 @@ class LibraryViewModel(
         viewModelScope.launch {
             try {
                 val executionResult = withContext(Dispatchers.IO) {
-                    val allTargets = (summary.importedBookIds + summary.downloadedServerBookIds).distinct()
+                    val catalogRemovalIds = summary.catalogRemovalBookIds
+                    val allTargets = (catalogRemovalIds + summary.downloadedServerBookIds).distinct()
                     val booksByIdSnapshot = dataManager.booksById
                     val groupedByArchive = HashMap<Int, MutableList<Int>>()
                     for (bookId in allTargets) {
@@ -806,18 +829,18 @@ class LibraryViewModel(
                         )
                     }
 
-                    val deletedImportedMetadataIds = if (summary.importedBookIds.isNotEmpty()) {
-                        BookImportManager.deleteImportedBookMetadata(appContext, summary.importedBookIds)
+                    val deletedCatalogMetadataIds = if (catalogRemovalIds.isNotEmpty()) {
+                        BookImportManager.deleteCatalogBookMetadata(appContext, catalogRemovalIds)
                     } else {
                         emptySet()
                     }
 
                     val serverTargetSet = summary.downloadedServerBookIds.toHashSet()
-                    val importedTargetSet = summary.importedBookIds.toHashSet()
+                    val catalogRemovalTargetSet = catalogRemovalIds.toHashSet()
                     val deletedBookIds = (
                         deletedContentIds.filter { it in serverTargetSet } +
-                            deletedImportedMetadataIds +
-                            deletedContentIds.filter { it in importedTargetSet }
+                            deletedCatalogMetadataIds +
+                            deletedContentIds.filter { it in catalogRemovalTargetSet }
                         ).distinct()
 
                     if (deletedBookIds.isNotEmpty()) {
@@ -828,7 +851,7 @@ class LibraryViewModel(
                     }
 
                     var refreshedAuthors: List<CategoryData>? = null
-                    if (deletedImportedMetadataIds.isNotEmpty()) {
+                    if (deletedCatalogMetadataIds.isNotEmpty()) {
                         dataManager.loadData()
                         refreshedAuthors = withContext(Dispatchers.Default) {
                             dataManager.buildAuthorHierarchy()
@@ -836,14 +859,14 @@ class LibraryViewModel(
                     }
 
                     val newDownloadedIds = scanDownloadedBookIds(appContext)
-                    val newImportedIds = computeImportedBookIds(appContext)
+                    val newClassification = computeCatalogClassification(appContext)
 
                     DeleteExecutionOutcome(
                         deletedBookIds = deletedBookIds,
-                        catalogMutated = deletedImportedMetadataIds.isNotEmpty(),
+                        catalogMutated = deletedCatalogMetadataIds.isNotEmpty(),
                         refreshedAuthors = refreshedAuthors,
                         newDownloadedIds = newDownloadedIds,
-                        newImportedIds = newImportedIds,
+                        newClassification = newClassification,
                     )
                 }
 
@@ -855,7 +878,8 @@ class LibraryViewModel(
                         _catalogRevision.value += 1
                     }
                     _downloadedBookIds.value = executionResult.newDownloadedIds
-                    _importedBookIds.value = executionResult.newImportedIds
+                    _importedBookIds.value = executionResult.newClassification.importedBookIds
+                    _updateAddedBookIds.value = executionResult.newClassification.updateAddedBookIds
                     updateFlatItems()
                     _isSelectionMode.value = false
                     _selectedBookIds.value = emptySet()
@@ -885,7 +909,7 @@ class LibraryViewModel(
         val catalogMutated: Boolean,
         val refreshedAuthors: List<CategoryData>?,
         val newDownloadedIds: Set<Int>,
-        val newImportedIds: Set<Int>,
+        val newClassification: BookCatalogClassifier.CatalogBookClassification,
     )
 
     fun showDownloadConfirmation(

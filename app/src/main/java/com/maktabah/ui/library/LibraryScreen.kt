@@ -108,6 +108,7 @@ fun LibraryScreen(
     val currentContext by rememberUpdatedState(context)
     val downloadedBookIds by viewModel.downloadedBookIds.collectAsState()
     val importedBookIds by viewModel.importedBookIds.collectAsState()
+    val updateAddedBookIds by viewModel.updateAddedBookIds.collectAsState()
     val pendingDeleteSummary by viewModel.pendingDeleteSummary.collectAsState()
     val isDeleting by viewModel.isDeleting.collectAsState()
     val flatVisibleItems by viewModel.flatVisibleItems.collectAsState()
@@ -267,7 +268,9 @@ fun LibraryScreen(
                                 Row {
                                     if (isSelectionMode && selectedBookIds.isNotEmpty()) {
                                         val hasDeletableSelected = selectedBookIds.any {
-                                            downloadedBookIds.contains(it) || importedBookIds.contains(it)
+                                            downloadedBookIds.contains(it) ||
+                                                importedBookIds.contains(it) ||
+                                                updateAddedBookIds.contains(it)
                                         }
                                         if (hasDeletableSelected) {
                                             IconButton(
@@ -483,14 +486,24 @@ fun LibraryScreen(
 
     pendingDeleteSummary?.let { summary ->
         val importedCount = summary.importedBookIds.size
+        val updateAddedCount = summary.updateAddedBookIds.size
         val downloadedCount = summary.downloadedServerBookIds.size
-        val baseMessage = when {
-            importedCount > 0 && downloadedCount > 0 ->
-                stringResource(R.string.library_delete_confirm_mixed, importedCount, downloadedCount)
-            importedCount > 0 ->
-                stringResource(R.string.library_delete_confirm_imported_only, importedCount)
-            else ->
-                stringResource(R.string.library_delete_confirm_downloaded_only, downloadedCount)
+        val sections = buildList {
+            if (importedCount > 0) {
+                add(stringResource(R.string.library_delete_confirm_imported_only, importedCount))
+            }
+            if (updateAddedCount > 0) {
+                add(stringResource(R.string.library_delete_confirm_update_only, updateAddedCount))
+            }
+            if (downloadedCount > 0) {
+                add(stringResource(R.string.library_delete_confirm_downloaded_only, downloadedCount))
+            }
+        }
+        val baseMessage = if (sections.size == 1) {
+            sections.first()
+        } else {
+            stringResource(R.string.library_delete_confirm_mixed_header) +
+                "\n\n" + sections.joinToString("\n") { "• $it" }
         }
         val skippedNote = if (summary.skippedDownloadingBookIds.isNotEmpty()) {
             stringResource(

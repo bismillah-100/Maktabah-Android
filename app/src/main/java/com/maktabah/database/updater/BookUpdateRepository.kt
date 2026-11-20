@@ -55,6 +55,8 @@ class BookUpdateRepository(
         return knownIds
     }
 
+    fun getUpdateAddedBookIds(): Set<Int> = BookUpdateLocalSource().getUpdateAddedBookIds(context)
+
     suspend fun fetchAuthIndexEntries(): List<AuthIndexEntry> = withContext(Dispatchers.IO) {
         updateManager.fetchAuthIndexEntries()
     }

@@ -451,11 +451,12 @@ object BookImportManager {
     }
 
     /**
-     * Menghapus metadata buku import dari main.sqlite ("0bok" & imported_books) serta
-     * membersihkan author buatan import yang menjadi yatim di special.sqlite (Auth & imported_authors).
+     * Menghapus metadata buku non-katalog-inti (buku import & buku baru dari Pembaruan Buku)
+     * dari main.sqlite ("0bok" serta tabel pelacakan) dan membersihkan author dinamis
+     * (imported_authors / update_added_authors) yang menjadi yatim di special.sqlite (Auth).
      * Mengembalikan himpunan bkid yang benar-benar terhapus dari katalog.
      */
-    suspend fun deleteImportedBookMetadata(context: Context, bookIds: List<Int>): Set<Int> {
+    suspend fun deleteCatalogBookMetadata(context: Context, bookIds: List<Int>): Set<Int> {
         val targetIds = bookIds.distinct()
         if (targetIds.isEmpty()) return emptySet()
 
@@ -470,6 +471,10 @@ object BookImportManager {
 
             openDatabase(mainDbFile, WRITE_FLAGS).use { db ->
                 ensureTrackingTables(db)
+                val hasUpdateAddedBooks = hasTable(db, "update_added_books")
+                val hasServerUpdatedBooks = hasTable(db, "server_updated_books")
+                val hasUpdateAddedAuthors = hasTable(db, "update_added_authors")
+
                 db.inTransaction {
                     for (chunk in targetIds.chunked(900)) {
                         val placeholders = chunk.joinToString(",") { "?" }
@@ -489,6 +494,18 @@ object BookImportManager {
                             chunk.forEachIndexed { idx, id -> stmt.bindInt(idx + 1, id) }
                             stmt.step()
                         }
+                        if (hasUpdateAddedBooks) {
+                            db.prepare("DELETE FROM update_added_books WHERE bkid IN ($placeholders);")?.use { stmt ->
+                                chunk.forEachIndexed { idx, id -> stmt.bindInt(idx + 1, id) }
+                                stmt.step()
+                            }
+                        }
+                        if (hasServerUpdatedBooks) {
+                            db.prepare("DELETE FROM server_updated_books WHERE bkid IN ($placeholders);")?.use { stmt ->
+                                chunk.forEachIndexed { idx, id -> stmt.bindInt(idx + 1, id) }
+                                stmt.step()
+                            }
+                        }
                     }
 
                     for (authId in affectedAuthIds) {
@@ -496,7 +513,13 @@ object BookImportManager {
                             stmt.bindInt(1, authId)
                             stmt.step() == SQLiteDB.SQLITE_ROW
                         } ?: false
-                        if (!isImportedAuthor) continue
+                        val isUpdateAddedAuthor = hasUpdateAddedAuthors && (
+                            db.prepare("SELECT 1 FROM update_added_authors WHERE authid = ? LIMIT 1;")?.use { stmt ->
+                                stmt.bindInt(1, authId)
+                                stmt.step() == SQLiteDB.SQLITE_ROW
+                            } ?: false
+                        )
+                        if (!isImportedAuthor && !isUpdateAddedAuthor) continue
 
                         val isStillReferenced = db.prepare("SELECT 1 FROM \"0bok\" WHERE authno = ? LIMIT 1;")?.use { stmt ->
                             stmt.bindInt(1, authId)
@@ -504,9 +527,17 @@ object BookImportManager {
                         } ?: false
                         if (!isStillReferenced) {
                             orphanedAuthorIds.add(authId)
-                            db.prepare("DELETE FROM imported_authors WHERE authid = ?;")?.use { stmt ->
-                                stmt.bindInt(1, authId)
-                                stmt.step()
+                            if (isImportedAuthor) {
+                                db.prepare("DELETE FROM imported_authors WHERE authid = ?;")?.use { stmt ->
+                                    stmt.bindInt(1, authId)
+                                    stmt.step()
+                                }
+                            }
+                            if (isUpdateAddedAuthor) {
+                                db.prepare("DELETE FROM update_added_authors WHERE authid = ?;")?.use { stmt ->
+                                    stmt.bindInt(1, authId)
+                                    stmt.step()
+                                }
                             }
                         }
                     }
