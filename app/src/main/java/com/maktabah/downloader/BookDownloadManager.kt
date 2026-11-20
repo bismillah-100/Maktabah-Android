@@ -1,6 +1,8 @@
 package com.maktabah.downloader
 
 import android.content.Context
+import android.util.JsonReader
+import android.util.JsonToken
 import android.util.Log
 import com.github.luben.zstd.ZstdInputStream
 import com.maktabah.database.BookArchiveIntegrator
@@ -8,50 +10,41 @@ import com.maktabah.models.BundleBookIndexEntry
 import com.maktabah.models.IntegratePhase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import java.io.File
 import java.io.FileOutputStream
+import java.io.Reader
+import java.io.StringReader
 import java.net.HttpURLConnection
 import java.net.URL
 
 class BookDownloadManager(private val context: Context) {
     private val indexUrl = com.maktabah.BuildConfig.GITHUB_KITAB_INDEX_URL
 
-    fun readLocalIndexBookIds(): Set<Int>? {
-        val indexFile = File(context.filesDir, "index.json")
-        if (!indexFile.exists()) return null
-        return try {
-            val entries = parseIndexEntries(indexFile.readText())
-            if (entries.isEmpty()) null else entries.mapTo(HashSet()) { it.bkid }
-        } catch (e: Exception) {
-            Log.w("BookDownloadManager", "Failed to read local index.json", e)
-            null
-        }
-    }
-
     suspend fun fetchIndex(): List<BundleBookIndexEntry> = withContext(Dispatchers.IO) {
         val indexFile = File(context.filesDir, "index.json")
-        val downloadedFromNetwork: Boolean
-        val jsonString = if (indexFile.exists()) {
-            downloadedFromNetwork = false
-            indexFile.readText()
-        } else {
-            downloadedFromNetwork = true
-            val url = URL(indexUrl)
-            val conn = url.openConnection() as HttpURLConnection
-            try {
-                conn.connect()
-                if (conn.responseCode != HttpURLConnection.HTTP_OK) {
-                    return@withContext emptyList()
-                }
-                conn.inputStream.bufferedReader().use { it.readText() }
-            } finally {
-                conn.disconnect()
+        if (indexFile.exists()) {
+            return@withContext try {
+                indexFile.bufferedReader().use { parseIndexEntries(it) }
+            } catch (e: Exception) {
+                Log.w("BookDownloadManager", "Failed to read local index.json", e)
+                emptyList()
             }
         }
 
-        val entries = parseIndexEntries(jsonString)
-        if (downloadedFromNetwork && entries.isNotEmpty()) {
+        val url = URL(indexUrl)
+        val conn = url.openConnection() as HttpURLConnection
+        val jsonString = try {
+            conn.connect()
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+                return@withContext emptyList()
+            }
+            conn.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            conn.disconnect()
+        }
+
+        val entries = StringReader(jsonString).use { parseIndexEntries(it) }
+        if (entries.isNotEmpty()) {
             try {
                 val tempFile = File(context.filesDir, "index.json.tmp")
                 tempFile.writeText(jsonString)
@@ -66,20 +59,42 @@ class BookDownloadManager(private val context: Context) {
         entries
     }
 
-    private fun parseIndexEntries(jsonString: String): List<BundleBookIndexEntry> {
-        if (jsonString.isBlank()) return emptyList()
-        val jsonArray = JSONArray(jsonString)
+    private fun parseIndexEntries(reader: Reader): List<BundleBookIndexEntry> {
         val entries = mutableListOf<BundleBookIndexEntry>()
-        for (i in 0 until jsonArray.length()) {
-            val obj = jsonArray.getJSONObject(i)
-            entries.add(
-                BundleBookIndexEntry(
-                    bkid = obj.getInt("bkid"),
-                    filename = obj.getString("filename"),
-                    release = obj.getString("release"),
-                    sizeZst = if (obj.has("size_zst")) obj.getLong("size_zst") else null
-                )
-            )
+        JsonReader(reader).use { json ->
+            if (json.peek() != JsonToken.BEGIN_ARRAY) return emptyList()
+            json.beginArray()
+            while (json.hasNext()) {
+                var bkid = 0
+                var authno = 0
+                var filename = ""
+                var release = ""
+                var sizeZst: Long? = null
+                json.beginObject()
+                while (json.hasNext()) {
+                    when (json.nextName()) {
+                        "bkid" -> bkid = if (json.peek() == JsonToken.NULL) { json.nextNull(); 0 } else json.nextInt()
+                        "authno" -> authno = if (json.peek() == JsonToken.NULL) { json.nextNull(); 0 } else json.nextInt()
+                        "filename" -> filename = if (json.peek() == JsonToken.NULL) { json.nextNull(); "" } else json.nextString()
+                        "release" -> release = if (json.peek() == JsonToken.NULL) { json.nextNull(); "" } else json.nextString()
+                        "size_zst" -> sizeZst = if (json.peek() == JsonToken.NULL) { json.nextNull(); null } else json.nextLong()
+                        else -> json.skipValue()
+                    }
+                }
+                json.endObject()
+                if (bkid > 0) {
+                    entries.add(
+                        BundleBookIndexEntry(
+                            bkid = bkid,
+                            filename = filename,
+                            release = release,
+                            sizeZst = sizeZst,
+                            authno = authno,
+                        )
+                    )
+                }
+            }
+            json.endArray()
         }
         return entries
     }

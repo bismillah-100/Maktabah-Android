@@ -23,18 +23,6 @@ object BookImportManager {
         }
     }
 
-    private fun ensureTrackingTables(db: SQLiteDB) {
-        db.prepare("CREATE TABLE IF NOT EXISTS imported_books (bkid INTEGER PRIMARY KEY);")?.use { it.step() }
-        db.prepare("CREATE TABLE IF NOT EXISTS imported_authors (authid INTEGER PRIMARY KEY);")?.use { it.step() }
-    }
-
-    private fun hasTable(db: SQLiteDB, tableName: String): Boolean {
-        return db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1;")?.use { stmt ->
-            stmt.bindText(1, tableName)
-            stmt.step() == SQLiteDB.SQLITE_ROW
-        } ?: false
-    }
-
     fun getMaxBookId(context: Context): Int {
         val mainDbFile = File(context.filesDir, "main.sqlite")
         if (!mainDbFile.exists()) return 0
@@ -153,25 +141,6 @@ object BookImportManager {
         return result
     }
 
-    fun getImportedBookIds(context: Context): Set<Int> {
-        val mainDbFile = File(context.filesDir, "main.sqlite")
-        if (!mainDbFile.exists()) return emptySet()
-        val result = HashSet<Int>()
-        try {
-            openDatabase(mainDbFile, READ_FLAGS).use { db ->
-                if (!hasTable(db, "imported_books")) return emptySet()
-                db.prepare("SELECT bkid FROM imported_books;")?.use { stmt ->
-                    while (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                        result.add(stmt.columnInt(0))
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "getImportedBookIds", e)
-        }
-        return result
-    }
-
     /**
      * Mengimpor buku baru atau mengganti buku yang sudah ada.
      *
@@ -231,7 +200,6 @@ object BookImportManager {
                 }
 
                 openDatabase(mainDbFile, WRITE_FLAGS).use { db ->
-                    ensureTrackingTables(db)
                     catalogCommitted = db.inTransaction {
                         db.prepare("DELETE FROM \"0bok\" WHERE bkid = ?")?.use { stmt ->
                             stmt.bindInt(1, metadata.bkid)
@@ -255,19 +223,6 @@ object BookImportManager {
                             stmt.bindInt(10, if (metadata.isMultiLanguage) 3 else 0)
                             if (stmt.step() != SQLiteDB.SQLITE_DONE) {
                                 throw Exception("Gagal menyimpan metadata buku ke 0bok")
-                            }
-                        }
-
-                        if (isNewBook) {
-                            db.prepare("INSERT OR IGNORE INTO imported_books (bkid) VALUES (?);")?.use { stmt ->
-                                stmt.bindInt(1, metadata.bkid)
-                                stmt.step()
-                            }
-                        }
-                        if (insertedAuthorId != null) {
-                            db.prepare("INSERT OR IGNORE INTO imported_authors (authid) VALUES (?);")?.use { stmt ->
-                                stmt.bindInt(1, insertedAuthorId!!)
-                                stmt.step()
                             }
                         }
                         true
@@ -331,14 +286,9 @@ object BookImportManager {
 
                 if (mainDbFile.exists()) {
                     openDatabase(mainDbFile, WRITE_FLAGS).use { db ->
-                        ensureTrackingTables(db)
                         db.inTransaction {
                             if (isNewBook) {
                                 db.prepare("DELETE FROM \"0bok\" WHERE bkid = ?;")?.use { stmt ->
-                                    stmt.bindInt(1, bookId)
-                                    stmt.step()
-                                }
-                                db.prepare("DELETE FROM imported_books WHERE bkid = ?;")?.use { stmt ->
                                     stmt.bindInt(1, bookId)
                                     stmt.step()
                                 }
@@ -350,10 +300,6 @@ object BookImportManager {
                                 } ?: false
                                 if (!stillUsed) {
                                     deleteOrphanAuthor = true
-                                    db.prepare("DELETE FROM imported_authors WHERE authid = ?;")?.use { stmt ->
-                                        stmt.bindInt(1, insertedAuthorId)
-                                        stmt.step()
-                                    }
                                 }
                             }
                         }
@@ -377,7 +323,7 @@ object BookImportManager {
     }
 
     /**
-     * Mengubah ID buku di arsip konten, FTS, tabel 0bok, shorts, dan pelacakan imported_books.
+     * Mengubah ID buku di arsip konten, FTS, tabel 0bok, dan shorts.
      * Anotasi dan saved results diupdate oleh pemanggil.
      */
     suspend fun changeBookId(context: Context, oldId: Int, newId: Int): Result<Unit> {
@@ -406,26 +352,11 @@ object BookImportManager {
 
             BookArchiveSingleFlight.runCatalogWrite {
                 openDatabase(mainDbFile, WRITE_FLAGS).use { db ->
-                    ensureTrackingTables(db)
                     db.inTransaction {
                         db.prepare("UPDATE \"0bok\" SET bkid = ? WHERE bkid = ?")?.use { stmt ->
                             stmt.bindInt(1, newId)
                             stmt.bindInt(2, oldId)
                             stmt.step()
-                        }
-                        val wasImported = db.prepare("SELECT 1 FROM imported_books WHERE bkid = ? LIMIT 1;")?.use { stmt ->
-                            stmt.bindInt(1, oldId)
-                            stmt.step() == SQLiteDB.SQLITE_ROW
-                        } ?: false
-                        if (wasImported) {
-                            db.prepare("DELETE FROM imported_books WHERE bkid = ?;")?.use { stmt ->
-                                stmt.bindInt(1, oldId)
-                                stmt.step()
-                            }
-                            db.prepare("INSERT OR IGNORE INTO imported_books (bkid) VALUES (?);")?.use { stmt ->
-                                stmt.bindInt(1, newId)
-                                stmt.step()
-                            }
                         }
                     }
                 }
@@ -451,12 +382,15 @@ object BookImportManager {
     }
 
     /**
-     * Menghapus metadata buku non-katalog-inti (buku import & buku baru dari Pembaruan Buku)
-     * dari main.sqlite ("0bok" serta tabel pelacakan) dan membersihkan author dinamis
-     * (imported_authors / update_added_authors) yang menjadi yatim di special.sqlite (Auth).
+     * Menghapus metadata buku non-katalog-inti dari main.sqlite ("0bok") dan membersihkan
+     * author non-katalog yang menjadi yatim di special.sqlite (Auth).
      * Mengembalikan himpunan bkid yang benar-benar terhapus dari katalog.
      */
-    suspend fun deleteCatalogBookMetadata(context: Context, bookIds: List<Int>): Set<Int> {
+    suspend fun deleteCatalogBookMetadata(
+        context: Context,
+        bookIds: List<Int>,
+        coreAuthorIds: Set<Int>?,
+    ): Set<Int> {
         val targetIds = bookIds.distinct()
         if (targetIds.isEmpty()) return emptySet()
 
@@ -470,11 +404,6 @@ object BookImportManager {
             val orphanedAuthorIds = HashSet<Int>()
 
             openDatabase(mainDbFile, WRITE_FLAGS).use { db ->
-                ensureTrackingTables(db)
-                val hasUpdateAddedBooks = hasTable(db, "update_added_books")
-                val hasServerUpdatedBooks = hasTable(db, "server_updated_books")
-                val hasUpdateAddedAuthors = hasTable(db, "update_added_authors")
-
                 db.inTransaction {
                     for (chunk in targetIds.chunked(900)) {
                         val placeholders = chunk.joinToString(",") { "?" }
@@ -490,54 +419,17 @@ object BookImportManager {
                             chunk.forEachIndexed { idx, id -> stmt.bindInt(idx + 1, id) }
                             stmt.step()
                         }
-                        db.prepare("DELETE FROM imported_books WHERE bkid IN ($placeholders);")?.use { stmt ->
-                            chunk.forEachIndexed { idx, id -> stmt.bindInt(idx + 1, id) }
-                            stmt.step()
-                        }
-                        if (hasUpdateAddedBooks) {
-                            db.prepare("DELETE FROM update_added_books WHERE bkid IN ($placeholders);")?.use { stmt ->
-                                chunk.forEachIndexed { idx, id -> stmt.bindInt(idx + 1, id) }
-                                stmt.step()
-                            }
-                        }
-                        if (hasServerUpdatedBooks) {
-                            db.prepare("DELETE FROM server_updated_books WHERE bkid IN ($placeholders);")?.use { stmt ->
-                                chunk.forEachIndexed { idx, id -> stmt.bindInt(idx + 1, id) }
-                                stmt.step()
-                            }
-                        }
                     }
 
-                    for (authId in affectedAuthIds) {
-                        val isImportedAuthor = db.prepare("SELECT 1 FROM imported_authors WHERE authid = ? LIMIT 1;")?.use { stmt ->
-                            stmt.bindInt(1, authId)
-                            stmt.step() == SQLiteDB.SQLITE_ROW
-                        } ?: false
-                        val isUpdateAddedAuthor = hasUpdateAddedAuthors && (
-                            db.prepare("SELECT 1 FROM update_added_authors WHERE authid = ? LIMIT 1;")?.use { stmt ->
+                    if (coreAuthorIds != null) {
+                        for (authId in affectedAuthIds) {
+                            if (authId in coreAuthorIds) continue
+                            val isStillReferenced = db.prepare("SELECT 1 FROM \"0bok\" WHERE authno = ? LIMIT 1;")?.use { stmt ->
                                 stmt.bindInt(1, authId)
                                 stmt.step() == SQLiteDB.SQLITE_ROW
                             } ?: false
-                        )
-                        if (!isImportedAuthor && !isUpdateAddedAuthor) continue
-
-                        val isStillReferenced = db.prepare("SELECT 1 FROM \"0bok\" WHERE authno = ? LIMIT 1;")?.use { stmt ->
-                            stmt.bindInt(1, authId)
-                            stmt.step() == SQLiteDB.SQLITE_ROW
-                        } ?: false
-                        if (!isStillReferenced) {
-                            orphanedAuthorIds.add(authId)
-                            if (isImportedAuthor) {
-                                db.prepare("DELETE FROM imported_authors WHERE authid = ?;")?.use { stmt ->
-                                    stmt.bindInt(1, authId)
-                                    stmt.step()
-                                }
-                            }
-                            if (isUpdateAddedAuthor) {
-                                db.prepare("DELETE FROM update_added_authors WHERE authid = ?;")?.use { stmt ->
-                                    stmt.bindInt(1, authId)
-                                    stmt.step()
-                                }
+                            if (!isStillReferenced) {
+                                orphanedAuthorIds.add(authId)
                             }
                         }
                     }

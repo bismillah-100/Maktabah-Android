@@ -9,7 +9,6 @@ object AppConfig {
         const val LIBRARY_PREFS = "library_prefs"
         const val KEY_LAST_UPDATE_CHECK = "last_book_update_check"
         const val KEY_CACHED_UPDATE_COUNT = "cached_book_update_count"
-        const val KEY_CACHED_UPDATE_BOOK_IDS = "cached_update_book_ids"
     }
 
     object WorkManagerKeys {

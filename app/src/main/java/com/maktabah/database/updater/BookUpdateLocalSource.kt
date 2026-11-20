@@ -138,11 +138,6 @@ class BookUpdateLocalSource {
 
         SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX).use { db ->
             db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
-            db.prepare("CREATE TABLE IF NOT EXISTS server_updated_books (bkid INTEGER PRIMARY KEY);")?.use { it.step() }
-            db.prepare("CREATE TABLE IF NOT EXISTS update_added_books (bkid INTEGER PRIMARY KEY);")?.use { it.step() }
-            val hasImportedBooksTable = db.prepare(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='imported_books' LIMIT 1;"
-            )?.use { it.step() == SQLiteDB.SQLITE_ROW } ?: false
 
             val verCol = resolveVersionColumn(db) ?: "bVer"
             db.inTransaction {
@@ -167,10 +162,6 @@ class BookUpdateLocalSource {
                             throw IllegalStateException("Gagal insert metadata buku ${metadata.bkid} ke 0bok")
                         }
                     }
-                    db.prepare("INSERT OR IGNORE INTO update_added_books (bkid) VALUES (?);")?.use { stmt ->
-                        stmt.bindInt(1, metadata.bkid)
-                        stmt.step()
-                    }
                 } else {
                     val sql = "UPDATE \"0bok\" SET \"$verCol\" = ? WHERE bkid = ?;"
                     db.prepare(sql)?.use { stmt ->
@@ -181,53 +172,8 @@ class BookUpdateLocalSource {
                         }
                     }
                 }
-
-                db.prepare("INSERT OR IGNORE INTO server_updated_books (bkid) VALUES (?);")?.use { stmt ->
-                    stmt.bindInt(1, metadata.bkid)
-                    stmt.step()
-                }
-                if (hasImportedBooksTable) {
-                    db.prepare("DELETE FROM imported_books WHERE bkid = ?;")?.use { stmt ->
-                        stmt.bindInt(1, metadata.bkid)
-                        stmt.step()
-                    }
-                }
             }
         }
-    }
-
-    fun getServerUpdatedBookIds(context: Context): Set<Int> =
-        readBookIdTrackingTable(context, "server_updated_books")
-
-    fun getUpdateAddedBookIds(context: Context): Set<Int> =
-        readBookIdTrackingTable(context, "update_added_books")
-
-    private fun readBookIdTrackingTable(context: Context, tableName: String): Set<Int> {
-        val mainDbFile = File(context.filesDir, "main.sqlite")
-        if (!mainDbFile.exists()) return emptySet()
-
-        val result = HashSet<Int>()
-        try {
-            SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX).use { db ->
-                db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
-                val hasTable = db.prepare(
-                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1;"
-                )?.use { stmt ->
-                    stmt.bindText(1, tableName)
-                    stmt.step() == SQLiteDB.SQLITE_ROW
-                } ?: false
-                if (!hasTable) return emptySet()
-
-                db.prepare("SELECT bkid FROM \"$tableName\";")?.use { stmt ->
-                    while (stmt.step() == SQLiteDB.SQLITE_ROW) {
-                        result.add(stmt.columnInt(0))
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "readBookIdTrackingTable($tableName)", e)
-        }
-        return result
     }
 
     fun getBookVersionState(context: Context, bookId: Int): BookVersionState {
@@ -300,20 +246,12 @@ class BookUpdateLocalSource {
         val specialDbFile = File(context.filesDir, "special.sqlite")
         if (!specialDbFile.exists()) return
 
-        var authorAlreadyExisted = false
         SQLiteDB(
             specialDbFile.absolutePath,
             SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
         ).use { specialDb ->
             specialDb.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
             specialDb.inTransaction {
-                authorAlreadyExisted = specialDb.prepare(
-                    "SELECT 1 FROM Auth WHERE authid = ? LIMIT 1;"
-                )?.use { stmt ->
-                    stmt.bindInt(1, authorRow.id)
-                    stmt.step() == SQLiteDB.SQLITE_ROW
-                } ?: false
-
                 specialDb.prepare(
                     "INSERT OR REPLACE INTO Auth (authid, auth, inf, Lng, HigriD, oVer) VALUES (?, ?, ?, ?, ?, ?);"
                 )?.use { stmt ->
@@ -324,23 +262,6 @@ class BookUpdateLocalSource {
                     stmt.bindText(5, authorRow.higriD)
                     stmt.bindInt(6, authorRow.oVer)
                     stmt.step()
-                }
-            }
-        }
-
-        if (!authorAlreadyExisted) {
-            val mainDbFile = File(context.filesDir, "main.sqlite")
-            if (mainDbFile.exists()) {
-                SQLiteDB(
-                    mainDbFile.absolutePath,
-                    SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
-                ).use { db ->
-                    db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
-                    db.prepare("CREATE TABLE IF NOT EXISTS update_added_authors (authid INTEGER PRIMARY KEY);")?.use { it.step() }
-                    db.prepare("INSERT OR IGNORE INTO update_added_authors (authid) VALUES (?);")?.use { stmt ->
-                        stmt.bindInt(1, authorRow.id)
-                        stmt.step()
-                    }
                 }
             }
         }

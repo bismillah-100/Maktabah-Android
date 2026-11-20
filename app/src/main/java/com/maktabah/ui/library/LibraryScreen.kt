@@ -107,8 +107,7 @@ fun LibraryScreen(
     val context = LocalContext.current
     val currentContext by rememberUpdatedState(context)
     val downloadedBookIds by viewModel.downloadedBookIds.collectAsState()
-    val importedBookIds by viewModel.importedBookIds.collectAsState()
-    val updateAddedBookIds by viewModel.updateAddedBookIds.collectAsState()
+    val customBookIds by viewModel.customBookIds.collectAsState()
     val pendingDeleteSummary by viewModel.pendingDeleteSummary.collectAsState()
     val isDeleting by viewModel.isDeleting.collectAsState()
     val flatVisibleItems by viewModel.flatVisibleItems.collectAsState()
@@ -268,9 +267,7 @@ fun LibraryScreen(
                                 Row {
                                     if (isSelectionMode && selectedBookIds.isNotEmpty()) {
                                         val hasDeletableSelected = selectedBookIds.any {
-                                            downloadedBookIds.contains(it) ||
-                                                importedBookIds.contains(it) ||
-                                                updateAddedBookIds.contains(it)
+                                            downloadedBookIds.contains(it) || customBookIds.contains(it)
                                         }
                                         if (hasDeletableSelected) {
                                             IconButton(
@@ -485,15 +482,11 @@ fun LibraryScreen(
     }
 
     pendingDeleteSummary?.let { summary ->
-        val importedCount = summary.importedBookIds.size
-        val updateAddedCount = summary.updateAddedBookIds.size
-        val downloadedCount = summary.downloadedServerBookIds.size
+        val customCount = summary.customBookIds.size
+        val downloadedCount = summary.downloadedCoreBookIds.size
         val sections = buildList {
-            if (importedCount > 0) {
-                add(stringResource(R.string.library_delete_confirm_imported_only, importedCount))
-            }
-            if (updateAddedCount > 0) {
-                add(stringResource(R.string.library_delete_confirm_update_only, updateAddedCount))
+            if (customCount > 0) {
+                add(stringResource(R.string.library_delete_confirm_custom_only, customCount))
             }
             if (downloadedCount > 0) {
                 add(stringResource(R.string.library_delete_confirm_downloaded_only, downloadedCount))
