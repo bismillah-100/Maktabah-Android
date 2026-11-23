@@ -40,7 +40,8 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:maxLines="2"
-                android:textAlignment="viewStart"
+                android:textAlignment="textStart"
+                android:textDirection="firstStrongRtl"
                 android:textSize="16sp" />
 
             <TextView
@@ -50,7 +51,8 @@
                 android:layout_marginTop="8dp"
                 android:ellipsize="end"
                 android:maxLines="4"
-                android:textAlignment="viewStart"
+                android:textAlignment="textStart"
+                android:textDirection="firstStrongRtl"
                 android:textSize="14sp"
                 android:visibility="gone" />
 

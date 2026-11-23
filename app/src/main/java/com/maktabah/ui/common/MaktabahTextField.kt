@@ -7,12 +7,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextDirection
-import com.maktabah.utils.startsWithArabic
 
 @Composable
 fun MaktabahTextField(
@@ -32,8 +30,6 @@ fun MaktabahTextField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     textStyle: TextStyle = LocalTextStyle.current
 ) {
-    val isArabic = remember(value) { value.startsWithArabic() }
-    
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
@@ -50,7 +46,7 @@ fun MaktabahTextField(
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
         textStyle = textStyle.copy(
-            textDirection = if (isArabic) TextDirection.Rtl else TextDirection.Ltr
+            textDirection = TextDirection.ContentOrRtl
         )
     )
 }

@@ -51,7 +51,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.toColorInt
@@ -61,6 +60,7 @@ import com.maktabah.ui.common.ColorPickerDialog
 import com.maktabah.ui.common.MaktabahTextField
 import com.maktabah.ui.common.consumeBottomSheetNestedScroll
 import com.maktabah.utils.ColorPreferences
+import com.maktabah.utils.toAutoDirectionAnnotatedString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -207,14 +207,13 @@ fun AnnotationEditorDialog(
                         color = MaterialTheme.colorScheme.surfaceVariant,
                         shape = MaterialTheme.shapes.small,
                     ) {
+                        val previewText = active.annotation?.context ?: active.selectedText
                         Text(
-                            text = active.annotation?.context ?: active.selectedText,
+                            text = remember(previewText) { previewText.toAutoDirectionAnnotatedString() },
                             modifier = Modifier.padding(8.dp),
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                textDirection = TextDirection.Rtl,
-                            ),
+                            style = MaterialTheme.typography.bodyMedium,
                         )
                     }
                 }

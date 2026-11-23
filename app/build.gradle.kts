@@ -160,6 +160,7 @@ dependencies {
     implementation(libs.multiplatform.markdown.renderer.m3)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    testImplementation("junit:junit:4.13.2")
 
     // File Downloads & Decompression
     implementation(libs.okhttp)

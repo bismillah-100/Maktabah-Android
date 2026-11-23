@@ -34,11 +34,8 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -49,6 +46,7 @@ import com.maktabah.ui.common.InsetGroupedItem
 import com.maktabah.ui.common.SwipeDeleteBackground
 import com.maktabah.ui.common.isSwipeTargetReached
 import com.maktabah.utils.convertToArabicDigits
+import com.maktabah.utils.toAutoDirectionAnnotatedString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.LazyItemScope
@@ -136,43 +134,39 @@ fun LazyItemScope.AnnotationItem(
                     } catch (_: Exception) {
                         Color.Yellow
                     }
-                val contextText =
+                val contextText = remember(ann.context, ann.type, parsedColor) {
+                    val base = ann.context.toAutoDirectionAnnotatedString()
                     buildAnnotatedString {
+                        append(base)
                         when (ann.type) {
-                            0 -> { // 0 is Highlight
-                                withStyle(style = SpanStyle(background = parsedColor.copy(alpha = 0.3f))) {
-                                    append(ann.context)
-                                }
-                            }
-
-                            1 -> { // 1 is Underline
-                                withStyle(style = SpanStyle(textDecoration = TextDecoration.Underline)) {
-                                    append(ann.context)
-                                }
-                            }
-
-                            else -> {
-                                append(ann.context)
-                            }
+                            0 -> addStyle(
+                                style = SpanStyle(background = parsedColor.copy(alpha = 0.3f)),
+                                start = 0,
+                                end = length
+                            )
+                            1 -> addStyle(
+                                style = SpanStyle(textDecoration = TextDecoration.Underline),
+                                start = 0,
+                                end = length
+                            )
                         }
                     }
+                }
                 Text(
                     text = contextText,
-                    style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Rtl),
+                    style = MaterialTheme.typography.bodyLarge,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Start,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (!ann.note.isNullOrEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = ann.note,
-                        style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Rtl),
+                        text = remember(ann.note) { ann.note.toAutoDirectionAnnotatedString() },
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 4,
                         overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Start,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }

@@ -1,5 +1,10 @@
 package com.maktabah.utils
 
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.ParagraphStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
+
 val arabicDigits = listOf("٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩")
 
 private val SPAN_REGEX = Regex("<[^>]*>")
@@ -61,6 +66,64 @@ fun String.startsWithArabic(): Boolean {
         code in 0x08A0..0x08FF ||
         code in 0xFB50..0xFDFF ||
         code in 0xFE70..0xFEFF
+}
+
+/**
+ * Checks the first strong letter of the text/paragraph to determine if it is RTL (Arabic, Hebrew, etc.).
+ * Returns `true` if RTL or empty/neutral, and `false` if LTR.
+ */
+fun CharSequence.isParagraphRTL(): Boolean {
+    var i = 0
+    val len = length
+    while (i < len) {
+        val codePoint = java.lang.Character.codePointAt(this, i)
+        i += java.lang.Character.charCount(codePoint)
+
+        if (java.lang.Character.isWhitespace(codePoint) || java.lang.Character.isIdentifierIgnorable(codePoint)) {
+            continue
+        }
+
+        val type = java.lang.Character.getType(codePoint)
+        val isLetter = type == java.lang.Character.UPPERCASE_LETTER.toInt() ||
+            type == java.lang.Character.LOWERCASE_LETTER.toInt() ||
+            type == java.lang.Character.TITLECASE_LETTER.toInt() ||
+            type == java.lang.Character.MODIFIER_LETTER.toInt() ||
+            type == java.lang.Character.OTHER_LETTER.toInt()
+
+        if (isLetter) {
+            return (codePoint in 0x0590..0x08FF) ||
+                (codePoint in 0xFB1D..0xFDFF) ||
+                (codePoint in 0xFE70..0xFEFF) ||
+                (codePoint in 0x10800..0x1EFFF)
+        }
+    }
+    return true
+}
+
+/**
+ * Builds an [AnnotatedString] with per-paragraph RTL/LTR alignment and text direction.
+ */
+fun String.toAutoDirectionAnnotatedString(): AnnotatedString {
+    if (isEmpty()) return AnnotatedString("")
+    val builder = AnnotatedString.Builder(this)
+    var start = 0
+    val len = length
+    while (start < len) {
+        val nextNewline = indexOf('\n', start)
+        val end = if (nextNewline != -1) nextNewline + 1 else len
+        val paragraphText = if (nextNewline != -1) substring(start, nextNewline) else substring(start)
+        val isRtl = paragraphText.isParagraphRTL()
+        builder.addStyle(
+            style = ParagraphStyle(
+                textAlign = if (isRtl) TextAlign.Right else TextAlign.Left,
+                textDirection = if (isRtl) TextDirection.Rtl else TextDirection.Ltr,
+            ),
+            start = start,
+            end = end
+        )
+        start = end
+    }
+    return builder.toAnnotatedString()
 }
 
 fun String.convertToArabicDigits(): String {
