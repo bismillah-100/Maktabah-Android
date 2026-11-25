@@ -2,6 +2,8 @@
 <resources>
     <string name="app_name" translatable="false">Maktabah</string>
     <string name="import_success">Book imported successfully!</string>
+    <string name="replace_book_success">Book replaced successfully!</string>
+    <string name="change_id_success">Book ID changed successfully!</string>
     <string name="import_failed">Failed: %1$s</string>
     <string name="pilih_buku">Select Book</string>
     <string name="pilih_author">Select Author</string>

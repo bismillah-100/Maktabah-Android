@@ -86,6 +86,7 @@ import com.maktabah.utils.normalizeArabic
 fun ImportBookSheet(
     annotationManager: AnnotationManager,
     onDismiss: () -> Unit,
+    onBookTabInvalidated: (Int) -> Unit = {},
     onImportSuccess: suspend () -> Unit,
 ) {
     val vm: ImportBookViewModel = viewModel()
@@ -135,9 +136,11 @@ fun ImportBookSheet(
 
     // Handle import result
     LaunchedEffect(importResult) {
-        val result = importResult ?: return@LaunchedEffect
-        if (result.isSuccess) {
-            Toast.makeText(context, context.getString(R.string.import_success), Toast.LENGTH_SHORT)
+        val outcome = importResult ?: return@LaunchedEffect
+        if (outcome.result.isSuccess) {
+            outcome.invalidatedBookId?.let(onBookTabInvalidated)
+            val messageRes = ImportBookViewModel.successMessageResFor(outcome.mode)
+            Toast.makeText(context, context.getString(messageRes), Toast.LENGTH_SHORT)
                 .show()
             onImportSuccess() // Trigger reload
             vm.resetForm()
@@ -145,7 +148,7 @@ fun ImportBookSheet(
         } else {
             Toast.makeText(
                 context,
-                context.getString(R.string.import_failed, result.exceptionOrNull()?.message ?: ""),
+                context.getString(R.string.import_failed, outcome.result.exceptionOrNull()?.message ?: ""),
                 Toast.LENGTH_LONG
             ).show()
             vm.clearResult()
@@ -314,9 +317,7 @@ fun ImportBookSheet(
                 ) {
                     Button(
                         onClick = {
-                            vm.performImport(annotationManager) {
-                                // callback after backend success, but before state update
-                            }
+                            vm.performImport(annotationManager)
                         },
                         enabled = !isImporting && !isLoadingData && isValid,
                         modifier = Modifier.fillMaxWidth(),

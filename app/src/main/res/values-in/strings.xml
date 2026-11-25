@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="import_success">Buku berhasil diimport!</string>
+    <string name="replace_book_success">Buku berhasil diganti!</string>
+    <string name="change_id_success">ID buku berhasil diubah!</string>
     <string name="import_failed">Gagal: %1$s</string>
     <string name="pilih_buku">Pilih Buku</string>
     <string name="pilih_author">Pilih Author</string>

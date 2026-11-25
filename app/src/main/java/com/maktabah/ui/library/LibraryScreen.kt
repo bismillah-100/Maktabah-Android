@@ -443,6 +443,9 @@ fun LibraryScreen(
                 ImportBookSheet(
                     annotationManager = annotationManager,
                     onDismiss = { showImportSheet = false },
+                    onBookTabInvalidated = { affectedBookId ->
+                        tabManager.closeTabsForBooks(listOf(affectedBookId))
+                    },
                     onImportSuccess = { viewModel.reloadData() },
                 )
             }

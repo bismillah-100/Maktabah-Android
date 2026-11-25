@@ -36,11 +36,17 @@ class ImportBookViewModel(application: Application) : AndroidViewModel(applicati
     private val _isLoadingData = MutableStateFlow(true)
     val isLoadingData: StateFlow<Boolean> = _isLoadingData
 
+    data class ImportOutcome(
+        val mode: ImportMode,
+        val invalidatedBookId: Int?,
+        val result: Result<Unit>,
+    )
+
     private val _isImporting = MutableStateFlow(false)
     val isImporting: StateFlow<Boolean> = _isImporting
 
-    private val _importResult = MutableStateFlow<Result<Unit>?>(null)
-    val importResult: StateFlow<Result<Unit>?> = _importResult
+    private val _importResult = MutableStateFlow<ImportOutcome?>(null)
+    val importResult: StateFlow<ImportOutcome?> = _importResult
 
     // --- Library data ---
     private val _categories = MutableStateFlow<List<CategoryData>>(emptyList())
@@ -307,16 +313,15 @@ class ImportBookViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun performImport(
-        annotationManager: AnnotationManager,
-        onReloadLibrary: suspend () -> Unit
-    ) {
+    fun performImport(annotationManager: AnnotationManager) {
         if (_isImporting.value) return
+        val mode = _importMode.value
+        val invalidatedBookId = resolveInvalidatedBookId(mode, _selectedBookId.value)
         viewModelScope.launch {
             _isImporting.value = true
             val result = withContext(Dispatchers.IO) {
                 try {
-                    if (_importMode.value == ImportMode.CHANGE_ID) {
+                    if (mode == ImportMode.CHANGE_ID) {
                         performChangeBookId(annotationManager)
                     } else {
                         performBookImport()
@@ -327,8 +332,11 @@ class ImportBookViewModel(application: Application) : AndroidViewModel(applicati
                     Result.failure(e)
                 }
             }
-            if (result.isSuccess) onReloadLibrary()
-            _importResult.value = result
+            _importResult.value = ImportOutcome(
+                mode = mode,
+                invalidatedBookId = invalidatedBookId,
+                result = result,
+            )
             _isImporting.value = false
         }
     }
@@ -419,4 +427,18 @@ class ImportBookViewModel(application: Application) : AndroidViewModel(applicati
     private data class Quintuple<A, B, C, D, E>(val a: A, val b: B, val c: C, val d: D, val e: E)
 
     private fun <A, B, C, D, E> quintuple(a: A, b: B, c: C, d: D, e: E) = Quintuple(a, b, c, d, e)
+
+    companion object {
+        internal fun resolveInvalidatedBookId(mode: ImportMode, selectedBookId: Int?): Int? {
+            return if (mode == ImportMode.NEW) null else selectedBookId
+        }
+
+        internal fun successMessageResFor(mode: ImportMode): Int {
+            return when (mode) {
+                ImportMode.CHANGE_ID -> R.string.change_id_success
+                ImportMode.REPLACE -> R.string.replace_book_success
+                ImportMode.NEW -> R.string.import_success
+            }
+        }
+    }
 }
