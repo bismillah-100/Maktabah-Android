@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -140,6 +141,7 @@ class LibraryViewModel(
     val deleteMessages: Flow<String> = _deleteMessages.receiveAsFlow()
 
     private val catalogMutex = Mutex()
+    private val downloadCompletionJobs = mutableMapOf<String, Job>()
 
     fun loadData(context: Context) {
         if (_isDataLoaded.value) return
@@ -1021,11 +1023,12 @@ class LibraryViewModel(
     }
 
     fun cancelDownload(id: String) {
-        val state = com.maktabah.downloader.BookDownloadService.getState(id)
+        downloadCompletionJobs.remove(id)?.cancel()
+        val state = BookDownloadService.getState(id)
         if (state != null && state.isDownloading) {
-            com.maktabah.downloader.BookDownloadService.cancelDownload(id)
+            BookDownloadService.cancelDownload(id)
         } else {
-            com.maktabah.downloader.BookDownloadService.updateStates { states -> states.filter { it.id != id } }
+            BookDownloadService.updateStates { states -> states.filter { it.id != id } }
         }
     }
 
@@ -1034,26 +1037,52 @@ class LibraryViewModel(
         stateId: String,
         onComplete: (Int, Int?, Int?, Int?, String?) -> Unit
     ) {
-        val currentState = com.maktabah.downloader.BookDownloadService.getState(stateId) ?: return
+        val currentState = BookDownloadService.getState(stateId) ?: return
 
-        com.maktabah.downloader.BookDownloadService.startDownload(context, stateId)
+        BookDownloadService.startDownload(context, stateId)
 
         if (currentState.isBulk) {
             _isSelectionMode.value = false
             _selectedBookIds.value = emptySet()
         } else {
-            viewModelScope.launch {
-                com.maktabah.downloader.BookDownloadNotifier.downloadedBookEvents.collect { bId ->
-                    if (bId == currentState.bookId) {
-                        onComplete(
-                            currentState.bookId,
-                            currentState.contentId,
-                            currentState.loc,
-                            currentState.len,
-                            currentState.query
-                        )
+            downloadCompletionJobs.remove(stateId)?.cancel()
+            val completionJob = viewModelScope.launch {
+                val parentJob = coroutineContext[Job]
+                var watcherJob: Job? = null
+                try {
+                    var sawFreshAttempt = currentState.error == null
+                    watcherJob = launch {
+                        BookDownloadService.activeDownloadStates.collect { states ->
+                            val tracked = states.find { it.id == stateId }
+                            if (!sawFreshAttempt && tracked != null && (tracked.isDownloading || tracked.error == null)) {
+                                sawFreshAttempt = true
+                            }
+                            if (tracked == null) {
+                                delay(250)
+                                parentJob?.cancel()
+                            } else if (sawFreshAttempt && tracked.error != null) {
+                                parentJob?.cancel()
+                            }
+                        }
+                    }
+                    BookDownloadNotifier.downloadedBookEvents.first { it == currentState.bookId }
+                    watcherJob.cancel()
+                    onComplete(
+                        currentState.bookId,
+                        currentState.contentId,
+                        currentState.loc,
+                        currentState.len,
+                        currentState.query
+                    )
+                } finally {
+                    watcherJob?.cancel()
+                    if (downloadCompletionJobs[stateId] === parentJob) {
+                        downloadCompletionJobs.remove(stateId)
                     }
                 }
+            }
+            if (completionJob.isActive) {
+                downloadCompletionJobs[stateId] = completionJob
             }
         }
     }
