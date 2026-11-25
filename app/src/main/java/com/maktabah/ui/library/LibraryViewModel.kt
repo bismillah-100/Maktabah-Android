@@ -415,6 +415,7 @@ class LibraryViewModel(
     }
 
     fun toggleSelectionMode(context: Context? = null) {
+        if (_isDeleting.value) return
         _isSelectionMode.value = !_isSelectionMode.value
         if (!_isSelectionMode.value) {
             _selectedBookIds.value = emptySet()
@@ -428,6 +429,7 @@ class LibraryViewModel(
     }
 
     fun toggleBookSelection(context: Context, bookId: Int) {
+        if (_isDeleting.value) return
         val currentSet = _selectedBookIds.value.toMutableSet()
         if (currentSet.contains(bookId)) {
             currentSet.remove(bookId)
@@ -439,6 +441,7 @@ class LibraryViewModel(
     }
 
     fun toggleCategorySelection(context: Context, category: CategoryData) {
+        if (_isDeleting.value) return
         val currentSet = _selectedBookIds.value.toMutableSet()
         val showOnlyDownloadedVal = _showOnlyDownloaded.value
         val downloaded = _downloadedBookIds.value

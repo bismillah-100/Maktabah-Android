@@ -284,7 +284,7 @@ fun LibraryScreen(
                                     if (isSelectionMode) {
                                         IconButton(
                                             onClick = { viewModel.toggleSelectionMode(context) },
-                                            enabled = !isBulkDownloading,
+                                            enabled = !isBulkDownloading && !isDeleting,
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Close,
@@ -335,22 +335,24 @@ fun LibraryScreen(
                 expandedCategories = expandedCategories,
                 isBookDownloadedById = { viewModel.isBookDownloadedById(it) },
                 onCategoryToggle = { viewModel.toggleCategory(it) },
-                onBookClick = { onNavigateToReader(it, null, null, null, null) },
-                onBookSelectionToggle = { viewModel.toggleBookSelection(context, it) },
+                onBookClick = { if (!isDeleting) onNavigateToReader(it, null, null, null, null) },
+                onBookSelectionToggle = { if (!isDeleting) viewModel.toggleBookSelection(context, it) },
                 onBookLongClick = { bookId, view ->
-                    val location = IntArray(2)
-                    view.getLocationInWindow(location)
-                    popoverAnchor = IntRect(
-                        left = location[0],
-                        top = location[1],
-                        right = location[0] + view.width,
-                        bottom = location[1] + view.height
-                    )
-                    popoverBookId = bookId
+                    if (!isDeleting) {
+                        val location = IntArray(2)
+                        view.getLocationInWindow(location)
+                        popoverAnchor = IntRect(
+                            left = location[0],
+                            top = location[1],
+                            right = location[0] + view.width,
+                            bottom = location[1] + view.height
+                        )
+                        popoverBookId = bookId
+                    }
                 },
                 onLoadMore = { viewModel.loadMore(it) },
                 onLoadMoreAuthors = { viewModel.loadMoreAuthors() },
-                onCategorySelectionToggle = { viewModel.toggleCategorySelection(context, it) },
+                onCategorySelectionToggle = { if (!isDeleting) viewModel.toggleCategorySelection(context, it) },
                 padding = padding,
                 bottomPadding = bottomPadding,
                 hasDonated = hasDonated,
