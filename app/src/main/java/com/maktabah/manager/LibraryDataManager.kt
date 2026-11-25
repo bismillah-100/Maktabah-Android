@@ -11,12 +11,23 @@ import java.io.File
 class LibraryDataManager(
     private val mainDbFile: File,
 ) {
+    private data class CatalogSnapshot(
+        val allRootCategories: List<CategoryData> = emptyList(),
+        val categoryMap: Map<Int, CategoryData> = emptyMap(),
+        val booksById: Map<Int, BooksData> = emptyMap(),
+    )
+
     @Volatile
-    var allRootCategories = listOf<CategoryData>()
-    @Volatile
-    var categoryMap = mapOf<Int, CategoryData>()
-    @Volatile
-    var booksById = mapOf<Int, BooksData>()
+    private var snapshot = CatalogSnapshot()
+
+    val allRootCategories: List<CategoryData>
+        get() = snapshot.allRootCategories
+
+    val categoryMap: Map<Int, CategoryData>
+        get() = snapshot.categoryMap
+
+    val booksById: Map<Int, BooksData>
+        get() = snapshot.booksById
 
     private val shortsCache = mutableMapOf<String, ShortsMapping>()
 
@@ -127,9 +138,11 @@ class LibraryDataManager(
             }
         }
 
-        allRootCategories = rootCats
-        categoryMap = catMap
-        booksById = booksMap
+        snapshot = CatalogSnapshot(
+            allRootCategories = rootCats.toList(),
+            categoryMap = catMap.toMap(),
+            booksById = booksMap.toMap(),
+        )
     }
 
     fun loadShortsForBook(bookId: String): ShortsMapping {
