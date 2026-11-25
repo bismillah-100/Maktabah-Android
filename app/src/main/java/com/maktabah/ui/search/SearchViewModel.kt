@@ -135,11 +135,7 @@ class SearchViewModel : ViewModel() {
     fun setDownloadedBookIds(ids: Set<Int>, dataManager: LibraryDataManager) {
         if (_downloadedBookIds.value != ids) {
             _downloadedBookIds.value = ids
-            val currentSelected = _selectedBookIds.value
-            val newSelected = currentSelected.intersect(ids)
-            if (newSelected.size != currentSelected.size) {
-                _selectedBookIds.value = newSelected
-            }
+            pruneDeletedResults(dataManager)
             updateFlatItems(dataManager)
         }
     }
@@ -312,7 +308,29 @@ class SearchViewModel : ViewModel() {
     }
 
     fun refreshData(dataManager: LibraryDataManager) {
+        pruneDeletedResults(dataManager)
         updateFlatItems(dataManager)
+    }
+
+    private fun pruneDeletedResults(dataManager: LibraryDataManager) {
+        val booksMap = dataManager.booksById
+        val downloadedIds = _downloadedBookIds.value
+        val currentSelected = _selectedBookIds.value
+        val validSelected = currentSelected.filterTo(HashSet()) { it in booksMap && it in downloadedIds }
+        if (validSelected.size != currentSelected.size) {
+            _selectedBookIds.value = validSelected
+        }
+
+        val currentResults = _searchResults.value
+        if (currentResults.isNotEmpty()) {
+            val prunedResults = currentResults.filter { it.bookId in booksMap && it.bookId in downloadedIds }
+            if (prunedResults.size != currentResults.size) {
+                _searchResults.value = prunedResults
+                applyBookFilter(dataManager)
+            } else if (_bookFilter.value.isNotEmpty()) {
+                applyBookFilter(dataManager)
+            }
+        }
     }
 
     private var updateFlatItemsJob: kotlinx.coroutines.Job? = null

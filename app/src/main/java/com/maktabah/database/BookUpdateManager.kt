@@ -10,6 +10,7 @@ import com.maktabah.models.BookUpdateItem
 import com.maktabah.models.BookUpdateMetadata
 import com.maktabah.models.BookUpdateResult
 import com.maktabah.models.UpdateAction
+import com.maktabah.search.SearchHitResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -166,6 +167,7 @@ object BookUpdateManager {
             BookArchiveSingleFlight.runCatalogWrite {
                 localSource.saveBookMetadata(context, staged.metadata, exists)
             }
+            SearchHitResolver.clearCache()
 
             BookUpdateResult(
                 bookId = staged.metadata.bkid,

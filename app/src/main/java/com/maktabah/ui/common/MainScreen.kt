@@ -194,7 +194,12 @@ fun MainScreen(
         androidx.lifecycle.viewmodel.compose
             .viewModel()
     LaunchedEffect(Unit) {
-        annotationsViewModel.initialize(context, annotationManager, libraryViewModel.dataManager)
+        annotationsViewModel.initialize(
+            context = context,
+            annotationManager = annotationManager,
+            libraryDataManager = libraryViewModel.dataManager,
+            catalogRevision = libraryViewModel.catalogRevision,
+        )
         scope.launch {
             HistoryViewModel.refreshFlow.collect {
                 // Notify UI bahwa data history berubah dari CloudKit

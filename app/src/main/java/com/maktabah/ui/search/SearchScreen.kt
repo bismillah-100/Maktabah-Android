@@ -152,6 +152,7 @@ fun SearchScreen(
     LaunchedEffect(isDataLoaded, catalogRevision) {
         if (isDataLoaded) {
             viewModel.refreshData(libraryViewModel.dataManager)
+            resultsViewModel.loadAllResults()
         }
     }
 

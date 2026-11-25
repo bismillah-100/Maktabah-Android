@@ -79,11 +79,15 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     @OptIn(kotlinx.coroutines.FlowPreview::class)
-    fun getFilteredHistory(dataManager: LibraryDataManager): StateFlow<List<Int>> {
+    fun getFilteredHistory(
+        dataManager: LibraryDataManager,
+        catalogRevision: StateFlow<Long>? = null,
+    ): StateFlow<List<Int>> {
         return filteredHistoryFlow ?: combine(
             _historyOrder,
-            _searchQuery.debounce { query -> if (query.isEmpty()) 0L else 500L }
-        ) { order, query ->
+            _searchQuery.debounce { query -> if (query.isEmpty()) 0L else 500L },
+            catalogRevision ?: MutableStateFlow(0L),
+        ) { order, query, _ ->
             val cleanQuery = query.normalizeArabic()
             if (cleanQuery.isBlank()) order
             else order.filter { dataManager.bookContainsQuery(it, cleanQuery) }
@@ -93,11 +97,15 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     @OptIn(kotlinx.coroutines.FlowPreview::class)
-    fun getFilteredFavorites(dataManager: LibraryDataManager): StateFlow<List<Int>> {
+    fun getFilteredFavorites(
+        dataManager: LibraryDataManager,
+        catalogRevision: StateFlow<Long>? = null,
+    ): StateFlow<List<Int>> {
         return filteredFavoritesFlow ?: combine(
             _entriesByBookId,
-            _searchQuery.debounce { query -> if (query.isEmpty()) 0L else 500L }
-        ) { entries, query ->
+            _searchQuery.debounce { query -> if (query.isEmpty()) 0L else 500L },
+            catalogRevision ?: MutableStateFlow(0L),
+        ) { entries, query, _ ->
             val cleanQuery = query.normalizeArabic()
             val favorites = entries.values
                 .filter { it.isFavorite }

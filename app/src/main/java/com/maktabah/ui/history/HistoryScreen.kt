@@ -104,6 +104,8 @@ fun HistoryScreen(
     hasDonated: Boolean,
 ) {
     val isDataLoaded by libraryViewModel.isDataLoaded.collectAsState()
+    val catalogRevision by libraryViewModel.catalogRevision.collectAsState()
+    val booksById = remember(catalogRevision, isDataLoaded) { libraryViewModel.dataManager.booksById }
     val context = LocalContext.current
     val sharedPrefs = remember { context.getSharedPreferences("HistoryPrefs", android.content.Context.MODE_PRIVATE) }
     var historyExpanded by remember { mutableStateOf(sharedPrefs.getBoolean("historyExpanded", true)) }
@@ -112,12 +114,12 @@ fun HistoryScreen(
     val searchQuery by historyViewModel.searchQuery.collectAsState()
     val entriesByBookId by historyViewModel.entriesByBookId.collectAsState()
 
-    val filteredHistory by remember(historyViewModel, libraryViewModel.dataManager) {
-        historyViewModel.getFilteredHistory(libraryViewModel.dataManager)
+    val filteredHistory by remember(historyViewModel, libraryViewModel.dataManager, libraryViewModel.catalogRevision) {
+        historyViewModel.getFilteredHistory(libraryViewModel.dataManager, libraryViewModel.catalogRevision)
     }.collectAsState()
 
-    val filteredFavorites by remember(historyViewModel, libraryViewModel.dataManager) {
-        historyViewModel.getFilteredFavorites(libraryViewModel.dataManager)
+    val filteredFavorites by remember(historyViewModel, libraryViewModel.dataManager, libraryViewModel.catalogRevision) {
+        historyViewModel.getFilteredFavorites(libraryViewModel.dataManager, libraryViewModel.catalogRevision)
     }.collectAsState()
 
     var showAddFavoriteSheet by remember { mutableStateOf(false) }
@@ -192,7 +194,7 @@ fun HistoryScreen(
                         },
                         historyItems = filteredHistory,
                         entriesByBookId = entriesByBookId,
-                        bookById = { libraryViewModel.dataManager.booksById[it] },
+                        bookById = { booksById[it] },
                         onNavigateToReader = onNavigateToReader,
                         onRemoveHistory = { id ->
                             val entry = historyViewModel.removeFromHistory(id)
@@ -221,7 +223,7 @@ fun HistoryScreen(
                         },
                         favoriteItems = filteredFavorites,
                         entriesByBookId = entriesByBookId,
-                        bookById = { libraryViewModel.dataManager.booksById[it] },
+                        bookById = { booksById[it] },
                         onNavigateToReader = onNavigateToReader,
                         onRemoveFavorite = { id ->
                             val entry = historyViewModel.toggleFavorite(id)
@@ -241,7 +243,7 @@ fun HistoryScreen(
 
         if (showAddFavoriteSheet) {
             AddFavoriteSheet(
-                books = libraryViewModel.dataManager.booksById.values.toList(),
+                books = remember(booksById) { booksById.values.toList() },
                 entriesByBookId = entriesByBookId,
                 onDismiss = { showAddFavoriteSheet = false },
                 onToggleFavorite = { bookId ->
@@ -252,7 +254,7 @@ fun HistoryScreen(
         }
 
         if (selectedBookInfoId != null) {
-            val bookName = libraryViewModel.dataManager.booksById[selectedBookInfoId]?.name ?: "Unknown"
+            val bookName = booksById[selectedBookInfoId]?.name ?: "Unknown"
             com.maktabah.ui.reader.BookInfoSheet(
                 bookId = selectedBookInfoId!!,
                 defaultTitle = bookName,

@@ -200,12 +200,22 @@ class AnnotationsViewModel : ViewModel() {
     private lateinit var sharedPrefs: android.content.SharedPreferences
     private var annotationManager: AnnotationManager? = null
     private var isInitialized = false
+    private val _catalogRevision = MutableStateFlow(0L)
+    private var catalogRevisionJob: kotlinx.coroutines.Job? = null
 
     fun initialize(
         context: android.content.Context,
         annotationManager: AnnotationManager,
         libraryDataManager: LibraryDataManager,
+        catalogRevision: StateFlow<Long>? = null,
     ) {
+        if (catalogRevision != null && catalogRevisionJob == null) {
+            catalogRevisionJob = viewModelScope.launch {
+                catalogRevision.collect { rev ->
+                    _catalogRevision.value = rev
+                }
+            }
+        }
         if (isInitialized) return
         isInitialized = true
         this.annotationManager = annotationManager
@@ -540,7 +550,7 @@ class AnnotationsViewModel : ViewModel() {
         }
 
     val groupedAnnotations: StateFlow<List<AnnotationGroup>> =
-        combine(_annotations, filterAndSortParams) { annotationsList, params ->
+        combine(_annotations, filterAndSortParams, _catalogRevision) { annotationsList, params, _ ->
             val query = params.query
             val scope = params.scope
             val grouping = params.grouping

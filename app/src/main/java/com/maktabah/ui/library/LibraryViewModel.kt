@@ -24,6 +24,7 @@ import com.maktabah.models.FlatLibraryItem
 import com.maktabah.models.LibraryViewMode
 import com.maktabah.models.LoadMoreAuthors
 import com.maktabah.models.LoadMoreData
+import com.maktabah.search.SearchHitResolver
 import com.maktabah.ui.reader.ReaderTabManager
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.widget.DashboardWidget
@@ -990,6 +991,9 @@ class LibraryViewModel(
                 }
                 _deleteMessages.trySend(appContext.getString(R.string.library_delete_no_result))
             } finally {
+                if (anyMutationOccurred) {
+                    SearchHitResolver.clearCache()
+                }
                 _isDeleting.value = false
             }
         }

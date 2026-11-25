@@ -127,7 +127,12 @@ fun AnnotationsScreen(
     val focusManager = LocalFocusManager.current
 
     LaunchedEffect(viewModel, annotationManager, libraryViewModel) {
-        viewModel.initialize(context, annotationManager, libraryViewModel.dataManager)
+        viewModel.initialize(
+            context = context,
+            annotationManager = annotationManager,
+            libraryDataManager = libraryViewModel.dataManager,
+            catalogRevision = libraryViewModel.catalogRevision,
+        )
     }
 
     LaunchedEffect(bookIdFilter) {
