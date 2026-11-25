@@ -116,6 +116,9 @@ fun LibraryScreen(
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val isBulkDownloading by viewModel.isBulkDownloading.collectAsState()
     val selectedBookIds by viewModel.selectedBookIds.collectAsState()
+    val hasDeletableSelected = remember(selectedBookIds, downloadedBookIds, customBookIds) {
+        selectedBookIds.any { downloadedBookIds.contains(it) || customBookIds.contains(it) }
+    }
     val availableUpdateCount by viewModel.availableUpdateCount.collectAsState()
     val viewMode by viewModel.viewMode.collectAsState()
     val expandedCategories by viewModel.expandedCategories.collectAsState()
@@ -265,20 +268,15 @@ fun LibraryScreen(
                                 ),
                             ) {
                                 Row {
-                                    if (isSelectionMode && selectedBookIds.isNotEmpty()) {
-                                        val hasDeletableSelected = selectedBookIds.any {
-                                            downloadedBookIds.contains(it) || customBookIds.contains(it)
-                                        }
-                                        if (hasDeletableSelected) {
-                                            IconButton(
-                                                onClick = { viewModel.requestDeleteConfirmation() },
-                                                enabled = !isBulkDownloading && !isDeleting,
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.Delete,
-                                                    contentDescription = stringResource(R.string.library_action_delete_selected),
-                                                )
-                                            }
+                                    if (isSelectionMode && hasDeletableSelected) {
+                                        IconButton(
+                                            onClick = { viewModel.requestDeleteConfirmation() },
+                                            enabled = !isBulkDownloading && !isDeleting,
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = stringResource(R.string.library_action_delete_selected),
+                                            )
                                         }
                                     }
                                     if (isSelectionMode) {
@@ -357,188 +355,201 @@ fun LibraryScreen(
             )
         }
 
-    if (showSettings) {
-        SettingsDialog(
-            onDismiss = { showSettings = false },
-            onNavigateToCloudKit = onNavigateToCloudKit,
-            onCheckForUpdates = onCheckForUpdates
-        )
-    }
+        if (showSettings) {
+            SettingsDialog(
+                onDismiss = { showSettings = false },
+                onNavigateToCloudKit = onNavigateToCloudKit,
+                onCheckForUpdates = onCheckForUpdates
+            )
+        }
 
-    // Tap and Hold Popover
-    if (popoverAnchor != null && popoverBookId != null) {
-        val bookId = popoverBookId!!
-        androidx.compose.runtime.CompositionLocalProvider(
-            androidx.compose.ui.platform.LocalLayoutDirection provides
-                androidx.compose.ui.unit.LayoutDirection.Rtl,
-        ) {
-            TapCenteredPopover(
-                expanded = true,
-                anchorBounds = popoverAnchor,
-                onDismiss = {
-                    popoverAnchor = null
-                    popoverBookId = null
-                },
-                actions = buildList {
-                    if (!isSelectionMode) {
+        // Tap and Hold Popover
+        if (popoverAnchor != null && popoverBookId != null) {
+            val bookId = popoverBookId!!
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalLayoutDirection provides
+                    androidx.compose.ui.unit.LayoutDirection.Rtl,
+            ) {
+                TapCenteredPopover(
+                    expanded = true,
+                    anchorBounds = popoverAnchor,
+                    onDismiss = {
+                        popoverAnchor = null
+                        popoverBookId = null
+                    },
+                    actions = buildList {
+                        if (!isSelectionMode) {
+                            add(
+                                PopoverMenuAction(
+                                    label = stringResource(R.string.library_menu_select),
+                                    icon = Icons.Default.CheckCircleOutline,
+                                    onClick = {
+                                        viewModel.toggleSelectionMode()
+                                        viewModel.toggleBookSelection(bookId)
+                                        popoverAnchor = null
+                                        popoverBookId = null
+                                    }
+                                )
+                            )
+                        }
                         add(
                             PopoverMenuAction(
-                                label = stringResource(R.string.library_menu_select),
-                                icon = Icons.Default.CheckCircleOutline,
+                                label = stringResource(R.string.reader_menu_book_info),
+                                icon = Icons.Default.Info,
                                 onClick = {
-                                    viewModel.toggleSelectionMode()
-                                    viewModel.toggleBookSelection(bookId)
+                                    showBookInfoId = bookId
                                     popoverAnchor = null
                                     popoverBookId = null
                                 }
                             )
                         )
                     }
-                    add(
-                        PopoverMenuAction(
-                            label = stringResource(R.string.reader_menu_book_info),
-                            icon = Icons.Default.Info,
-                            onClick = {
-                                showBookInfoId = bookId
-                                popoverAnchor = null
-                                popoverBookId = null
-                            }
-                        )
-                    )
-                }
-            )
-        }
-    }
-
-    if (showBookInfoId != null) {
-        BookInfoSheet(
-            bookId = showBookInfoId!!,
-            defaultTitle = "",
-            libraryViewModel = viewModel,
-            onDismissRequest = { showBookInfoId = null }
-        )
-    }
-
-    // Import Overlay
-    AnimatedVisibility(
-        visibleState = importTransitionState,
-        enter = slideInVertically(
-            initialOffsetY = { it },
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMediumLow,
-            )
-        ) + fadeIn(),
-        exit = slideOutVertically(
-            targetOffsetY = { it },
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMediumLow,
-            )
-        ) + fadeOut(),
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background,
-        ) {
-            ImportBookSheet(
-                annotationManager = annotationManager,
-                onDismiss = { showImportSheet = false },
-                onImportSuccess = { viewModel.reloadData() },
-            )
-        }
-    }
-
-    // Book Updates Overlay
-    AnimatedVisibility(
-        visibleState = updateTransitionState,
-        enter = slideInVertically(
-            initialOffsetY = { it },
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMediumLow,
-            )
-        ) + fadeIn(),
-        exit = slideOutVertically(
-            targetOffsetY = { it },
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMediumLow,
-            )
-        ) + fadeOut(),
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background,
-        ) {
-            BookUpdateSheet(
-                onDismiss = { showUpdateSheet = false },
-                onUpdateSuccess = {
-                    viewModel.reloadData()
-                },
-            )
-        }
-    }
-
-    pendingDeleteSummary?.let { summary ->
-        val customCount = summary.customBookIds.size
-        val downloadedCount = summary.downloadedCoreBookIds.size
-        val sections = buildList {
-            if (customCount > 0) {
-                add(stringResource(R.string.library_delete_confirm_custom_only, customCount))
-            }
-            if (downloadedCount > 0) {
-                add(stringResource(R.string.library_delete_confirm_downloaded_only, downloadedCount))
-            }
-        }
-        val baseMessage = if (sections.size == 1) {
-            sections.first()
-        } else {
-            stringResource(R.string.library_delete_confirm_mixed_header) +
-                "\n\n" + sections.joinToString("\n") { "• $it" }
-        }
-        val skippedNote = if (summary.skippedDownloadingBookIds.isNotEmpty()) {
-            stringResource(
-                R.string.library_delete_confirm_skipped_note,
-                summary.skippedDownloadingBookIds.size,
-            )
-        } else {
-            ""
-        }
-
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissDeleteConfirmation() },
-            title = {
-                Text(
-                    text = stringResource(R.string.library_delete_confirm_title),
-                    fontWeight = FontWeight.SemiBold,
                 )
-            },
-            text = {
-                Text(text = baseMessage + skippedNote)
-            },
-            confirmButton = {
-                Button(
-                    onClick = { viewModel.confirmDeleteSelection(tabManager) },
-                    shape = RoundedCornerShape(30.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError,
-                    ),
-                ) {
-                    Text(stringResource(R.string.library_delete_confirm_action))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { viewModel.dismissDeleteConfirmation() }) {
-                    Text(stringResource(R.string.batal))
-                }
-            },
-            shape = RoundedCornerShape(30.dp),
-            containerColor = MaterialTheme.colorScheme.surface,
-        )
+            }
+        }
+
+        if (showBookInfoId != null) {
+            BookInfoSheet(
+                bookId = showBookInfoId!!,
+                defaultTitle = "",
+                libraryViewModel = viewModel,
+                onDismissRequest = { showBookInfoId = null }
+            )
+        }
+
+        // Import Overlay
+        AnimatedVisibility(
+            visibleState = importTransitionState,
+            enter = slideInVertically(
+                initialOffsetY = { it },
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                )
+            ) + fadeIn(),
+            exit = slideOutVertically(
+                targetOffsetY = { it },
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                )
+            ) + fadeOut(),
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                ImportBookSheet(
+                    annotationManager = annotationManager,
+                    onDismiss = { showImportSheet = false },
+                    onImportSuccess = { viewModel.reloadData() },
+                )
+            }
+        }
+
+        // Book Updates Overlay
+        AnimatedVisibility(
+            visibleState = updateTransitionState,
+            enter = slideInVertically(
+                initialOffsetY = { it },
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                )
+            ) + fadeIn(),
+            exit = slideOutVertically(
+                targetOffsetY = { it },
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                )
+            ) + fadeOut(),
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                BookUpdateSheet(
+                    onDismiss = { showUpdateSheet = false },
+                    onUpdateSuccess = {
+                        viewModel.reloadData()
+                    },
+                )
+            }
+        }
+
+        pendingDeleteSummary?.let { summary ->
+            DeleteBooksConfirmationDialog(
+                summary = summary,
+                onDismiss = { viewModel.dismissDeleteConfirmation() },
+                onConfirm = { viewModel.confirmDeleteSelection(tabManager) },
+            )
+        }
     }
 }
+
+@Composable
+private fun DeleteBooksConfirmationDialog(
+    summary: LibraryViewModel.DeleteSelectionSummary,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val customCount = summary.customBookIds.size
+    val downloadedCount = summary.downloadedCoreBookIds.size
+    val sections = buildList {
+        if (customCount > 0) {
+            add(stringResource(R.string.library_delete_confirm_custom_only, customCount))
+        }
+        if (downloadedCount > 0) {
+            add(stringResource(R.string.library_delete_confirm_downloaded_only, downloadedCount))
+        }
+    }
+    val baseMessage = if (sections.size == 1) {
+        sections.first()
+    } else {
+        stringResource(R.string.library_delete_confirm_mixed_header) +
+            "\n\n" + sections.joinToString("\n") { "• $it" }
+    }
+    val skippedNote = if (summary.skippedDownloadingBookIds.isNotEmpty()) {
+        stringResource(
+            R.string.library_delete_confirm_skipped_note,
+            summary.skippedDownloadingBookIds.size,
+        )
+    } else {
+        ""
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = stringResource(R.string.library_delete_confirm_title),
+                fontWeight = FontWeight.SemiBold,
+            )
+        },
+        text = {
+            Text(text = baseMessage + skippedNote)
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                shape = RoundedCornerShape(30.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                ),
+            ) {
+                Text(stringResource(R.string.library_delete_confirm_action))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.batal))
+            }
+        },
+        shape = RoundedCornerShape(30.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+    )
 }
 
 private sealed interface LibraryMenuEntry {
