@@ -27,7 +27,8 @@ class CoreDatabaseDownloader(private val context: Context) {
 	fun areCoreFilesReady(): Boolean {
 		val mainFile = File(context.filesDir, "main.sqlite")
 		val specialFile = File(context.filesDir, "special.sqlite")
-		return mainFile.exists() && specialFile.exists()
+		val indexFile = File(context.filesDir, "index.json")
+		return mainFile.exists() && specialFile.exists() && indexFile.exists() && indexFile.length() > 0L
 	}
 
 	fun startDownloadFlow(): Flow<DownloadProgress> = flow {
@@ -97,10 +98,25 @@ class CoreDatabaseDownloader(private val context: Context) {
 			.header("User-Agent", userAgent)
 			.build()
 		
-		val indexResponse = client.newCall(indexRequest).execute()
-		if (!indexResponse.isSuccessful) throw Exception("HTTP ${indexResponse.code} for index.json")
-		val indexBody = indexResponse.body.string()
-		File(context.filesDir, "index.json").writeText(indexBody)
+		val indexFile = File(context.filesDir, "index.json")
+		val tempIndexFile = File.createTempFile("index_", ".json.tmp", context.filesDir)
+		try {
+			client.newCall(indexRequest).execute().use { indexResponse ->
+				if (!indexResponse.isSuccessful) throw Exception("HTTP ${indexResponse.code} for index.json")
+				indexResponse.body.byteStream().use { input ->
+					FileOutputStream(tempIndexFile).use { output ->
+						input.copyTo(output)
+					}
+				}
+			}
+			if (!tempIndexFile.renameTo(indexFile)) {
+				tempIndexFile.copyTo(indexFile, overwrite = true)
+			}
+		} finally {
+			if (tempIndexFile.exists()) {
+				tempIndexFile.delete()
+			}
+		}
 
 		emit(DownloadProgress(1.0f, "Finished"))
 	}.flowOn(Dispatchers.IO)

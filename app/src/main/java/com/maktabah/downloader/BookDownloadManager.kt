@@ -8,12 +8,14 @@ import com.github.luben.zstd.ZstdInputStream
 import com.maktabah.database.BookArchiveIntegrator
 import com.maktabah.models.BundleBookIndexEntry
 import com.maktabah.models.IntegratePhase
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.Reader
-import java.io.StringReader
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -21,42 +23,69 @@ class BookDownloadManager(private val context: Context) {
     private val indexUrl = com.maktabah.BuildConfig.GITHUB_KITAB_INDEX_URL
 
     suspend fun fetchIndex(): List<BundleBookIndexEntry> = withContext(Dispatchers.IO) {
-        val indexFile = File(context.filesDir, "index.json")
-        if (indexFile.exists()) {
-            return@withContext try {
-                indexFile.bufferedReader().use { parseIndexEntries(it) }
-            } catch (e: Exception) {
-                Log.w("BookDownloadManager", "Failed to read local index.json", e)
-                emptyList()
+        indexMutex.withLock {
+            val indexFile = File(context.filesDir, "index.json")
+            if (indexFile.exists()) {
+                val cached = try {
+                    indexFile.bufferedReader().use { parseIndexEntries(it) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w("BookDownloadManager", "Failed to read local index.json", e)
+                    emptyList()
+                }
+                if (cached.isNotEmpty()) {
+                    return@withLock cached
+                }
             }
-        }
 
-        val url = URL(indexUrl)
-        val conn = url.openConnection() as HttpURLConnection
-        val jsonString = try {
-            conn.connect()
-            if (conn.responseCode != HttpURLConnection.HTTP_OK) {
-                return@withContext emptyList()
-            }
-            conn.inputStream.bufferedReader().use { it.readText() }
-        } finally {
-            conn.disconnect()
-        }
-
-        val entries = StringReader(jsonString).use { parseIndexEntries(it) }
-        if (entries.isNotEmpty()) {
+            var tempFile: File? = null
             try {
-                val tempFile = File(context.filesDir, "index.json.tmp")
-                tempFile.writeText(jsonString)
-                if (!tempFile.renameTo(indexFile)) {
+                tempFile = File.createTempFile("index_", ".json.tmp", context.filesDir)
+                val conn = openHttpConnection(indexUrl)
+                try {
+                    conn.connect()
+                    if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+                        return@withLock emptyList()
+                    }
+                    conn.inputStream.use { input ->
+                        tempFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                } finally {
+                    conn.disconnect()
+                }
+
+                val entries = tempFile.bufferedReader().use { parseIndexEntries(it) }
+                if (entries.isNotEmpty() && !tempFile.renameTo(indexFile)) {
                     tempFile.copyTo(indexFile, overwrite = true)
+                }
+                entries
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("BookDownloadManager", "Failed to fetch or cache index.json", e)
+                emptyList()
+            } finally {
+                if (tempFile != null && tempFile.exists()) {
                     tempFile.delete()
                 }
-            } catch (e: Exception) {
-                Log.w("BookDownloadManager", "Failed to cache index.json locally", e)
             }
         }
-        entries
+    }
+
+    private fun openHttpConnection(urlString: String): HttpURLConnection {
+        return (URL(urlString).openConnection() as HttpURLConnection).apply {
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+        }
+    }
+
+    companion object {
+        private const val CONNECT_TIMEOUT_MS = 30_000
+        private const val READ_TIMEOUT_MS = 60_000
+        private val indexMutex = Mutex()
     }
 
     private fun parseIndexEntries(reader: Reader): List<BundleBookIndexEntry> {
@@ -82,7 +111,7 @@ class BookDownloadManager(private val context: Context) {
                     }
                 }
                 json.endObject()
-                if (bkid > 0) {
+                if (bkid > 0 && filename.isNotBlank() && release.isNotBlank()) {
                     entries.add(
                         BundleBookIndexEntry(
                             bkid = bkid,
@@ -111,28 +140,29 @@ class BookDownloadManager(private val context: Context) {
 
             try {
                 onPhaseChanged?.invoke(IntegratePhase.DOWNLOAD)
-                val url = URL(downloadUrl)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connect()
+                val conn = openHttpConnection(downloadUrl)
+                try {
+                    conn.connect()
+                    val totalLength = conn.contentLength
+                    conn.inputStream.use { input ->
+                        FileOutputStream(dest).use { output ->
+                            val data = ByteArray(4096)
+                            var total = 0L
+                            var count: Int
 
-                val totalLength = conn.contentLength
-                val input = conn.inputStream
-                val output = FileOutputStream(dest)
-
-                val data = ByteArray(4096)
-                var total = 0L
-                var count: Int
-
-                while (input.read(data).also { count = it } != -1) {
-                    total += count
-                    if (totalLength > 0) {
-                        onProgress((total * 100 / totalLength).toInt())
+                            while (input.read(data).also { count = it } != -1) {
+                                total += count
+                                if (totalLength > 0) {
+                                    onProgress((total * 100 / totalLength).toInt())
+                                }
+                                output.write(data, 0, count)
+                            }
+                            output.flush()
+                        }
                     }
-                    output.write(data, 0, count)
+                } finally {
+                    conn.disconnect()
                 }
-                output.flush()
-                output.close()
-                input.close()
 
                 val finalDest = if (entry.filename.endsWith(".zst")) {
                     val destFile =
