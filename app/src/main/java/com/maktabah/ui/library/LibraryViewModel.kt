@@ -253,10 +253,9 @@ class LibraryViewModel(
         try {
             val entries = BookDownloadManager(appContext).fetchIndex()
             if (entries.isNotEmpty()) {
-                val parsedCoreBooks = entries.mapTo(HashSet(entries.size)) { it.bkid }
-                val parsedCoreAuthors = entries.mapNotNullTo(HashSet()) { it.authno.takeIf { id -> id > 0 } }
+                val (parsedCoreBooks, parsedCoreAuthors) = deriveCoreCatalogSets(entries)
                 coreBookIds = parsedCoreBooks
-                coreAuthorIds = parsedCoreAuthors.takeIf { it.isNotEmpty() }
+                coreAuthorIds = parsedCoreAuthors
                 downloadIndex = entries
             }
         } catch (e: CancellationException) {
@@ -267,8 +266,7 @@ class LibraryViewModel(
     }
 
     private fun computeCustomBookIds(): Set<Int> {
-        val indexIds = coreBookIds ?: return emptySet()
-        return dataManager.booksById.keys.filterTo(HashSet()) { it !in indexIds }
+        return computeCustomBookIds(dataManager.booksById.keys, coreBookIds)
     }
 
     private suspend fun scanDownloadedBookIds(): Set<Int> = withContext(Dispatchers.IO) {
@@ -781,26 +779,11 @@ class LibraryViewModel(
     }
 
     private fun prepareDeleteConfirmation() {
-        val activeDownloadingIds = activeDownloadingBookIds()
-
-        val customIds = _customBookIds.value
-        val downloadedIds = _downloadedBookIds.value
-        val customTargets = mutableListOf<Int>()
-        val coreTargets = mutableListOf<Int>()
-        val skippedDownloading = mutableListOf<Int>()
-
-        for (bookId in _selectedBookIds.value) {
-            when {
-                bookId in activeDownloadingIds -> skippedDownloading.add(bookId)
-                bookId in customIds -> customTargets.add(bookId)
-                bookId in downloadedIds -> coreTargets.add(bookId)
-            }
-        }
-
-        val summary = DeleteSelectionSummary(
-            customBookIds = customTargets,
-            downloadedCoreBookIds = coreTargets,
-            skippedDownloadingBookIds = skippedDownloading,
+        val summary = buildDeleteSelectionSummary(
+            selectedBookIds = _selectedBookIds.value,
+            activeDownloadingIds = activeDownloadingBookIds(),
+            customBookIds = _customBookIds.value,
+            downloadedBookIds = _downloadedBookIds.value,
         )
 
         if (summary.totalDeletableCount > 0) {
@@ -863,9 +846,11 @@ class LibraryViewModel(
                             anyMutationOccurred = true
                         }
 
-                        val cleanCustomTargets = customIds.filter { bookId ->
-                            val archiveId = booksByIdSnapshot[bookId]?.archive
-                            archiveId == null || archiveId <= 0 || bookId in fullyCleanedArchiveIds
+                        val cleanCustomTargets = filterCleanCustomTargets(
+                            customIds = customIds,
+                            fullyCleanedArchiveIds = fullyCleanedArchiveIds,
+                        ) { bookId ->
+                            booksByIdSnapshot[bookId]?.archive
                         }
                         val deletedCatalogMetadataIds = if (cleanCustomTargets.isNotEmpty()) {
                             BookImportManager.deleteCatalogBookMetadata(
@@ -1096,6 +1081,60 @@ class LibraryViewModel(
             }
             if (completionJob.isActive) {
                 downloadCompletionJobs[stateId] = completionJob
+            }
+        }
+    }
+
+    companion object {
+        internal fun deriveCoreCatalogSets(
+            entries: List<BundleBookIndexEntry>,
+        ): Pair<Set<Int>, Set<Int>?> {
+            val parsedCoreBooks = entries.mapTo(HashSet(entries.size)) { it.bkid }
+            val parsedCoreAuthors = entries.mapNotNullTo(HashSet()) { it.authno.takeIf { id -> id > 0 } }
+            return parsedCoreBooks to parsedCoreAuthors.takeIf { it.isNotEmpty() }
+        }
+
+        internal fun computeCustomBookIds(
+            catalogBookIds: Set<Int>,
+            coreBookIds: Set<Int>?,
+        ): Set<Int> {
+            val indexIds = coreBookIds ?: return emptySet()
+            return catalogBookIds.filterTo(HashSet()) { it !in indexIds }
+        }
+
+        internal fun buildDeleteSelectionSummary(
+            selectedBookIds: Set<Int>,
+            activeDownloadingIds: Set<Int>,
+            customBookIds: Set<Int>,
+            downloadedBookIds: Set<Int>,
+        ): DeleteSelectionSummary {
+            val customTargets = mutableListOf<Int>()
+            val coreTargets = mutableListOf<Int>()
+            val skippedDownloading = mutableListOf<Int>()
+
+            for (bookId in selectedBookIds) {
+                when {
+                    bookId in activeDownloadingIds -> skippedDownloading.add(bookId)
+                    bookId in customBookIds -> customTargets.add(bookId)
+                    bookId in downloadedBookIds -> coreTargets.add(bookId)
+                }
+            }
+
+            return DeleteSelectionSummary(
+                customBookIds = customTargets,
+                downloadedCoreBookIds = coreTargets,
+                skippedDownloadingBookIds = skippedDownloading,
+            )
+        }
+
+        internal fun filterCleanCustomTargets(
+            customIds: List<Int>,
+            fullyCleanedArchiveIds: Set<Int>,
+            archiveIdForBook: (Int) -> Int?,
+        ): List<Int> {
+            return customIds.filter { bookId ->
+                val archiveId = archiveIdForBook(bookId)
+                archiveId == null || archiveId <= 0 || bookId in fullyCleanedArchiveIds
             }
         }
     }

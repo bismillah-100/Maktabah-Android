@@ -86,6 +86,23 @@ class BookDownloadManager(private val context: Context) {
         private const val CONNECT_TIMEOUT_MS = 30_000
         private const val READ_TIMEOUT_MS = 60_000
         private val indexMutex = Mutex()
+
+        internal fun createValidatedIndexEntry(
+            bkid: Int,
+            authno: Int,
+            filename: String,
+            release: String,
+            sizeZst: Long?,
+        ): BundleBookIndexEntry? {
+            if (bkid <= 0 || filename.isBlank() || release.isBlank()) return null
+            return BundleBookIndexEntry(
+                bkid = bkid,
+                filename = filename,
+                release = release,
+                sizeZst = sizeZst,
+                authno = authno,
+            )
+        }
     }
 
     private fun parseIndexEntries(reader: Reader): List<BundleBookIndexEntry> {
@@ -111,17 +128,13 @@ class BookDownloadManager(private val context: Context) {
                     }
                 }
                 json.endObject()
-                if (bkid > 0 && filename.isNotBlank() && release.isNotBlank()) {
-                    entries.add(
-                        BundleBookIndexEntry(
-                            bkid = bkid,
-                            filename = filename,
-                            release = release,
-                            sizeZst = sizeZst,
-                            authno = authno,
-                        )
-                    )
-                }
+                createValidatedIndexEntry(
+                    bkid = bkid,
+                    authno = authno,
+                    filename = filename,
+                    release = release,
+                    sizeZst = sizeZst,
+                )?.let(entries::add)
             }
             json.endArray()
         }

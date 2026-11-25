@@ -270,6 +270,19 @@ object BookImportManager {
         }
     }
 
+    internal fun shouldCleanTargetArchiveOnFailure(
+        contentIntegrated: Boolean,
+        isNewBook: Boolean,
+        catalogCommitted: Boolean,
+        oldArchiveId: Int?,
+        targetArchiveId: Int,
+    ): Boolean {
+        return contentIntegrated && (
+            isNewBook ||
+                (!catalogCommitted && oldArchiveId != null && oldArchiveId > 0 && oldArchiveId != targetArchiveId)
+            )
+    }
+
     private suspend fun cleanupFailedImport(
         context: Context,
         bookId: Int,
@@ -280,11 +293,7 @@ object BookImportManager {
         catalogCommitted: Boolean,
         insertedAuthorId: Int?,
     ) {
-        val shouldCleanTargetArchive = contentIntegrated && (
-            isNewBook ||
-                (!catalogCommitted && oldArchiveId != null && oldArchiveId > 0 && oldArchiveId != archiveId)
-            )
-        if (shouldCleanTargetArchive) {
+        if (shouldCleanTargetArchiveOnFailure(contentIntegrated, isNewBook, catalogCommitted, oldArchiveId, archiveId)) {
             BookArchiveIntegrator.removeBookFromArchive(context, bookId, archiveId)
         }
         if (catalogCommitted || insertedAuthorId != null) {

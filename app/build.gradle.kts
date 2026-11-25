@@ -176,4 +176,7 @@ dependencies {
     // Glance
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)
+
+    // Unit Tests
+    testImplementation(libs.junit)
 }
