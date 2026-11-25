@@ -846,6 +846,7 @@ class LibraryViewModel(
 
         viewModelScope.launch {
             var anyMutationOccurred = false
+            var catalogMutated = false
             try {
                 catalogMutex.withLock {
                     val executionResult = withContext(Dispatchers.IO) {
@@ -934,6 +935,7 @@ class LibraryViewModel(
                     if (executionResult.deletedBookIds.isNotEmpty()) {
                         tabManager?.closeTabsForBooks(executionResult.deletedBookIds)
                         if (executionResult.catalogMutated) {
+                            catalogMutated = true
                             _rootCategories.value = dataManager.allRootCategories
                             executionResult.refreshedAuthors?.let { _authorCategories.value = it }
                             _catalogRevision.value += 1
@@ -980,6 +982,7 @@ class LibraryViewModel(
                         }.onFailure { recoveryErr ->
                             if (recoveryErr is CancellationException) throw recoveryErr
                         }.onSuccess { (reScannedDownloaded, rebuiltAuthors) ->
+                            catalogMutated = true
                             _rootCategories.value = dataManager.allRootCategories
                             _authorCategories.value = rebuiltAuthors
                             _downloadedBookIds.value = reScannedDownloaded
@@ -993,6 +996,9 @@ class LibraryViewModel(
             } finally {
                 if (anyMutationOccurred) {
                     SearchHitResolver.clearCache()
+                }
+                if (catalogMutated) {
+                    checkBookUpdatesPeriodically(appContext, force = true)
                 }
                 _isDeleting.value = false
             }
