@@ -346,7 +346,6 @@ fun MainScreen(
                             navController.popBackStack()
                         }
                         libraryViewModel.showDownloadConfirmation(
-                            context,
                             bookId,
                             contentId,
                             loc,

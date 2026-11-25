@@ -124,7 +124,7 @@ fun LibraryScreen(
 
     LaunchedEffect(viewModel) {
         viewModel.deleteMessages.collect { msg ->
-            Toast.makeText(currentContext, msg, Toast.LENGTH_SHORT).show()
+            Toast.makeText(currentContext, msg.asString(currentContext), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -271,7 +271,7 @@ fun LibraryScreen(
                                         }
                                         if (hasDeletableSelected) {
                                             IconButton(
-                                                onClick = { viewModel.requestDeleteConfirmation(context) },
+                                                onClick = { viewModel.requestDeleteConfirmation() },
                                                 enabled = !isBulkDownloading && !isDeleting,
                                             ) {
                                                 Icon(
@@ -283,7 +283,7 @@ fun LibraryScreen(
                                     }
                                     if (isSelectionMode) {
                                         IconButton(
-                                            onClick = { viewModel.toggleSelectionMode(context) },
+                                            onClick = { viewModel.toggleSelectionMode() },
                                             enabled = !isBulkDownloading && !isDeleting,
                                         ) {
                                             Icon(
@@ -308,9 +308,7 @@ fun LibraryScreen(
                                             viewMode = viewMode,
                                             availableUpdateCount = availableUpdateCount,
                                             onToggleSelectionMode = {
-                                                viewModel.toggleSelectionMode(
-                                                    context
-                                                )
+                                                viewModel.toggleSelectionMode()
                                             },
                                             onSetViewMode = { viewModel.setViewMode(it) },
                                             onBookUpdatesClick = { showUpdateSheet = true },
@@ -336,7 +334,7 @@ fun LibraryScreen(
                 isBookDownloadedById = { viewModel.isBookDownloadedById(it) },
                 onCategoryToggle = { viewModel.toggleCategory(it) },
                 onBookClick = { if (!isDeleting) onNavigateToReader(it, null, null, null, null) },
-                onBookSelectionToggle = { if (!isDeleting) viewModel.toggleBookSelection(context, it) },
+                onBookSelectionToggle = { if (!isDeleting) viewModel.toggleBookSelection(it) },
                 onBookLongClick = { bookId, view ->
                     if (!isDeleting) {
                         val location = IntArray(2)
@@ -352,7 +350,7 @@ fun LibraryScreen(
                 },
                 onLoadMore = { viewModel.loadMore(it) },
                 onLoadMoreAuthors = { viewModel.loadMoreAuthors() },
-                onCategorySelectionToggle = { if (!isDeleting) viewModel.toggleCategorySelection(context, it) },
+                onCategorySelectionToggle = { if (!isDeleting) viewModel.toggleCategorySelection(it) },
                 padding = padding,
                 bottomPadding = bottomPadding,
                 hasDonated = hasDonated,
@@ -388,8 +386,8 @@ fun LibraryScreen(
                                 label = stringResource(R.string.library_menu_select),
                                 icon = Icons.Default.CheckCircleOutline,
                                 onClick = {
-                                    viewModel.toggleSelectionMode(context)
-                                    viewModel.toggleBookSelection(context, bookId)
+                                    viewModel.toggleSelectionMode()
+                                    viewModel.toggleBookSelection(bookId)
                                     popoverAnchor = null
                                     popoverBookId = null
                                 }
@@ -446,7 +444,7 @@ fun LibraryScreen(
             ImportBookSheet(
                 annotationManager = annotationManager,
                 onDismiss = { showImportSheet = false },
-                onImportSuccess = { viewModel.reloadData(context) },
+                onImportSuccess = { viewModel.reloadData() },
             )
         }
     }
@@ -476,7 +474,7 @@ fun LibraryScreen(
             BookUpdateSheet(
                 onDismiss = { showUpdateSheet = false },
                 onUpdateSuccess = {
-                    viewModel.reloadData(context)
+                    viewModel.reloadData()
                 },
             )
         }
@@ -521,7 +519,7 @@ fun LibraryScreen(
             },
             confirmButton = {
                 Button(
-                    onClick = { viewModel.confirmDeleteSelection(context, tabManager) },
+                    onClick = { viewModel.confirmDeleteSelection(tabManager) },
                     shape = RoundedCornerShape(30.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,

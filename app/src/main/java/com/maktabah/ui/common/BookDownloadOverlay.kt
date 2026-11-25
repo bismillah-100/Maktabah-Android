@@ -178,7 +178,7 @@ fun BookDownloadOverlay(
                                     state = displayState.state,
                                     onCancel = { viewModel.cancelDownload(displayState.state.id) },
                                     onConfirm = {
-                                        viewModel.confirmDownload(context, displayState.state.id) { bId, cId, l, ln, q ->
+                                        viewModel.confirmDownload(displayState.state.id) { bId, cId, l, ln, q ->
                                             onNavigateToReader(bId, cId, l, ln, q)
                                         }
                                     }

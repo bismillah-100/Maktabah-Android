@@ -25,6 +25,7 @@ import com.maktabah.models.LibraryViewMode
 import com.maktabah.models.LoadMoreAuthors
 import com.maktabah.models.LoadMoreData
 import com.maktabah.search.SearchHitResolver
+import com.maktabah.ui.common.UiText
 import com.maktabah.ui.reader.ReaderTabManager
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.widget.DashboardWidget
@@ -51,9 +52,11 @@ import kotlin.time.Duration.Companion.milliseconds
 private val SQLITE_FILE_REGEX = Regex("\\d+\\.sqlite")
 
 class LibraryViewModel(
+    appContext: Context,
     val dataManager: LibraryDataManager,
     val updateRepository: BookUpdateRepository? = null,
 ) : ViewModel() {
+    private val appContext: Context = appContext.applicationContext
 
     data class DeleteSelectionSummary(
         val customBookIds: List<Int>,
@@ -119,7 +122,9 @@ class LibraryViewModel(
         states.any { it.isBulk && it.isDownloading }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
-    private var prefs: android.content.SharedPreferences? = null
+    private val prefs by lazy {
+        this.appContext.getSharedPreferences(AppConfig.Prefs.LIBRARY_PREFS, Context.MODE_PRIVATE)
+    }
     private val _showOnlyDownloaded = MutableStateFlow(false)
     val showOnlyDownloaded: StateFlow<Boolean> = _showOnlyDownloaded
 
@@ -138,51 +143,46 @@ class LibraryViewModel(
     private val _isDeleting = MutableStateFlow(false)
     val isDeleting: StateFlow<Boolean> = _isDeleting
 
-    private val _deleteMessages = Channel<String>(Channel.BUFFERED)
-    val deleteMessages: Flow<String> = _deleteMessages.receiveAsFlow()
+    private val _deleteMessages = Channel<UiText>(Channel.BUFFERED)
+    val deleteMessages: Flow<UiText> = _deleteMessages.receiveAsFlow()
 
     private val catalogMutex = Mutex()
     private val downloadCompletionJobs = mutableMapOf<String, Job>()
 
-    fun loadData(context: Context) {
+    fun loadData() {
         if (_isDataLoaded.value) return
-        val appContext = context.applicationContext
-        if (prefs == null) {
-            prefs = appContext.getSharedPreferences(AppConfig.Prefs.LIBRARY_PREFS, Context.MODE_PRIVATE)
-            _showOnlyDownloaded.value = prefs?.getBoolean("show_only_downloaded", false) ?: false
-        }
+        _showOnlyDownloaded.value = prefs.getBoolean("show_only_downloaded", false)
         viewModelScope.launch {
-            refreshCatalogFromDisk(appContext, initialLoad = true)
+            refreshCatalogFromDisk(initialLoad = true)
         }
         BookUpdateCheckWorker.enqueuePeriodicCheck(appContext)
-        checkBookUpdatesPeriodically(appContext, force = false)
+        checkBookUpdatesPeriodically(force = false)
     }
 
     fun getBookFlow(bookId: Int): Flow<BooksData?> {
         return _catalogRevision.map { dataManager.booksById[bookId] }
     }
 
-    fun reloadData(context: Context) {
-        val appContext = context.applicationContext
+    fun reloadData() {
         viewModelScope.launch {
-            refreshCatalogFromDisk(appContext, initialLoad = false)
+            refreshCatalogFromDisk(initialLoad = false)
         }
-        checkBookUpdatesPeriodically(appContext, force = true)
+        checkBookUpdatesPeriodically(force = true)
     }
 
-    private suspend fun refreshCatalogFromDisk(appContext: Context, initialLoad: Boolean) {
+    private suspend fun refreshCatalogFromDisk(initialLoad: Boolean) {
         var didLoad = false
         catalogMutex.withLock {
             if (initialLoad && _isDataLoaded.value) return@withLock
             try {
                 withContext(Dispatchers.IO) {
                     dataManager.loadData()
-                    loadLocalIndexIfPresent(appContext)
+                    loadLocalIndexIfPresent()
                 }
                 val authors = withContext(Dispatchers.Default) {
                     dataManager.buildAuthorHierarchy()
                 }
-                val downloadedIds = scanDownloadedBookIds(appContext)
+                val downloadedIds = scanDownloadedBookIds()
                 _rootCategories.value = dataManager.allRootCategories
                 _authorCategories.value = authors
                 _downloadedBookIds.value = downloadedIds
@@ -197,16 +197,15 @@ class LibraryViewModel(
             }
         }
         if (didLoad) {
-            updateSelectionDownloadState(appContext)
+            updateSelectionDownloadState()
             if (downloadIndex == null) {
-                loadDownloadIndex(appContext)
+                loadDownloadIndex()
             }
         }
     }
 
-    fun checkBookUpdatesPeriodically(context: Context? = null, force: Boolean = false) {
-        val appContext = context?.applicationContext
-        val repo = updateRepository ?: appContext?.let { BookUpdateRepository(it) } ?: return
+    fun checkBookUpdatesPeriodically(force: Boolean = false) {
+        val repo = updateRepository ?: BookUpdateRepository(appContext)
         val lastCheck = repo.getLastUpdateCheck()
         val oneDayMs = 86_400_000L
         val now = System.currentTimeMillis()
@@ -232,25 +231,25 @@ class LibraryViewModel(
         }
     }
 
-    private fun loadDownloadIndex(appContext: Context) {
+    private fun loadDownloadIndex() {
         viewModelScope.launch {
             if (downloadIndex == null) {
-                populateDownloadIndex(appContext)
+                populateDownloadIndex()
                 if (_isDataLoaded.value) {
                     _customBookIds.value = computeCustomBookIds()
-                    updateSelectionDownloadState(appContext)
+                    updateSelectionDownloadState()
                 }
             }
         }
     }
 
-    private suspend fun loadLocalIndexIfPresent(appContext: Context) {
+    private suspend fun loadLocalIndexIfPresent() {
         if (downloadIndex != null && coreBookIds != null) return
         if (!java.io.File(appContext.filesDir, "index.json").exists()) return
-        populateDownloadIndex(appContext)
+        populateDownloadIndex()
     }
 
-    private suspend fun populateDownloadIndex(appContext: Context) {
+    private suspend fun populateDownloadIndex() {
         try {
             val entries = BookDownloadManager(appContext).fetchIndex()
             if (entries.isNotEmpty()) {
@@ -272,7 +271,7 @@ class LibraryViewModel(
         return dataManager.booksById.keys.filterTo(HashSet()) { it !in indexIds }
     }
 
-    private suspend fun scanDownloadedBookIds(appContext: Context): Set<Int> = withContext(Dispatchers.IO) {
+    private suspend fun scanDownloadedBookIds(): Set<Int> = withContext(Dispatchers.IO) {
         val downloadedIds = HashSet<Int>()
         val files = appContext.filesDir.listFiles { _, name ->
             name.endsWith(".sqlite") && name.matches(SQLITE_FILE_REGEX)
@@ -380,7 +379,7 @@ class LibraryViewModel(
 
     fun toggleShowOnlyDownloaded() {
         _showOnlyDownloaded.value = !_showOnlyDownloaded.value
-        prefs?.edit { putBoolean("show_only_downloaded", _showOnlyDownloaded.value)?.apply() }
+        prefs.edit { putBoolean("show_only_downloaded", _showOnlyDownloaded.value) }
         _displayedAuthorCount.value = 100
         updateFlatItems()
     }
@@ -405,21 +404,16 @@ class LibraryViewModel(
         updateFlatItems()
     }
 
-    fun toggleSelectionMode(context: Context? = null) {
+    fun toggleSelectionMode() {
         if (_isDeleting.value) return
         _isSelectionMode.value = !_isSelectionMode.value
         if (!_isSelectionMode.value) {
             _selectedBookIds.value = emptySet()
         }
-        if (context != null) {
-            updateSelectionDownloadState(context)
-        } else {
-            // Remove pending bulk confirmation
-            com.maktabah.downloader.BookDownloadService.updateStates { states -> states.filter { !(it.isBulk && !it.isDownloading) } }
-        }
+        updateSelectionDownloadState()
     }
 
-    fun toggleBookSelection(context: Context, bookId: Int) {
+    fun toggleBookSelection(bookId: Int) {
         if (_isDeleting.value) return
         val currentSet = _selectedBookIds.value.toMutableSet()
         if (currentSet.contains(bookId)) {
@@ -428,10 +422,10 @@ class LibraryViewModel(
             currentSet.add(bookId)
         }
         _selectedBookIds.value = currentSet
-        updateSelectionDownloadState(context)
+        updateSelectionDownloadState()
     }
 
-    fun toggleCategorySelection(context: Context, category: CategoryData) {
+    fun toggleCategorySelection(category: CategoryData) {
         if (_isDeleting.value) return
         val currentSet = _selectedBookIds.value.toMutableSet()
         val showOnlyDownloadedVal = _showOnlyDownloaded.value
@@ -461,11 +455,10 @@ class LibraryViewModel(
             currentSet.addAll(allBooks)
         }
         _selectedBookIds.value = currentSet
-        updateSelectionDownloadState(context)
+        updateSelectionDownloadState()
     }
 
-    fun updateSelectionDownloadState(context: Context) {
-        val appContext = context.applicationContext
+    fun updateSelectionDownloadState() {
         val isSelection = _isSelectionMode.value
         val selected = _selectedBookIds.value
         val downloaded = _downloadedBookIds.value
@@ -752,27 +745,26 @@ class LibraryViewModel(
 
     private var deletePreparationJob: Job? = null
 
-    fun requestDeleteConfirmation(context: Context) {
+    fun requestDeleteConfirmation() {
         if (_isDeleting.value) return
-        val appContext = context.applicationContext
         if (coreBookIds != null) {
-            prepareDeleteConfirmation(appContext)
+            prepareDeleteConfirmation()
             return
         }
         if (deletePreparationJob?.isActive == true) return
         deletePreparationJob = viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                loadLocalIndexIfPresent(appContext)
+                loadLocalIndexIfPresent()
             }
             if (_isDeleting.value || !_isSelectionMode.value || _selectedBookIds.value.isEmpty()) {
                 return@launch
             }
             if (coreBookIds == null) {
-                _deleteMessages.trySend(appContext.getString(R.string.library_delete_index_unavailable))
+                _deleteMessages.trySend(UiText.StringResource(R.string.library_delete_index_unavailable))
                 return@launch
             }
             _customBookIds.value = computeCustomBookIds()
-            prepareDeleteConfirmation(appContext)
+            prepareDeleteConfirmation()
         }
     }
 
@@ -784,7 +776,7 @@ class LibraryViewModel(
             }
     }
 
-    private fun prepareDeleteConfirmation(appContext: Context) {
+    private fun prepareDeleteConfirmation() {
         val activeDownloadingIds = activeDownloadingBookIds()
 
         val customIds = _customBookIds.value
@@ -811,7 +803,7 @@ class LibraryViewModel(
             _pendingDeleteSummary.value = summary
         } else if (summary.skippedDownloadingBookIds.isNotEmpty()) {
             _deleteMessages.trySend(
-                appContext.getString(
+                UiText.StringResource(
                     R.string.library_delete_skipped_downloading,
                     summary.skippedDownloadingBookIds.size,
                 )
@@ -823,14 +815,10 @@ class LibraryViewModel(
         _pendingDeleteSummary.value = null
     }
 
-    fun confirmDeleteSelection(
-        context: Context,
-        tabManager: ReaderTabManager? = null,
-    ) {
+    fun confirmDeleteSelection(tabManager: ReaderTabManager? = null) {
         val summary = _pendingDeleteSummary.value ?: return
         if (_isDeleting.value) return
 
-        val appContext = context.applicationContext
         _pendingDeleteSummary.value = null
         _isDeleting.value = true
 
@@ -909,7 +897,7 @@ class LibraryViewModel(
                             }
                         }
 
-                        val newDownloadedIds = scanDownloadedBookIds(appContext)
+                        val newDownloadedIds = scanDownloadedBookIds()
                         val newCustomIds = computeCustomBookIds()
 
                         DeleteExecutionOutcome(
@@ -935,25 +923,28 @@ class LibraryViewModel(
                         updateFlatItems()
                         _isSelectionMode.value = false
                         _selectedBookIds.value = emptySet()
-                        updateSelectionDownloadState(appContext)
+                        updateSelectionDownloadState()
                         _deleteMessages.trySend(
-                            appContext.getString(R.string.library_delete_success, executionResult.deletedBookIds.size)
+                            UiText.StringResource(
+                                R.string.library_delete_success,
+                                executionResult.deletedBookIds.size,
+                            )
                         )
                         launch(Dispatchers.IO) {
                             DashboardWidget.updateWidget(appContext)
                         }
                     } else {
                         if (anyMutationOccurred) {
-                            _downloadedBookIds.value = scanDownloadedBookIds(appContext)
+                            _downloadedBookIds.value = scanDownloadedBookIds()
                             updateFlatItems()
                         }
                         val message = if (!anyMutationOccurred && executionResult.skippedActiveCount > 0) {
-                            appContext.getString(
+                            UiText.StringResource(
                                 R.string.library_delete_skipped_downloading,
                                 executionResult.skippedActiveCount,
                             )
                         } else {
-                            appContext.getString(R.string.library_delete_no_result)
+                            UiText.StringResource(R.string.library_delete_no_result)
                         }
                         _deleteMessages.trySend(message)
                     }
@@ -967,7 +958,7 @@ class LibraryViewModel(
                         runCatching {
                             withContext(Dispatchers.IO) {
                                 dataManager.loadData()
-                                Pair(scanDownloadedBookIds(appContext), dataManager.buildAuthorHierarchy())
+                                Pair(scanDownloadedBookIds(), dataManager.buildAuthorHierarchy())
                             }
                         }.onFailure { recoveryErr ->
                             if (recoveryErr is CancellationException) throw recoveryErr
@@ -982,13 +973,13 @@ class LibraryViewModel(
                         }
                     }
                 }
-                _deleteMessages.trySend(appContext.getString(R.string.library_delete_no_result))
+                _deleteMessages.trySend(UiText.StringResource(R.string.library_delete_no_result))
             } finally {
                 if (anyMutationOccurred) {
                     SearchHitResolver.clearCache()
                 }
                 if (catalogMutated) {
-                    checkBookUpdatesPeriodically(appContext, force = true)
+                    checkBookUpdatesPeriodically(force = true)
                 }
                 _isDeleting.value = false
             }
@@ -1005,7 +996,6 @@ class LibraryViewModel(
     )
 
     fun showDownloadConfirmation(
-        context: Context,
         bookId: Int,
         contentId: Int? = null,
         loc: Int? = null,
@@ -1015,12 +1005,11 @@ class LibraryViewModel(
         // Prevent duplicate confirmation for the same book
         if (com.maktabah.downloader.BookDownloadService.activeDownloadStates.value.any { it.bookId == bookId && !it.isBulk }) return
 
-        val appContext = context.applicationContext
         viewModelScope.launch {
             val bookName = dataManager.booksById[bookId]?.name
                 ?: appContext.getString(R.string.library_fallback_book_name)
             if (downloadIndex == null) {
-                populateDownloadIndex(appContext)
+                populateDownloadIndex()
             }
             val index = downloadIndex.orEmpty()
             val entry = index.find { it.bkid == bookId }
@@ -1054,13 +1043,12 @@ class LibraryViewModel(
     }
 
     fun confirmDownload(
-        context: Context,
         stateId: String,
         onComplete: (Int, Int?, Int?, Int?, String?) -> Unit
     ) {
         val currentState = BookDownloadService.getState(stateId) ?: return
 
-        BookDownloadService.startDownload(context, stateId)
+        BookDownloadService.startDownload(appContext, stateId)
 
         if (currentState.isBulk) {
             _isSelectionMode.value = false

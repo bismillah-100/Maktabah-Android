@@ -152,12 +152,12 @@ class MainActivity : ComponentActivity() {
                             factory = object : androidx.lifecycle.ViewModelProvider.Factory {
                                 @Suppress("UNCHECKED_CAST")
                                 override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-                                    return LibraryViewModel(dataManager, updateRepository) as T
+                                    return LibraryViewModel(applicationContext, dataManager, updateRepository) as T
                                 }
                             }
                         )
                         LaunchedEffect(libraryViewModel) {
-                            libraryViewModel.loadData(this@MainActivity)
+                            libraryViewModel.loadData()
                         }
                         val annotationManager = remember { AnnotationManager.getInstance(this@MainActivity) }
                         val cloudKitSyncManager = remember { CloudKitSyncManager() }
