@@ -38,19 +38,26 @@ object BookArchiveIntegrator {
         return archiveId
     }
 
+    data class ArchiveDeletionResult(
+        val deletedContentBookIds: Set<Int>,
+        val fullyCleanedBookIds: Set<Int>,
+    )
+
     suspend fun deleteBooksFromArchive(
         context: Context,
         archiveId: Int,
         bookIds: List<Int>,
-    ): Set<Int> {
+    ): ArchiveDeletionResult {
         val targetIds = bookIds.distinct()
-        if (targetIds.isEmpty()) return emptySet()
+        if (targetIds.isEmpty()) return ArchiveDeletionResult(emptySet(), emptySet())
 
         return BookArchiveSingleFlight.run(archiveId) {
             val filesDir = context.filesDir
             val file = File(filesDir, "$archiveId.sqlite")
             val ftsFile = File(filesDir, "${archiveId}_fts.sqlite")
-            val deletedContentIds = HashSet<Int>()
+            var deletedContentIds: Set<Int> = emptySet()
+            var contentTransactionOk = !file.exists()
+            var ftsTransactionOk = !ftsFile.exists()
 
             if (file.exists()) {
                 try {
@@ -58,13 +65,26 @@ object BookArchiveIntegrator {
                         file.absolutePath,
                         SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
                     ).use { db ->
+                        val existingTables = HashSet<String>()
+                        db.prepare("SELECT name FROM main.sqlite_master WHERE type='table' AND (name LIKE 'b%' OR name LIKE 't%');")
+                            ?.use { stmt ->
+                                while (stmt.step() == SQLiteDB.SQLITE_ROW) {
+                                    stmt.columnText(0)?.let { existingTables.add(it) }
+                                }
+                            }
+                        val droppedIds = HashSet<Int>()
                         db.inTransaction {
                             for (bookId in targetIds) {
+                                val hadContent = existingTables.contains("b$bookId") || existingTables.contains("t$bookId")
                                 db.prepare("DROP TABLE IF EXISTS main.\"b$bookId\";")?.use { it.step() }
                                 db.prepare("DROP TABLE IF EXISTS main.\"t$bookId\";")?.use { it.step() }
-                                deletedContentIds.add(bookId)
+                                if (hadContent) {
+                                    droppedIds.add(bookId)
+                                }
                             }
                         }
+                        deletedContentIds = droppedIds
+                        contentTransactionOk = true
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -97,6 +117,7 @@ object BookArchiveIntegrator {
                                 }
                             }
                         }
+                        ftsTransactionOk = true
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -105,7 +126,15 @@ object BookArchiveIntegrator {
                 }
             }
 
-            deletedContentIds
+            val fullyCleaned = if (contentTransactionOk && ftsTransactionOk) {
+                targetIds.toSet()
+            } else {
+                emptySet()
+            }
+            ArchiveDeletionResult(
+                deletedContentBookIds = deletedContentIds,
+                fullyCleanedBookIds = fullyCleaned,
+            )
         }
     }
 

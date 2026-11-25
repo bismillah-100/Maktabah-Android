@@ -41,6 +41,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -137,6 +139,8 @@ class LibraryViewModel(
     private val _deleteMessages = Channel<String>(Channel.BUFFERED)
     val deleteMessages: Flow<String> = _deleteMessages.receiveAsFlow()
 
+    private val catalogMutex = Mutex()
+
     fun loadData(context: Context) {
         if (_isDataLoaded.value) return
         val appContext = context.applicationContext
@@ -145,26 +149,7 @@ class LibraryViewModel(
             _showOnlyDownloaded.value = prefs?.getBoolean("show_only_downloaded", false) ?: false
         }
         viewModelScope.launch {
-            _isDataLoaded.value = false
-            withContext(Dispatchers.IO) {
-                dataManager.loadData()
-                loadLocalIndexIfPresent(appContext)
-            }
-            val authors = withContext(Dispatchers.Default) {
-                dataManager.buildAuthorHierarchy()
-            }
-            val downloadedIds = scanDownloadedBookIds(appContext)
-            _rootCategories.value = dataManager.allRootCategories
-            _authorCategories.value = authors
-            _downloadedBookIds.value = downloadedIds
-            _customBookIds.value = computeCustomBookIds()
-            updateFlatItems()
-            _catalogRevision.value += 1
-            _isDataLoaded.value = true
-            updateSelectionDownloadState(appContext)
-            if (downloadIndex == null) {
-                loadDownloadIndex(appContext)
-            }
+            refreshCatalogFromDisk(appContext, initialLoad = true)
         }
         BookUpdateCheckWorker.enqueuePeriodicCheck(appContext)
         checkBookUpdatesPeriodically(appContext, force = false)
@@ -177,28 +162,43 @@ class LibraryViewModel(
     fun reloadData(context: Context) {
         val appContext = context.applicationContext
         viewModelScope.launch {
-            _isDataLoaded.value = false
-            withContext(Dispatchers.IO) {
-                dataManager.loadData()
-                loadLocalIndexIfPresent(appContext)
+            refreshCatalogFromDisk(appContext, initialLoad = false)
+        }
+        checkBookUpdatesPeriodically(appContext, force = true)
+    }
+
+    private suspend fun refreshCatalogFromDisk(appContext: Context, initialLoad: Boolean) {
+        var didLoad = false
+        catalogMutex.withLock {
+            if (initialLoad && _isDataLoaded.value) return@withLock
+            try {
+                withContext(Dispatchers.IO) {
+                    dataManager.loadData()
+                    loadLocalIndexIfPresent(appContext)
+                }
+                val authors = withContext(Dispatchers.Default) {
+                    dataManager.buildAuthorHierarchy()
+                }
+                val downloadedIds = scanDownloadedBookIds(appContext)
+                _rootCategories.value = dataManager.allRootCategories
+                _authorCategories.value = authors
+                _downloadedBookIds.value = downloadedIds
+                _customBookIds.value = computeCustomBookIds()
+                updateFlatItems()
+                _catalogRevision.value += 1
+                didLoad = true
+            } finally {
+                if (initialLoad) {
+                    _isDataLoaded.value = true
+                }
             }
-            val authors = withContext(Dispatchers.Default) {
-                dataManager.buildAuthorHierarchy()
-            }
-            val downloadedIds = scanDownloadedBookIds(appContext)
-            _rootCategories.value = dataManager.allRootCategories
-            _authorCategories.value = authors
-            _downloadedBookIds.value = downloadedIds
-            _customBookIds.value = computeCustomBookIds()
-            updateFlatItems()
-            _catalogRevision.value += 1
-            _isDataLoaded.value = true
+        }
+        if (didLoad) {
             updateSelectionDownloadState(appContext)
             if (downloadIndex == null) {
                 loadDownloadIndex(appContext)
             }
         }
-        checkBookUpdatesPeriodically(appContext, force = true)
     }
 
     fun checkBookUpdatesPeriodically(context: Context? = null, force: Boolean = false) {
@@ -833,102 +833,137 @@ class LibraryViewModel(
         _isDeleting.value = true
 
         viewModelScope.launch {
+            var anyMutationOccurred = false
             try {
-                val executionResult = withContext(Dispatchers.IO) {
-                    val customIds = summary.customBookIds
-                    val allTargets = (customIds + summary.downloadedCoreBookIds).distinct()
-                    val booksByIdSnapshot = dataManager.booksById
-                    val groupedByArchive = HashMap<Int, MutableList<Int>>()
-                    for (bookId in allTargets) {
-                        val archiveId = booksByIdSnapshot[bookId]?.archive
-                        if (archiveId != null) {
-                            groupedByArchive.getOrPut(archiveId) { mutableListOf() }.add(bookId)
+                catalogMutex.withLock {
+                    val executionResult = withContext(Dispatchers.IO) {
+                        val customIds = summary.customBookIds
+                        val allTargets = (customIds + summary.downloadedCoreBookIds).distinct()
+                        val booksByIdSnapshot = dataManager.booksById
+                        val groupedByArchive = HashMap<Int, MutableList<Int>>()
+                        for (bookId in allTargets) {
+                            val archiveId = booksByIdSnapshot[bookId]?.archive
+                            if (archiveId != null && archiveId > 0) {
+                                groupedByArchive.getOrPut(archiveId) { mutableListOf() }.add(bookId)
+                            }
                         }
-                    }
 
-                    val deletedContentIds = HashSet<Int>()
-                    for ((archiveId, bookIdsInArchive) in groupedByArchive) {
-                        coroutineContext.ensureActive()
-                        deletedContentIds.addAll(
-                            BookArchiveIntegrator.deleteBooksFromArchive(
+                        val deletedContentIds = HashSet<Int>()
+                        val fullyCleanedArchiveIds = HashSet<Int>()
+                        for ((archiveId, bookIdsInArchive) in groupedByArchive) {
+                            coroutineContext.ensureActive()
+                            val archiveResult = BookArchiveIntegrator.deleteBooksFromArchive(
                                 context = appContext,
                                 archiveId = archiveId,
                                 bookIds = bookIdsInArchive,
                             )
+                            deletedContentIds.addAll(archiveResult.deletedContentBookIds)
+                            fullyCleanedArchiveIds.addAll(archiveResult.fullyCleanedBookIds)
+                        }
+                        if (deletedContentIds.isNotEmpty() || fullyCleanedArchiveIds.isNotEmpty()) {
+                            anyMutationOccurred = true
+                        }
+
+                        val cleanCustomTargets = customIds.filter { bookId ->
+                            val archiveId = booksByIdSnapshot[bookId]?.archive
+                            archiveId == null || archiveId <= 0 || bookId in fullyCleanedArchiveIds
+                        }
+                        val deletedCatalogMetadataIds = if (cleanCustomTargets.isNotEmpty()) {
+                            BookImportManager.deleteCatalogBookMetadata(
+                                context = appContext,
+                                bookIds = cleanCustomTargets,
+                                coreAuthorIds = coreAuthorIds,
+                            )
+                        } else {
+                            emptySet()
+                        }
+                        if (deletedCatalogMetadataIds.isNotEmpty()) {
+                            anyMutationOccurred = true
+                        }
+
+                        val coreTargetSet = summary.downloadedCoreBookIds.toHashSet()
+                        val deletedBookIds = (
+                            deletedContentIds.filter { it in coreTargetSet } +
+                                deletedCatalogMetadataIds
+                            ).distinct()
+
+                        if (deletedBookIds.isNotEmpty()) {
+                            val deletedSet = deletedBookIds.toHashSet()
+                            BookDownloadService.updateStates { states ->
+                                states.filter { it.isDownloading || it.isBulk || !deletedSet.contains(it.bookId) }
+                            }
+                        }
+
+                        var refreshedAuthors: List<CategoryData>? = null
+                        if (deletedCatalogMetadataIds.isNotEmpty()) {
+                            dataManager.loadData()
+                            refreshedAuthors = withContext(Dispatchers.Default) {
+                                dataManager.buildAuthorHierarchy()
+                            }
+                        }
+
+                        val newDownloadedIds = scanDownloadedBookIds(appContext)
+                        val newCustomIds = computeCustomBookIds()
+
+                        DeleteExecutionOutcome(
+                            deletedBookIds = deletedBookIds,
+                            catalogMutated = deletedCatalogMetadataIds.isNotEmpty(),
+                            refreshedAuthors = refreshedAuthors,
+                            newDownloadedIds = newDownloadedIds,
+                            newCustomIds = newCustomIds,
                         )
                     }
 
-                    val deletedCatalogMetadataIds = if (customIds.isNotEmpty()) {
-                        BookImportManager.deleteCatalogBookMetadata(
-                            context = appContext,
-                            bookIds = customIds,
-                            coreAuthorIds = coreAuthorIds,
+                    if (executionResult.deletedBookIds.isNotEmpty()) {
+                        tabManager?.closeTabsForBooks(executionResult.deletedBookIds)
+                        if (executionResult.catalogMutated) {
+                            _rootCategories.value = dataManager.allRootCategories
+                            executionResult.refreshedAuthors?.let { _authorCategories.value = it }
+                            _catalogRevision.value += 1
+                        }
+                        _downloadedBookIds.value = executionResult.newDownloadedIds
+                        _customBookIds.value = executionResult.newCustomIds
+                        updateFlatItems()
+                        _isSelectionMode.value = false
+                        _selectedBookIds.value = emptySet()
+                        updateSelectionDownloadState(appContext)
+                        _deleteMessages.trySend(
+                            appContext.getString(R.string.library_delete_success, executionResult.deletedBookIds.size)
                         )
+                        launch(Dispatchers.IO) {
+                            DashboardWidget.updateWidget(appContext)
+                        }
                     } else {
-                        emptySet()
-                    }
-
-                    val coreTargetSet = summary.downloadedCoreBookIds.toHashSet()
-                    val customTargetSet = customIds.toHashSet()
-                    val deletedBookIds = (
-                        deletedContentIds.filter { it in coreTargetSet } +
-                            deletedCatalogMetadataIds +
-                            deletedContentIds.filter { it in customTargetSet }
-                        ).distinct()
-
-                    if (deletedBookIds.isNotEmpty()) {
-                        val deletedSet = deletedBookIds.toHashSet()
-                        BookDownloadService.updateStates { states ->
-                            states.filter { it.isDownloading || it.isBulk || !deletedSet.contains(it.bookId) }
+                        if (anyMutationOccurred) {
+                            _downloadedBookIds.value = scanDownloadedBookIds(appContext)
+                            updateFlatItems()
                         }
+                        _deleteMessages.trySend(appContext.getString(R.string.library_delete_no_result))
                     }
-
-                    var refreshedAuthors: List<CategoryData>? = null
-                    if (deletedCatalogMetadataIds.isNotEmpty()) {
-                        dataManager.loadData()
-                        refreshedAuthors = withContext(Dispatchers.Default) {
-                            dataManager.buildAuthorHierarchy()
-                        }
-                    }
-
-                    val newDownloadedIds = scanDownloadedBookIds(appContext)
-                    val newCustomIds = computeCustomBookIds()
-
-                    DeleteExecutionOutcome(
-                        deletedBookIds = deletedBookIds,
-                        catalogMutated = deletedCatalogMetadataIds.isNotEmpty(),
-                        refreshedAuthors = refreshedAuthors,
-                        newDownloadedIds = newDownloadedIds,
-                        newCustomIds = newCustomIds,
-                    )
-                }
-
-                if (executionResult.deletedBookIds.isNotEmpty()) {
-                    tabManager?.closeTabsForBooks(executionResult.deletedBookIds)
-                    if (executionResult.catalogMutated) {
-                        _rootCategories.value = dataManager.allRootCategories
-                        executionResult.refreshedAuthors?.let { _authorCategories.value = it }
-                        _catalogRevision.value += 1
-                    }
-                    _downloadedBookIds.value = executionResult.newDownloadedIds
-                    _customBookIds.value = executionResult.newCustomIds
-                    updateFlatItems()
-                    _isSelectionMode.value = false
-                    _selectedBookIds.value = emptySet()
-                    updateSelectionDownloadState(appContext)
-                    _deleteMessages.trySend(
-                        appContext.getString(R.string.library_delete_success, executionResult.deletedBookIds.size)
-                    )
-                    launch(Dispatchers.IO) {
-                        DashboardWidget.updateWidget(appContext)
-                    }
-                } else {
-                    _deleteMessages.trySend(appContext.getString(R.string.library_delete_no_result))
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.e("LibraryViewModel", "confirmDeleteSelection failed", e)
+                if (anyMutationOccurred) {
+                    catalogMutex.withLock {
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                dataManager.loadData()
+                                Pair(scanDownloadedBookIds(appContext), dataManager.buildAuthorHierarchy())
+                            }
+                        }.onFailure { recoveryErr ->
+                            if (recoveryErr is CancellationException) throw recoveryErr
+                        }.onSuccess { (reScannedDownloaded, rebuiltAuthors) ->
+                            _rootCategories.value = dataManager.allRootCategories
+                            _authorCategories.value = rebuiltAuthors
+                            _downloadedBookIds.value = reScannedDownloaded
+                            _customBookIds.value = computeCustomBookIds()
+                            _catalogRevision.value += 1
+                            updateFlatItems()
+                        }
+                    }
+                }
                 _deleteMessages.trySend(appContext.getString(R.string.library_delete_no_result))
             } finally {
                 _isDeleting.value = false

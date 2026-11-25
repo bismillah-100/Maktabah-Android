@@ -436,17 +436,39 @@ object BookImportManager {
                 }
             }
 
-            if (orphanedAuthorIds.isNotEmpty() && specialDbFile.exists()) {
-                openDatabase(specialDbFile, WRITE_FLAGS).use { specDb ->
-                    specDb.inTransaction {
-                        for (chunk in orphanedAuthorIds.toList().chunked(900)) {
-                            val placeholders = chunk.joinToString(",") { "?" }
-                            specDb.prepare("DELETE FROM Auth WHERE authid IN ($placeholders);")?.use { stmt ->
-                                chunk.forEachIndexed { idx, id -> stmt.bindInt(idx + 1, id) }
-                                stmt.step()
+            if ((orphanedAuthorIds.isNotEmpty() || deletedBookIds.isNotEmpty()) && specialDbFile.exists()) {
+                try {
+                    openDatabase(specialDbFile, WRITE_FLAGS).use { specDb ->
+                        specDb.inTransaction {
+                            for (chunk in orphanedAuthorIds.toList().chunked(900)) {
+                                val placeholders = chunk.joinToString(",") { "?" }
+                                specDb.prepare("DELETE FROM Auth WHERE authid IN ($placeholders);")?.use { stmt ->
+                                    chunk.forEachIndexed { idx, id -> stmt.bindInt(idx + 1, id) }
+                                    stmt.step()
+                                }
+                            }
+                            if (deletedBookIds.isNotEmpty()) {
+                                val hasShortsTable = specDb.prepare(
+                                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='shorts' LIMIT 1;"
+                                )?.use { it.step() == SQLiteDB.SQLITE_ROW } == true
+                                if (hasShortsTable) {
+                                    for (chunk in deletedBookIds.toList().chunked(900)) {
+                                        val placeholders = chunk.joinToString(",") { "?" }
+                                        specDb.prepare(
+                                            "DELETE FROM shorts WHERE CAST(Bk AS INTEGER) IN ($placeholders);"
+                                        )?.use { stmt ->
+                                            chunk.forEachIndexed { idx, id -> stmt.bindInt(idx + 1, id) }
+                                            stmt.step()
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed cleaning orphaned authors or shorts from special.sqlite", e)
                 }
             }
 
