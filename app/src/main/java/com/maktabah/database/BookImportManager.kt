@@ -158,8 +158,9 @@ object BookImportManager {
         var catalogCommitted = false
         var contentIntegrated = false
         var insertedAuthorId: Int? = null
+        var oldArchiveId: Int? = null
         return try {
-            val oldArchiveId = BookArchiveIntegrator.getArchiveIdForBook(context, metadata.bkid)
+            oldArchiveId = BookArchiveIntegrator.getArchiveIdForBook(context, metadata.bkid)
 
             // 1. Integrasikan konten (tabel bX, tX, FTS) terlebih dahulu agar kegagalan tidak
             // meninggalkan metadata yatim di main.sqlite / special.sqlite
@@ -241,6 +242,7 @@ object BookImportManager {
                     context = context,
                     bookId = metadata.bkid,
                     archiveId = metadata.archiveId,
+                    oldArchiveId = oldArchiveId,
                     contentIntegrated = contentIntegrated,
                     isNewBook = isNewBook,
                     catalogCommitted = catalogCommitted,
@@ -253,6 +255,7 @@ object BookImportManager {
                 context = context,
                 bookId = metadata.bkid,
                 archiveId = metadata.archiveId,
+                oldArchiveId = oldArchiveId,
                 contentIntegrated = contentIntegrated,
                 isNewBook = isNewBook,
                 catalogCommitted = catalogCommitted,
@@ -271,12 +274,17 @@ object BookImportManager {
         context: Context,
         bookId: Int,
         archiveId: Int,
+        oldArchiveId: Int?,
         contentIntegrated: Boolean,
         isNewBook: Boolean,
         catalogCommitted: Boolean,
         insertedAuthorId: Int?,
     ) {
-        if (contentIntegrated && isNewBook) {
+        val shouldCleanTargetArchive = contentIntegrated && (
+            isNewBook ||
+                (!catalogCommitted && oldArchiveId != null && oldArchiveId > 0 && oldArchiveId != archiveId)
+            )
+        if (shouldCleanTargetArchive) {
             BookArchiveIntegrator.removeBookFromArchive(context, bookId, archiveId)
         }
         if (catalogCommitted || insertedAuthorId != null) {
@@ -346,52 +354,95 @@ object BookImportManager {
      */
     suspend fun changeBookId(context: Context, oldId: Int, newId: Int): Result<Unit> {
         if (oldId == newId) return Result.success(Unit)
-        if (isBookIdTaken(context, newId)) {
-            return Result.failure(Exception("ID buku $newId sudah digunakan"))
-        }
 
         return try {
             val mainDbFile = File(context.filesDir, "main.sqlite")
             if (!mainDbFile.exists()) {
                 return Result.failure(IllegalStateException("main.sqlite tidak ditemukan"))
             }
-            val archiveId = BookArchiveIntegrator.getArchiveIdForBook(context, oldId)
-            if (archiveId != null && archiveId > 0) {
-                val migrated = BookArchiveIntegrator.migrateBookId(
-                    context = context,
-                    oldId = oldId,
-                    newId = newId,
-                    archiveId = archiveId,
-                )
-                if (!migrated) {
-                    return Result.failure(Exception("Gagal memigrasikan konten buku ke ID baru"))
-                }
-            }
 
             BookArchiveSingleFlight.runCatalogWrite {
-                openDatabase(mainDbFile, WRITE_FLAGS).use { db ->
-                    db.inTransaction {
-                        db.prepare("UPDATE \"0bok\" SET bkid = ? WHERE bkid = ?")?.use { stmt ->
-                            stmt.bindInt(1, newId)
-                            stmt.bindInt(2, oldId)
-                            stmt.step()
+                if (isBookIdTaken(context, newId)) {
+                    return@runCatalogWrite Result.failure(Exception("ID buku $newId sudah digunakan"))
+                }
+
+                val archiveId = BookArchiveIntegrator.getArchiveIdForBook(context, oldId)
+                var archiveMigrated = false
+                var catalogUpdated = false
+
+                if (archiveId != null && archiveId > 0) {
+                    val migrated = BookArchiveIntegrator.migrateBookId(
+                        context = context,
+                        oldId = oldId,
+                        newId = newId,
+                        archiveId = archiveId,
+                    )
+                    if (!migrated) {
+                        return@runCatalogWrite Result.failure(Exception("Gagal memigrasikan konten buku ke ID baru"))
+                    }
+                    archiveMigrated = true
+                }
+
+                try {
+                    openDatabase(mainDbFile, WRITE_FLAGS).use { db ->
+                        db.inTransaction {
+                            db.prepare("UPDATE \"0bok\" SET bkid = ? WHERE bkid = ?")?.use { stmt ->
+                                stmt.bindInt(1, newId)
+                                stmt.bindInt(2, oldId)
+                                stmt.step()
+                            }
                         }
                     }
-                }
-            }
+                    catalogUpdated = true
 
-            val specialDbFile = File(context.filesDir, "special.sqlite")
-            if (specialDbFile.exists()) {
-                openDatabase(specialDbFile, WRITE_FLAGS).use { specDb ->
-                    specDb.prepare("UPDATE shorts SET Bk = ? WHERE CAST(Bk AS INTEGER) = ?")?.use { stmt ->
-                        stmt.bindInt(1, newId)
-                        stmt.bindInt(2, oldId)
-                        stmt.step()
+                    val specialDbFile = File(context.filesDir, "special.sqlite")
+                    if (specialDbFile.exists()) {
+                        openDatabase(specialDbFile, WRITE_FLAGS).use { specDb ->
+                            specDb.inTransaction {
+                                specDb.prepare("UPDATE shorts SET Bk = ? WHERE CAST(Bk AS INTEGER) = ?")?.use { stmt ->
+                                    stmt.bindInt(1, newId)
+                                    stmt.bindInt(2, oldId)
+                                    stmt.step()
+                                }
+                            }
+                        }
                     }
+                } catch (e: Throwable) {
+                    withContext(NonCancellable) {
+                        if (catalogUpdated) {
+                            runCatching {
+                                openDatabase(mainDbFile, WRITE_FLAGS).use { db ->
+                                    db.inTransaction {
+                                        db.prepare("UPDATE \"0bok\" SET bkid = ? WHERE bkid = ?")?.use { stmt ->
+                                            stmt.bindInt(1, oldId)
+                                            stmt.bindInt(2, newId)
+                                            stmt.step()
+                                        }
+                                    }
+                                }
+                            }.onFailure { rollbackErr ->
+                                Log.e(TAG, "Failed rolling back 0bok bkid $newId -> $oldId", rollbackErr)
+                            }
+                        }
+                        if (archiveMigrated && archiveId != null && archiveId > 0) {
+                            runCatching {
+                                BookArchiveIntegrator.migrateBookId(
+                                    context = context,
+                                    oldId = newId,
+                                    newId = oldId,
+                                    archiveId = archiveId,
+                                )
+                            }.onFailure { rollbackErr ->
+                                Log.e(TAG, "Failed rolling back archive migration $newId -> $oldId", rollbackErr)
+                            }
+                        }
+                    }
+                    throw e
                 }
+
+                SearchHitResolver.clearCache()
+                Result.success(Unit)
             }
-            SearchHitResolver.clearCache()
-            Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
