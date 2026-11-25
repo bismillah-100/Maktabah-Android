@@ -737,7 +737,9 @@ class LibraryViewModel(
                 flattener.result.add(FlatLibraryItem(LoadMoreAuthors(remainingCount), 0))
             }
 
-            _flatVisibleItems.value = flattener.result
+            withContext(Dispatchers.Main) {
+                _flatVisibleItems.value = flattener.result
+            }
         }
     }
 

@@ -404,8 +404,10 @@ class SearchViewModel : ViewModel() {
             }
 
             traverse(roots, 0, null)
-            _flatVisibleItems.value = result
-            _isTreeLoaded.value = true
+            withContext(Dispatchers.Main) {
+                _flatVisibleItems.value = result
+                _isTreeLoaded.value = true
+            }
         }
     }
 
@@ -671,7 +673,9 @@ class SearchViewModel : ViewModel() {
                 delay(500.milliseconds) // UI Debounce
                 val cleanQuery = currentFilter.normalizeArabic()
                 if (cleanQuery.isEmpty()) {
-                    _filteredSearchResults.value = allResults
+                    withContext(Dispatchers.Main) {
+                        _filteredSearchResults.value = allResults
+                    }
                     return@launch
                 }
                 val normalizedNames = mutableMapOf<Int, String>()
@@ -682,7 +686,9 @@ class SearchViewModel : ViewModel() {
                     }
                     cleanQuery.isEmpty() || normalizedName.contains(cleanQuery, ignoreCase = true)
                 }
-                _filteredSearchResults.value = filtered
+                withContext(Dispatchers.Main) {
+                    _filteredSearchResults.value = filtered
+                }
             }
         }
     }
