@@ -298,8 +298,10 @@ fun AnnotationsScreen(
                     onToggleGroupSelection = { viewModel.toggleGroupSelection(it) },
                     onToggleAnnotationSelection = { viewModel.toggleAnnotationSelection(it) },
                     annotationManager = annotationManager,
+                    userScrollEnabled = popoverAnchor == null,
                     onHeaderLongClick = { group, view ->
                         if (group is AnnotationGroup.BookGroup) {
+                            view.parent?.requestDisallowInterceptTouchEvent(true)
                             val location = IntArray(2)
                             view.getLocationInWindow(location)
                             popoverAnchor = androidx.compose.ui.unit.IntRect(
@@ -312,6 +314,7 @@ fun AnnotationsScreen(
                         }
                     },
                     onAnnotationLongClick = { ann, view ->
+                        view.parent?.requestDisallowInterceptTouchEvent(true)
                         val location = IntArray(2)
                         view.getLocationInWindow(location)
                         popoverAnchor = androidx.compose.ui.unit.IntRect(
@@ -841,6 +844,7 @@ private fun AnnotationsList(
     onToggleGroupSelection: (AnnotationGroup) -> Unit,
     onToggleAnnotationSelection: (Long) -> Unit,
     annotationManager: AnnotationManager,
+    userScrollEnabled: Boolean,
     onHeaderLongClick: (AnnotationGroup, android.view.View) -> Unit,
     onAnnotationLongClick: (com.maktabah.models.Annotation, android.view.View) -> Unit,
 ) {
@@ -1106,6 +1110,7 @@ private fun AnnotationsList(
             bottomContentPadding = bottomPadding,
             colors = colors,
             itemTouchHelper = itemTouchHelper,
+            userScrollEnabled = userScrollEnabled,
             decorationFactory = { rv ->
                 val ctx = rv.context
                 val cornerRadius = 30 * ctx.resources.displayMetrics.density

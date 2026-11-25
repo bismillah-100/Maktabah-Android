@@ -186,7 +186,7 @@ fun SearchScreen(
 
     HorizontalPager(
         state = pagerState,
-        userScrollEnabled = userScrollEnabled,
+        userScrollEnabled = userScrollEnabled && popoverAnchor == null,
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
@@ -268,7 +268,9 @@ fun SearchScreen(
                             hasDonated = hasDonated,
                             isDataLoaded = isDataLoaded && isTreeLoaded,
                             onOpenSavedResults = { viewModel.setShowSavedResults(true) },
+                            userScrollEnabled = popoverAnchor == null,
                             onBookLongClick = { bookId, view ->
+                                view.parent?.requestDisallowInterceptTouchEvent(true)
                                 val location = IntArray(2)
                                 view.getLocationInWindow(location)
                                 popoverAnchor = androidx.compose.ui.unit.IntRect(
@@ -480,6 +482,7 @@ private fun FilterAndCategoryContent(
     hasDonated: Boolean,
     isDataLoaded: Boolean,
     onOpenSavedResults: () -> Unit,
+    userScrollEnabled: Boolean,
     onBookLongClick: (Int, android.view.View) -> Unit
 ) {
     Scaffold(
@@ -518,6 +521,7 @@ private fun FilterAndCategoryContent(
                 onLoadMore = { viewModel.loadMore(it, libraryViewModel.dataManager) },
                 onToggleCategorySelection = { viewModel.toggleCategorySelection(it) },
                 onBookLongClick = onBookLongClick,
+                userScrollEnabled = userScrollEnabled,
                 padding = padding,
                 bottomContentPadding = bottomContentPadding
             )
@@ -650,6 +654,7 @@ private fun SearchFilterList(
     onLoadMore: (Int) -> Unit,
     onToggleCategorySelection: (CategoryData) -> Unit,
     onBookLongClick: (Int, android.view.View) -> Unit,
+    userScrollEnabled: Boolean,
     padding: PaddingValues,
     bottomContentPadding: Dp,
 ) {
@@ -700,6 +705,7 @@ private fun SearchFilterList(
             padding = padding,
             bottomContentPadding = bottomContentPadding,
             colors = colors,
+            userScrollEnabled = userScrollEnabled,
             decorationFactory = { rv ->
                 val ctx = rv.context
                 val cornerRadius = 30 * ctx.resources.displayMetrics.density

@@ -336,6 +336,7 @@ fun LibraryScreen(
                 onBookSelectionToggle = { if (!isDeleting) viewModel.toggleBookSelection(it) },
                 onBookLongClick = { bookId, view ->
                     if (!isDeleting) {
+                        view.parent?.requestDisallowInterceptTouchEvent(true)
                         val location = IntArray(2)
                         view.getLocationInWindow(location)
                         popoverAnchor = IntRect(
@@ -353,6 +354,7 @@ fun LibraryScreen(
                 padding = padding,
                 bottomPadding = bottomPadding,
                 hasDonated = hasDonated,
+                userScrollEnabled = popoverAnchor == null,
             )
         }
 
@@ -725,6 +727,7 @@ private fun LibraryList(
     padding: PaddingValues,
     bottomPadding: androidx.compose.ui.unit.Dp,
     hasDonated: Boolean,
+    userScrollEnabled: Boolean,
 ) {
     androidx.compose.runtime.CompositionLocalProvider(
         androidx.compose.ui.platform.LocalLayoutDirection provides
@@ -841,6 +844,7 @@ private fun LibraryList(
                     padding = padding,
                     bottomContentPadding = bottomPadding,
                     colors = colors,
+                    userScrollEnabled = userScrollEnabled,
                     decorationFactory = { rv ->
                         val ctx = rv.context
                         val cornerRadius = 30 * ctx.resources.displayMetrics.density

@@ -9,6 +9,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -160,12 +161,14 @@ fun GroupedRecyclerView(
     colors: GroupedListColors = rememberGroupedListColors(),
     itemAnimator: RecyclerView.ItemAnimator? = TreeItemAnimator(),
     itemTouchHelper: ItemTouchHelper? = null,
+    userScrollEnabled: Boolean = true,
     onScrollStateChanged: (RecyclerView, Int) -> Unit = { _, _ -> },
     onScrolled: (RecyclerView, Int, Int) -> Unit = { _, _, _ -> },
     decorationFactory: (RecyclerView) -> GroupedCardDecoration? = { null },
     update: (RecyclerView) -> Unit = {}
 ) {
     val focusManager = LocalFocusManager.current
+    val currentUserScrollEnabled by rememberUpdatedState(userScrollEnabled)
     var canScrollForward by remember { mutableStateOf(false) }
 
     AndroidView(
@@ -191,6 +194,9 @@ fun GroupedRecyclerView(
 
                 addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
                     override fun onInterceptTouchEvent(rv: RecyclerView, e: android.view.MotionEvent): Boolean {
+                        if (!currentUserScrollEnabled) {
+                            return true
+                        }
                         if (e.action == android.view.MotionEvent.ACTION_DOWN) {
                             focusManager.clearFocus()
                         }
