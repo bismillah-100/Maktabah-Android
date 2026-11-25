@@ -477,7 +477,6 @@ fun LibraryScreen(
                 onDismiss = { showUpdateSheet = false },
                 onUpdateSuccess = {
                     viewModel.reloadData(context)
-                    viewModel.checkBookUpdatesPeriodically(context, force = true)
                 },
             )
         }
