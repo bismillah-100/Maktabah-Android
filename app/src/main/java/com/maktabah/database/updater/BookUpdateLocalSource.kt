@@ -35,7 +35,6 @@ class BookUpdateLocalSource {
 
         val categoriesMap = mutableMapOf<Int, String>()
         SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX).use { db ->
-            db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
             db.prepare("SELECT id, name FROM \"0cat\"")?.use { stmt ->
                 while (stmt.step() == SQLiteDB.SQLITE_ROW) {
                     categoriesMap[stmt.columnInt(0)] = stmt.columnText(1) ?: ""
@@ -51,7 +50,6 @@ class BookUpdateLocalSource {
 
         val localBooksMap = mutableMapOf<Int, Pair<String, Long?>>()
         SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX).use { db ->
-            db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
             val verCol = resolveVersionColumn(db)
             val sql = if (verCol != null) {
                 "SELECT bkid, bk, \"$verCol\" FROM \"0bok\""
@@ -138,8 +136,6 @@ class BookUpdateLocalSource {
         if (!mainDbFile.exists()) throw IllegalStateException("main.sqlite tidak ditemukan")
 
         return SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX).use { db ->
-            db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
-
             val verCol = resolveVersionColumn(db) ?: "bVer"
             db.inTransaction {
                 val exists = db.prepare("SELECT 1 FROM \"0bok\" WHERE bkid = ? LIMIT 1;")?.use { stmt ->
@@ -189,7 +185,6 @@ class BookUpdateLocalSource {
         if (!mainDbFile.exists()) return BookVersionState.UnknownVersion
         return try {
             SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX).use { db ->
-                db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
                 val verCol = resolveVersionColumn(db) ?: return BookVersionState.UnknownVersion
                 db.prepare("SELECT \"$verCol\" FROM \"0bok\" WHERE bkid = ? LIMIT 1;")?.use { stmt ->
                     stmt.bindInt(1, bookId)
@@ -216,7 +211,6 @@ class BookUpdateLocalSource {
             specialDbFile.absolutePath,
             SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
         ).use { specialDb ->
-            specialDb.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
             var currentVer: Long? = null
             specialDb.prepare("SELECT oVer FROM Auth WHERE authid = ? LIMIT 1;")?.use { stmt ->
                 stmt.bindInt(1, authId)
@@ -258,7 +252,6 @@ class BookUpdateLocalSource {
             specialDbFile.absolutePath,
             SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
         ).use { specialDb ->
-            specialDb.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
             specialDb.inTransaction {
                 specialDb.prepare(
                     "INSERT OR REPLACE INTO Auth (authid, auth, inf, Lng, HigriD, oVer) VALUES (?, ?, ?, ?, ?, ?);"

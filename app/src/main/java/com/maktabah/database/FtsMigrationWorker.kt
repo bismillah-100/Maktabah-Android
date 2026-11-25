@@ -104,12 +104,10 @@ class FtsMigrationWorker(
                 archiveFile.absolutePath,
                 SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX
             )
-            db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
             ftsDb = SQLiteDB(
                 ftsFile.absolutePath,
                 SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_CREATE or SQLiteDB.SQLITE_OPEN_FULLMUTEX
             )
-            ftsDb.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
 
             ftsDb.prepare("PRAGMA synchronous = OFF;")?.use { it.step() }
             ftsDb.prepare("PRAGMA journal_mode = MEMORY;")?.use { it.step() }

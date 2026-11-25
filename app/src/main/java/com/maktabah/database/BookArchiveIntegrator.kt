@@ -104,16 +104,7 @@ object BookArchiveIntegrator {
                             for (bookId in targetIds) {
                                 db.prepare("DROP TABLE IF EXISTS main.\"b${bookId}_fts\";")?.use { it.step() }
                                 if (hasUnifiedFts) {
-                                    db.prepare(
-                                        "DELETE FROM archive_fts WHERE rowid IN (SELECT rowid FROM archive_index WHERE book_id = ?);"
-                                    )?.use { stmt ->
-                                        stmt.bindInt(1, bookId)
-                                        stmt.step()
-                                    }
-                                    db.prepare("DELETE FROM archive_index WHERE book_id = ?;")?.use { stmt ->
-                                        stmt.bindInt(1, bookId)
-                                        stmt.step()
-                                    }
+                                    deleteUnifiedFtsRows(db, bookId)
                                 }
                             }
                         }
@@ -232,46 +223,8 @@ object BookArchiveIntegrator {
         context: Context,
         bookId: Int,
         archiveId: Int,
-    ): Boolean = BookArchiveSingleFlight.run(archiveId) {
-        val archiveFile = File(context.filesDir, "$archiveId.sqlite")
-        val archiveFtsFile = File(context.filesDir, "${archiveId}_fts.sqlite")
-        var db: SQLiteDB? = null
-        var ftsDb: SQLiteDB? = null
-
-        try {
-            if (archiveFile.exists()) {
-                db = SQLiteDB(
-                    archiveFile.absolutePath,
-                    SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
-                )
-                db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-                db.prepare("DROP TABLE IF EXISTS main.\"b$bookId\";")?.use { it.step() }
-                db.prepare("DROP TABLE IF EXISTS main.\"t$bookId\";")?.use { it.step() }
-                db.prepare("COMMIT;")?.use { it.step() }
-            }
-            if (archiveFtsFile.exists()) {
-                ftsDb = SQLiteDB(
-                    archiveFtsFile.absolutePath,
-                    SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
-                )
-                ftsDb.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-                deleteBookFts(ftsDb, bookId)
-                ftsDb.prepare("COMMIT;")?.use { it.step() }
-            }
-            true
-        } catch (e: CancellationException) {
-            runCatching { db?.prepare("ROLLBACK;")?.use { it.step() } }
-            runCatching { ftsDb?.prepare("ROLLBACK;")?.use { it.step() } }
-            throw e
-        } catch (e: Exception) {
-            Log.e(TAG, "Error removing book $bookId from archive $archiveId", e)
-            runCatching { db?.prepare("ROLLBACK;")?.use { it.step() } }
-            runCatching { ftsDb?.prepare("ROLLBACK;")?.use { it.step() } }
-            false
-        } finally {
-            db?.close()
-            ftsDb?.close()
-        }
+    ): Boolean {
+        return bookId in deleteBooksFromArchive(context, archiveId, listOf(bookId)).fullyCleanedBookIds
     }
 
     suspend fun migrateBookId(
@@ -509,9 +462,9 @@ object BookArchiveIntegrator {
         ftsDb.prepare("BEGIN TRANSACTION;")?.use { it.step() }
 
         if (oldBookId != null && oldBookId != bookId) {
-            deleteBookFts(ftsDb, oldBookId)
+            deleteUnifiedFtsRows(ftsDb, oldBookId)
         }
-        deleteBookFts(ftsDb, bookId)
+        deleteUnifiedFtsRows(ftsDb, bookId)
 
         var ftsCount = 0
         ftsDb.prepare("INSERT INTO main.archive_fts (rowid, nass_clean) VALUES (?, ?);")?.use { ftsInsertStmt ->
@@ -566,22 +519,14 @@ object BookArchiveIntegrator {
         Log.d(TAG, "Built Unified FTS for $ftsCount rows (Book $bookId)")
     }
 
-    private fun deleteBookFts(ftsDb: SQLiteDB, bookId: Int) {
-        try {
-            ftsDb.prepare("DELETE FROM main.archive_fts WHERE rowid IN (SELECT rowid FROM main.archive_index WHERE book_id = ?);")?.use { stmt ->
-                stmt.bindLong(1, bookId.toLong())
-                stmt.step()
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Error cleaning archive_fts: ${e.message}")
+    private fun deleteUnifiedFtsRows(ftsDb: SQLiteDB, bookId: Int) {
+        ftsDb.prepare("DELETE FROM main.archive_fts WHERE rowid IN (SELECT rowid FROM main.archive_index WHERE book_id = ?);")?.use { stmt ->
+            stmt.bindLong(1, bookId.toLong())
+            stmt.step()
         }
-        try {
-            ftsDb.prepare("DELETE FROM main.archive_index WHERE book_id = ?;")?.use { stmt ->
-                stmt.bindLong(1, bookId.toLong())
-                stmt.step()
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Error cleaning archive_index: ${e.message}")
+        ftsDb.prepare("DELETE FROM main.archive_index WHERE book_id = ?;")?.use { stmt ->
+            stmt.bindLong(1, bookId.toLong())
+            stmt.step()
         }
     }
 

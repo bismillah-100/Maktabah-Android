@@ -19,9 +19,7 @@ object BookImportManager {
     private const val WRITE_FLAGS = SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX
 
     private fun openDatabase(file: File, flags: Int): SQLiteDB {
-        return SQLiteDB(file.absolutePath, flags).apply {
-            prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
-        }
+        return SQLiteDB(file.absolutePath, flags)
     }
 
     fun getMaxBookId(context: Context): Int {
@@ -239,37 +237,55 @@ object BookImportManager {
             Result.success(Unit)
         } catch (e: CancellationException) {
             withContext(NonCancellable) {
-                if (contentIntegrated && isNewBook) {
-                    BookArchiveIntegrator.removeBookFromArchive(context, metadata.bkid, metadata.archiveId)
-                }
-                if (catalogCommitted || insertedAuthorId != null) {
-                    rollbackFailedNewImport(
-                        context = context,
-                        bookId = metadata.bkid,
-                        isNewBook = isNewBook,
-                        insertedAuthorId = insertedAuthorId,
-                    )
-                }
-            }
-            throw e
-        } catch (e: Exception) {
-            if (contentIntegrated && isNewBook) {
-                BookArchiveIntegrator.removeBookFromArchive(context, metadata.bkid, metadata.archiveId)
-            }
-            if (catalogCommitted || insertedAuthorId != null) {
-                rollbackFailedNewImport(
+                cleanupFailedImport(
                     context = context,
                     bookId = metadata.bkid,
+                    archiveId = metadata.archiveId,
+                    contentIntegrated = contentIntegrated,
                     isNewBook = isNewBook,
+                    catalogCommitted = catalogCommitted,
                     insertedAuthorId = insertedAuthorId,
                 )
             }
+            throw e
+        } catch (e: Exception) {
+            cleanupFailedImport(
+                context = context,
+                bookId = metadata.bkid,
+                archiveId = metadata.archiveId,
+                contentIntegrated = contentIntegrated,
+                isNewBook = isNewBook,
+                catalogCommitted = catalogCommitted,
+                insertedAuthorId = insertedAuthorId,
+            )
             Log.e(TAG, "importBook", e)
             Result.failure(e)
         } finally {
             if (sourceFile.exists()) {
                 sourceFile.delete()
             }
+        }
+    }
+
+    private suspend fun cleanupFailedImport(
+        context: Context,
+        bookId: Int,
+        archiveId: Int,
+        contentIntegrated: Boolean,
+        isNewBook: Boolean,
+        catalogCommitted: Boolean,
+        insertedAuthorId: Int?,
+    ) {
+        if (contentIntegrated && isNewBook) {
+            BookArchiveIntegrator.removeBookFromArchive(context, bookId, archiveId)
+        }
+        if (catalogCommitted || insertedAuthorId != null) {
+            rollbackFailedNewImport(
+                context = context,
+                bookId = bookId,
+                isNewBook = isNewBook,
+                insertedAuthorId = insertedAuthorId,
+            )
         }
     }
 

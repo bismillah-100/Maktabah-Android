@@ -284,7 +284,6 @@ class LibraryViewModel(
                     file.absolutePath,
                     SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
                 ).use { db ->
-                    db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
                     db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'b%';")
                         ?.use { stmt ->
                             while (stmt.step() == SQLiteDB.SQLITE_ROW) {
@@ -302,15 +301,6 @@ class LibraryViewModel(
             }
         }
         downloadedIds
-    }
-
-    fun loadDownloadedBooks(context: Context) {
-        val appContext = context.applicationContext
-        viewModelScope.launch {
-            val ids = scanDownloadedBookIds(appContext)
-            _downloadedBookIds.value = ids
-            updateFlatItems()
-        }
     }
 
     fun toggleCategory(categoryId: Int) {
