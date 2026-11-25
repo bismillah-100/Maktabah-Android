@@ -181,13 +181,13 @@ object BookArchiveIntegrator {
 
             return@run true
         } catch (e: CancellationException) {
-            db?.prepare("ROLLBACK;")?.use { it.step() }
-            ftsDb?.prepare("ROLLBACK;")?.use { it.step() }
+            runCatching { db?.prepare("ROLLBACK;")?.use { it.step() } }
+            runCatching { ftsDb?.prepare("ROLLBACK;")?.use { it.step() } }
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Error integrating database for book $bookId", e)
-            db?.prepare("ROLLBACK;")?.use { it.step() }
-            ftsDb?.prepare("ROLLBACK;")?.use { it.step() }
+            runCatching { db?.prepare("ROLLBACK;")?.use { it.step() } }
+            runCatching { ftsDb?.prepare("ROLLBACK;")?.use { it.step() } }
             return@run false
         } finally {
             db?.close()

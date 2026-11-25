@@ -221,11 +221,11 @@ class FtsMigrationWorker(
             ftsDb.prepare("VACUUM;")?.use { it.step() }
             Log.i(tag, "Sukses migrasi Arsip $archiveId ke FTS v${FtsMigrationManager.CURRENT_FTS_VERSION}.")
         } catch (e: CancellationException) {
-            ftsDb?.prepare("ROLLBACK;")?.use { it.step() }
+            runCatching { ftsDb?.prepare("ROLLBACK;")?.use { it.step() } }
             throw e
         } catch (e: Exception) {
             Log.e(tag, "Error saat migrasi Arsip $archiveId", e)
-            ftsDb?.prepare("ROLLBACK;")?.use { it.step() }
+            runCatching { ftsDb?.prepare("ROLLBACK;")?.use { it.step() } }
         } finally {
             db?.close()
             ftsDb?.close()
