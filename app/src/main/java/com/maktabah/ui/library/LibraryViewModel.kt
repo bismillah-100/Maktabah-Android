@@ -785,12 +785,16 @@ class LibraryViewModel(
         }
     }
 
-    private fun prepareDeleteConfirmation(appContext: Context) {
-        val activeDownloadingIds = BookDownloadService.activeDownloadStates.value
+    private fun activeDownloadingBookIds(): Set<Int> {
+        return BookDownloadService.activeDownloadStates.value
             .filter { it.isDownloading }
             .flatMapTo(HashSet()) { state ->
                 if (state.isBulk) state.bulkBookIds else listOf(state.bookId)
             }
+    }
+
+    private fun prepareDeleteConfirmation(appContext: Context) {
+        val activeDownloadingIds = activeDownloadingBookIds()
 
         val customIds = _customBookIds.value
         val downloadedIds = _downloadedBookIds.value
@@ -844,8 +848,12 @@ class LibraryViewModel(
             try {
                 catalogMutex.withLock {
                     val executionResult = withContext(Dispatchers.IO) {
-                        val customIds = summary.customBookIds
-                        val allTargets = (customIds + summary.downloadedCoreBookIds).distinct()
+                        val activeDownloadingIds = activeDownloadingBookIds()
+                        val customIds = summary.customBookIds.filter { it !in activeDownloadingIds }
+                        val downloadedCoreIds = summary.downloadedCoreBookIds.filter { it !in activeDownloadingIds }
+                        val skippedActiveCount = (summary.customBookIds.size - customIds.size) +
+                            (summary.downloadedCoreBookIds.size - downloadedCoreIds.size)
+                        val allTargets = (customIds + downloadedCoreIds).distinct()
                         val booksByIdSnapshot = dataManager.booksById
                         val groupedByArchive = HashMap<Int, MutableList<Int>>()
                         for (bookId in allTargets) {
@@ -888,7 +896,7 @@ class LibraryViewModel(
                             anyMutationOccurred = true
                         }
 
-                        val coreTargetSet = summary.downloadedCoreBookIds.toHashSet()
+                        val coreTargetSet = downloadedCoreIds.toHashSet()
                         val deletedBookIds = (
                             deletedContentIds.filter { it in coreTargetSet } +
                                 deletedCatalogMetadataIds
@@ -918,6 +926,7 @@ class LibraryViewModel(
                             refreshedAuthors = refreshedAuthors,
                             newDownloadedIds = newDownloadedIds,
                             newCustomIds = newCustomIds,
+                            skippedActiveCount = skippedActiveCount,
                         )
                     }
 
@@ -945,7 +954,15 @@ class LibraryViewModel(
                             _downloadedBookIds.value = scanDownloadedBookIds(appContext)
                             updateFlatItems()
                         }
-                        _deleteMessages.trySend(appContext.getString(R.string.library_delete_no_result))
+                        val message = if (!anyMutationOccurred && executionResult.skippedActiveCount > 0) {
+                            appContext.getString(
+                                R.string.library_delete_skipped_downloading,
+                                executionResult.skippedActiveCount,
+                            )
+                        } else {
+                            appContext.getString(R.string.library_delete_no_result)
+                        }
+                        _deleteMessages.trySend(message)
                     }
                 }
             } catch (e: CancellationException) {
@@ -984,6 +1001,7 @@ class LibraryViewModel(
         val refreshedAuthors: List<CategoryData>?,
         val newDownloadedIds: Set<Int>,
         val newCustomIds: Set<Int>,
+        val skippedActiveCount: Int = 0,
     )
 
     fun showDownloadConfirmation(
