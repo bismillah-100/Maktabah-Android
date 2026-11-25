@@ -1,8 +1,10 @@
 package com.maktabah.ui.common
 
 import android.content.Context
+import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 
 sealed interface UiText {
@@ -14,6 +16,17 @@ sealed interface UiText {
     ) : UiText {
         constructor(@StringRes resId: Int, vararg args: Any) : this(resId, args.toList())
     }
+    data class PluralResource(
+        @PluralsRes val resId: Int,
+        val quantity: Int,
+        val args: List<Any> = listOf(quantity),
+    ) : UiText {
+        constructor(@PluralsRes resId: Int, quantity: Int, vararg args: Any) : this(
+            resId,
+            quantity,
+            if (args.isEmpty()) listOf(quantity) else args.toList(),
+        )
+    }
 
     @Composable
     fun asString(): String {
@@ -21,6 +34,7 @@ sealed interface UiText {
             is Empty -> ""
             is DynamicString -> value
             is StringResource -> stringResource(resId, *args.toTypedArray())
+            is PluralResource -> pluralStringResource(resId, quantity, *args.toTypedArray())
         }
     }
 
@@ -29,6 +43,7 @@ sealed interface UiText {
             is Empty -> ""
             is DynamicString -> value
             is StringResource -> context.getString(resId, *args.toTypedArray())
+            is PluralResource -> context.resources.getQuantityString(resId, quantity, *args.toTypedArray())
         }
     }
 }

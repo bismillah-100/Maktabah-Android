@@ -500,7 +500,11 @@ class LibraryViewModel(
         val newState = BookDownloadState(
             id = existingBulkState?.id ?: java.util.UUID.randomUUID().toString(),
             bookId = -1,
-            bookName = appContext.getString(R.string.library_selected_books_count, selected.size),
+            bookName = appContext.resources.getQuantityString(
+                R.plurals.library_selected_books_count,
+                selected.size,
+                selected.size,
+            ),
             sizeText = sizeText,
             isDownloading = false,
             progress = 0,
@@ -803,8 +807,8 @@ class LibraryViewModel(
             _pendingDeleteSummary.value = summary
         } else if (summary.skippedDownloadingBookIds.isNotEmpty()) {
             _deleteMessages.trySend(
-                UiText.StringResource(
-                    R.string.library_delete_skipped_downloading,
+                UiText.PluralResource(
+                    R.plurals.library_delete_skipped_downloading,
                     summary.skippedDownloadingBookIds.size,
                 )
             )
@@ -925,8 +929,8 @@ class LibraryViewModel(
                         _selectedBookIds.value = emptySet()
                         updateSelectionDownloadState()
                         _deleteMessages.trySend(
-                            UiText.StringResource(
-                                R.string.library_delete_success,
+                            UiText.PluralResource(
+                                R.plurals.library_delete_success,
                                 executionResult.deletedBookIds.size,
                             )
                         )
@@ -939,8 +943,8 @@ class LibraryViewModel(
                             updateFlatItems()
                         }
                         val message = if (!anyMutationOccurred && executionResult.skippedActiveCount > 0) {
-                            UiText.StringResource(
-                                R.string.library_delete_skipped_downloading,
+                            UiText.PluralResource(
+                                R.plurals.library_delete_skipped_downloading,
                                 executionResult.skippedActiveCount,
                             )
                         } else {

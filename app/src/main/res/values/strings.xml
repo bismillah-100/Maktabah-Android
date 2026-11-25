@@ -75,16 +75,34 @@
     <string name="library_load_more_authors">Show %1$d more authors</string>
     <string name="library_all_downloaded">All books are downloaded</string>
     <string name="library_unknown_size">Unknown size</string>
-    <string name="library_selected_books_count">%1$d Books Selected</string>
-    <string name="library_delete_success">Successfully deleted %1$d books.</string>
+    <plurals name="library_selected_books_count">
+        <item quantity="one">%1$d Book Selected</item>
+        <item quantity="other">%1$d Books Selected</item>
+    </plurals>
+    <plurals name="library_delete_success">
+        <item quantity="one">Successfully deleted %1$d book.</item>
+        <item quantity="other">Successfully deleted %1$d books.</item>
+    </plurals>
     <string name="library_delete_no_result">No books were deleted.</string>
     <string name="library_delete_confirm_title">Delete Selected Books?</string>
-    <string name="library_delete_confirm_downloaded_only">%1$d downloaded book(s) will be removed from local storage. They will remain in the catalog and can be downloaded again later.</string>
-    <string name="library_delete_confirm_custom_only">%1$d additional book(s) (imported / Book Updates) will be removed from local storage and catalog, including unused new authors.</string>
+    <plurals name="library_delete_confirm_downloaded_only">
+        <item quantity="one">%1$d downloaded book will be removed from local storage. It will remain in the catalog and can be downloaded again later.</item>
+        <item quantity="other">%1$d downloaded books will be removed from local storage. They will remain in the catalog and can be downloaded again later.</item>
+    </plurals>
+    <plurals name="library_delete_confirm_custom_only">
+        <item quantity="one">%1$d additional book (imported / Book Updates) will be removed from local storage and catalog, including unused new authors.</item>
+        <item quantity="other">%1$d additional books (imported / Book Updates) will be removed from local storage and catalog, including unused new authors.</item>
+    </plurals>
     <string name="library_delete_confirm_mixed_header">Selected books to be deleted:</string>
-    <string name="library_delete_confirm_skipped_note">\n\n%1$d book(s) currently downloading will be skipped.</string>
+    <plurals name="library_delete_confirm_skipped_note">
+        <item quantity="one">\n\n%1$d book currently downloading will be skipped.</item>
+        <item quantity="other">\n\n%1$d books currently downloading will be skipped.</item>
+    </plurals>
     <string name="library_delete_confirm_action">Delete</string>
-    <string name="library_delete_skipped_downloading">Cannot delete %1$d book(s) while downloading.</string>
+    <plurals name="library_delete_skipped_downloading">
+        <item quantity="one">Cannot delete %1$d book while downloading.</item>
+        <item quantity="other">Cannot delete %1$d books while downloading.</item>
+    </plurals>
     <string name="library_delete_index_unavailable">Catalog index (index.json) is unavailable. Wait until library index loading finishes before deleting.</string>
     <string name="library_fallback_book_name">Book</string>
     <string name="library_download_failed">Failed to download book.</string>

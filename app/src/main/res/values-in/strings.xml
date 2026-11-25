@@ -73,16 +73,28 @@
     <string name="library_load_more_authors">Tampilkan %1$d penulis lainnya</string>
     <string name="library_all_downloaded">Semua sudah diunduh</string>
     <string name="library_unknown_size">Ukuran tidak diketahui</string>
-    <string name="library_selected_books_count">%1$d Buku Terpilih</string>
-    <string name="library_delete_success">Berhasil menghapus %1$d buku.</string>
+    <plurals name="library_selected_books_count">
+        <item quantity="other">%1$d Buku Terpilih</item>
+    </plurals>
+    <plurals name="library_delete_success">
+        <item quantity="other">Berhasil menghapus %1$d buku.</item>
+    </plurals>
     <string name="library_delete_no_result">Tidak ada buku yang dihapus.</string>
     <string name="library_delete_confirm_title">Hapus Buku Terpilih?</string>
-    <string name="library_delete_confirm_downloaded_only">%1$d buku unduhan akan dihapus dari penyimpanan lokal. Buku tetap tersedia di katalog dan dapat diunduh ulang kapan saja.</string>
-    <string name="library_delete_confirm_custom_only">%1$d buku tambahan (import / Pembaruan Buku) akan dihapus dari penyimpanan dan katalog lokal, termasuk author baru yang tidak lagi terpakai.</string>
+    <plurals name="library_delete_confirm_downloaded_only">
+        <item quantity="other">%1$d buku unduhan akan dihapus dari penyimpanan lokal. Buku tetap tersedia di katalog dan dapat diunduh ulang kapan saja.</item>
+    </plurals>
+    <plurals name="library_delete_confirm_custom_only">
+        <item quantity="other">%1$d buku tambahan (import / Pembaruan Buku) akan dihapus dari penyimpanan dan katalog lokal, termasuk author baru yang tidak lagi terpakai.</item>
+    </plurals>
     <string name="library_delete_confirm_mixed_header">Buku terpilih yang akan dihapus:</string>
-    <string name="library_delete_confirm_skipped_note">\n\n%1$d buku yang sedang diunduh akan dilewati.</string>
+    <plurals name="library_delete_confirm_skipped_note">
+        <item quantity="other">\n\n%1$d buku yang sedang diunduh akan dilewati.</item>
+    </plurals>
     <string name="library_delete_confirm_action">Hapus</string>
-    <string name="library_delete_skipped_downloading">Tidak dapat menghapus %1$d buku yang sedang diunduh.</string>
+    <plurals name="library_delete_skipped_downloading">
+        <item quantity="other">Tidak dapat menghapus %1$d buku yang sedang diunduh.</item>
+    </plurals>
     <string name="library_delete_index_unavailable">Indeks katalog (index.json) belum tersedia. Pastikan indeks selesai dimuat sebelum menghapus buku.</string>
     <string name="library_fallback_book_name">Buku</string>
     <string name="library_download_failed">Gagal mengunduh buku.</string>

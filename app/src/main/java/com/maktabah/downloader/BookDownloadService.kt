@@ -184,7 +184,11 @@ class BookDownloadService : Service() {
         updateStates { states -> states.filter { it.id != stateId } }
         showCompletedNotification(
             applicationContext.getString(R.string.download_notification_completed_title),
-            applicationContext.getString(R.string.library_selected_books_count, successCount)
+            applicationContext.resources.getQuantityString(
+                R.plurals.library_selected_books_count,
+                successCount,
+                successCount,
+            ),
         )
     }
 

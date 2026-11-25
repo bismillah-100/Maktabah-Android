@@ -70,6 +70,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntRect
@@ -498,10 +499,10 @@ private fun DeleteBooksConfirmationDialog(
     val downloadedCount = summary.downloadedCoreBookIds.size
     val sections = buildList {
         if (customCount > 0) {
-            add(stringResource(R.string.library_delete_confirm_custom_only, customCount))
+            add(pluralStringResource(R.plurals.library_delete_confirm_custom_only, customCount, customCount))
         }
         if (downloadedCount > 0) {
-            add(stringResource(R.string.library_delete_confirm_downloaded_only, downloadedCount))
+            add(pluralStringResource(R.plurals.library_delete_confirm_downloaded_only, downloadedCount, downloadedCount))
         }
     }
     val baseMessage = if (sections.size == 1) {
@@ -511,8 +512,9 @@ private fun DeleteBooksConfirmationDialog(
             "\n\n" + sections.joinToString("\n") { "• $it" }
     }
     val skippedNote = if (summary.skippedDownloadingBookIds.isNotEmpty()) {
-        stringResource(
-            R.string.library_delete_confirm_skipped_note,
+        pluralStringResource(
+            R.plurals.library_delete_confirm_skipped_note,
+            summary.skippedDownloadingBookIds.size,
             summary.skippedDownloadingBookIds.size,
         )
     } else {
