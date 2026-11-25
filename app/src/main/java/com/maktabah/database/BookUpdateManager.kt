@@ -164,15 +164,15 @@ object BookUpdateManager {
             }
 
             // 3. Simpan metadata ke main.sqlite (0bok) dalam single-flight katalog
-            BookArchiveSingleFlight.runCatalogWrite {
-                localSource.saveBookMetadata(context, staged.metadata, exists)
+            val action = BookArchiveSingleFlight.runCatalogWrite {
+                localSource.saveBookMetadata(context, staged.metadata)
             }
             SearchHitResolver.clearCache()
 
             BookUpdateResult(
                 bookId = staged.metadata.bkid,
                 catId = staged.metadata.cat ?: staged.entry.category,
-                action = if (exists) UpdateAction.UPDATED else UpdateAction.INSERTED,
+                action = action,
             )
         } finally {
             localSource.removeDatabaseAndSidecars(staged.downloadedBookFile)

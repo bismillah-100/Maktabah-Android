@@ -5,6 +5,7 @@ import android.util.Log
 import com.maktabah.database.SQLiteDB
 import com.maktabah.models.AuthorRow
 import com.maktabah.models.BookUpdateMetadata
+import com.maktabah.models.UpdateAction
 import java.io.File
 
 class BookUpdateLocalSource {
@@ -132,15 +133,20 @@ class BookUpdateLocalSource {
         }
     }
 
-    fun saveBookMetadata(context: Context, metadata: BookUpdateMetadata, exists: Boolean) {
+    fun saveBookMetadata(context: Context, metadata: BookUpdateMetadata): UpdateAction {
         val mainDbFile = File(context.filesDir, "main.sqlite")
         if (!mainDbFile.exists()) throw IllegalStateException("main.sqlite tidak ditemukan")
 
-        SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX).use { db ->
+        return SQLiteDB(mainDbFile.absolutePath, SQLiteDB.SQLITE_OPEN_READWRITE or SQLiteDB.SQLITE_OPEN_FULLMUTEX).use { db ->
             db.prepare("PRAGMA busy_timeout=5000;")?.use { it.step() }
 
             val verCol = resolveVersionColumn(db) ?: "bVer"
             db.inTransaction {
+                val exists = db.prepare("SELECT 1 FROM \"0bok\" WHERE bkid = ? LIMIT 1;")?.use { stmt ->
+                    stmt.bindInt(1, metadata.bkid)
+                    stmt.step() == SQLiteDB.SQLITE_ROW
+                } ?: false
+
                 if (!exists) {
                     val sql = """
                         INSERT OR REPLACE INTO "0bok"
@@ -162,6 +168,7 @@ class BookUpdateLocalSource {
                             throw IllegalStateException("Gagal insert metadata buku ${metadata.bkid} ke 0bok")
                         }
                     }
+                    UpdateAction.INSERTED
                 } else {
                     val sql = "UPDATE \"0bok\" SET \"$verCol\" = ? WHERE bkid = ?;"
                     db.prepare(sql)?.use { stmt ->
@@ -171,6 +178,7 @@ class BookUpdateLocalSource {
                             throw IllegalStateException("Gagal update versi buku ${metadata.bkid} di 0bok")
                         }
                     }
+                    UpdateAction.UPDATED
                 }
             }
         }
