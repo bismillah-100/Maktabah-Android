@@ -115,13 +115,10 @@ fun SearchScreen(
     val bookFilter by viewModel.bookFilter.collectAsState()
     val lastSearchQuery by viewModel.lastSearchQuery.collectAsState()
     val lastSearchMode by viewModel.lastSearchMode.collectAsState()
-    val searchHistory by viewModel.searchHistory.collectAsState()
     val nearDistance by viewModel.nearDistance.collectAsState()
 
     var query by remember(lastSearchQuery) { mutableStateOf(lastSearchQuery) }
     var activeSearchMode by remember(lastSearchMode) { mutableStateOf(lastSearchMode) }
-    var isFocused by remember { mutableStateOf(false) }
-    var showHelpDialog by remember { mutableStateOf(false) }
 
     var popoverAnchor by remember { mutableStateOf<androidx.compose.ui.unit.IntRect?>(null) }
     var popoverBookId by remember { mutableStateOf<Int?>(null) }
@@ -131,18 +128,8 @@ fun SearchScreen(
     val showSavedResults by viewModel.showSavedResults.collectAsState()
     var showResultWriter by remember { mutableStateOf(false) }
 
-    val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
-
-    val isSearching by viewModel.isSearching.collectAsState()
-    val selectedBookIds by viewModel.selectedBookIds.collectAsState()
-    val flatVisibleItems by viewModel.flatVisibleItems.collectAsState()
     val isDataLoaded by libraryViewModel.isDataLoaded.collectAsState()
     val catalogRevision by libraryViewModel.catalogRevision.collectAsState()
-    val isTreeLoaded by viewModel.isTreeLoaded.collectAsState()
-    val completedBooks by viewModel.completedBooks.collectAsState()
-    val totalBooks by viewModel.totalBooks.collectAsState()
-    val currentBookProgress by viewModel.currentBookProgress.collectAsState()
-    val currentBookName by viewModel.currentBookName.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.initialize(context, libraryViewModel.dataManager, libraryViewModel.downloadedBookIds)
@@ -157,7 +144,6 @@ fun SearchScreen(
     }
 
     val pagerState = rememberPagerState(pageCount = { 2 })
-    var userScrollEnabled by remember { mutableStateOf(true) }
 
     LaunchedEffect(showSavedResults) {
         if (showSavedResults) {
@@ -184,9 +170,182 @@ fun SearchScreen(
         onClearContentSearchQuery()
     }
 
+    SearchPagerContainer(
+        pagerState = pagerState,
+        scrollEnabled = popoverAnchor == null,
+    ) { page ->
+        when (page) {
+            0 -> {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background)
+                            .pointerInput(Unit) {
+                                detectTapGestures(onTap = {
+                                    focusManager.clearFocus()
+                                })
+                            },
+                ) {
+                    FilterAndCategoryContent(
+                        viewModel = viewModel,
+                        libraryViewModel = libraryViewModel,
+                        bottomContentPadding = bottomPadding + 88.dp,
+                        hasDonated = hasDonated,
+                        isDataLoaded = isDataLoaded,
+                        onOpenSavedResults = { viewModel.setShowSavedResults(true) },
+                        userScrollEnabled = popoverAnchor == null,
+                        onBookLongClick = { bookId, view ->
+                            view.parent?.requestDisallowInterceptTouchEvent(true)
+                            val location = IntArray(2)
+                            view.getLocationInWindow(location)
+                            popoverAnchor = androidx.compose.ui.unit.IntRect(
+                                left = location[0],
+                                top = location[1],
+                                right = location[0] + view.width,
+                                bottom = location[1] + view.height
+                            )
+                            popoverBookId = bookId
+                        }
+                    )
+
+                    SearchBottomInputArea(
+                        viewModel = viewModel,
+                        libraryViewModel = libraryViewModel,
+                        query = query,
+                        onQueryChange = { newQuery ->
+                            query = newQuery
+                            if (newQuery.isEmpty()) {
+                                viewModel.clearResults()
+                                onClearContentSearchQuery()
+                            }
+                        },
+                        activeSearchMode = activeSearchMode,
+                        onModeSelect = { activeSearchMode = it },
+                        nearDistance = nearDistance,
+                        bottomPadding = bottomPadding,
+                        focusManager = focusManager,
+                        focusRequester = focusRequester,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+
+                    AnimatedVisibility(
+                        visible = results.isNotEmpty(),
+                        enter =
+                            slideInVertically(
+                                initialOffsetY = { fullHeight -> fullHeight },
+                                animationSpec = tween(durationMillis = 400),
+                            ) + fadeIn(animationSpec = tween(300)),
+                        exit =
+                            slideOutVertically(
+                                targetOffsetY = { fullHeight -> fullHeight },
+                                animationSpec = tween(durationMillis = 300),
+                            ) + fadeOut(animationSpec = tween(200)),
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        SearchResultsOverlay(
+                            filteredResults = filteredResults,
+                            query = lastSearchQuery,
+                            searchMode = lastSearchMode,
+                            nearDistance = nearDistance,
+                            bookFilter = bookFilter,
+                            onBookFilterChange = { viewModel.updateBookFilter(it, libraryViewModel.dataManager) },
+                            onClearResults = {
+                                viewModel.clearResults()
+                                query = ""
+                                onClearContentSearchQuery()
+                            },
+                            onSelect = onNavigateToReader,
+                            bottomPadding = bottomPadding,
+                            libraryViewModel = libraryViewModel,
+                            onOpenSavedResults = { viewModel.setShowSavedResults(true) },
+                            onSaveResults = { showResultWriter = true }
+                        )
+                    }
+
+                    SearchProgressBars(
+                        viewModel = viewModel,
+                        bottomPadding = bottomPadding,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+                }
+
+                if (popoverAnchor != null && popoverBookId != null) {
+                    val bookId = popoverBookId!!
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                        com.maktabah.ui.common.TapCenteredPopover(
+                            expanded = true,
+                            onDismiss = {
+                                popoverAnchor = null
+                                popoverBookId = null
+                            },
+                            anchorBounds = popoverAnchor,
+                            actions = buildList {
+                                add(
+                                    com.maktabah.ui.common.PopoverMenuAction(
+                                        label = stringResource(R.string.reader_menu_book_info),
+                                        icon = Icons.Default.Info,
+                                        onClick = {
+                                            showBookInfoId = bookId
+                                            popoverAnchor = null
+                                            popoverBookId = null
+                                        }
+                                    )
+                                )
+                            }
+                        )
+                    }
+                }
+
+                if (showBookInfoId != null) {
+                    com.maktabah.ui.reader.BookInfoSheet(
+                        bookId = showBookInfoId!!,
+                        defaultTitle = "",
+                        libraryViewModel = libraryViewModel,
+                        onDismissRequest = { showBookInfoId = null }
+                    )
+                }
+            }
+
+            1 -> {
+                SavedResultsScreen(
+                    resultsViewModel = resultsViewModel,
+                    onSelectResult = { items ->
+                        viewModel.setShowSavedResults(false)
+                        viewModel.loadSavedResults(items, context, libraryViewModel.dataManager)
+                    },
+                    onDismiss = { viewModel.setShowSavedResults(false) },
+                    bottomPadding = bottomPadding,
+                    backHandlerEnabled = pagerState.currentPage == 1
+                )
+            }
+        }
+    }
+
+    if (showResultWriter) {
+        ResultWriterSheet(
+            results = results,
+            query = lastSearchQuery,
+            searchMode = lastSearchMode,
+            nearDistance = if (nearDistance <= 0) 10 else nearDistance,
+            resultsViewModel = resultsViewModel,
+            dataManager = libraryViewModel.dataManager,
+            onDismiss = { showResultWriter = false }
+        )
+    }
+}
+
+@Composable
+private fun SearchPagerContainer(
+    pagerState: androidx.compose.foundation.pager.PagerState,
+    scrollEnabled: Boolean,
+    content: @Composable (Int) -> Unit,
+) {
+    var userScrollEnabled by remember { mutableStateOf(true) }
+
     HorizontalPager(
         state = pagerState,
-        userScrollEnabled = userScrollEnabled && popoverAnchor == null,
+        userScrollEnabled = userScrollEnabled && scrollEnabled,
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
@@ -241,231 +400,95 @@ fun SearchScreen(
             }
 
         Box(modifier = pageModifier) {
-            when (page) {
-                0 -> {
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.background)
-                                .pointerInput(Unit) {
-                                    detectTapGestures(onTap = {
-                                        focusManager.clearFocus()
-                                    })
-                                },
-                    ) {
-                        val searchQuery by viewModel.searchQuery.collectAsState()
-                        val expandedCategories by viewModel.expandedCategories.collectAsState()
+            content(page)
+        }
+    }
+}
 
-                        FilterAndCategoryContent(
-                            viewModel = viewModel,
-                            libraryViewModel = libraryViewModel,
-                            flatVisibleItems = flatVisibleItems,
-                            selectedBookIds = selectedBookIds,
-                            expandedCategories = expandedCategories,
-                            searchQuery = searchQuery,
-                            bottomContentPadding = bottomPadding + 88.dp,
-                            hasDonated = hasDonated,
-                            isDataLoaded = isDataLoaded && isTreeLoaded,
-                            onOpenSavedResults = { viewModel.setShowSavedResults(true) },
-                            userScrollEnabled = popoverAnchor == null,
-                            onBookLongClick = { bookId, view ->
-                                view.parent?.requestDisallowInterceptTouchEvent(true)
-                                val location = IntArray(2)
-                                view.getLocationInWindow(location)
-                                popoverAnchor = androidx.compose.ui.unit.IntRect(
-                                    left = location[0],
-                                    top = location[1],
-                                    right = location[0] + view.width,
-                                    bottom = location[1] + view.height
-                                )
-                                popoverBookId = bookId
-                            }
+@Composable
+private fun SearchBottomInputArea(
+    viewModel: SearchViewModel,
+    libraryViewModel: LibraryViewModel,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    activeSearchMode: SearchMode,
+    onModeSelect: (SearchMode) -> Unit,
+    nearDistance: Int,
+    bottomPadding: Dp,
+    focusManager: androidx.compose.ui.focus.FocusManager,
+    focusRequester: FocusRequester,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val searchHistory by viewModel.searchHistory.collectAsState()
+    var isFocused by remember { mutableStateOf(false) }
+    var showHelpDialog by remember { mutableStateOf(false) }
+    val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+
+    Box(
+        modifier = modifier
+            .onFocusChanged { isFocused = it.hasFocus }
+            .padding(
+                bottom = androidx.compose.ui.unit.max(
+                    bottomPadding,
+                    imeBottom
+                ) + 8.dp
+            )
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (isFocused) {
+                SearchHistoryOverlay(
+                    searchHistory = searchHistory,
+                    onClearAll = { viewModel.clearHistory(context) },
+                    onHistoryClick = { historyQuery ->
+                        onQueryChange(historyQuery)
+                        focusManager.clearFocus()
+                        viewModel.performSearch(
+                            context,
+                            historyQuery,
+                            activeSearchMode,
+                            libraryViewModel.dataManager
                         )
-
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .onFocusChanged { isFocused = it.hasFocus }
-                                .padding(
-                                    bottom = androidx.compose.ui.unit.max(
-                                        bottomPadding,
-                                        imeBottom
-                                    ) + 8.dp
-                                )
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                if (isFocused) {
-                                    SearchHistoryOverlay(
-                                        searchHistory = searchHistory,
-                                        onClearAll = { viewModel.clearHistory(context) },
-                                        onHistoryClick = { historyQuery ->
-                                            query = historyQuery
-                                            focusManager.clearFocus()
-                                            viewModel.performSearch(
-                                                context,
-                                                historyQuery,
-                                                activeSearchMode,
-                                                libraryViewModel.dataManager
-                                            )
-                                        },
-                                        onRemoveHistory = { historyQuery ->
-                                            viewModel.removeFromHistory(context, historyQuery)
-                                        },
-                                        activeMode = activeSearchMode,
-                                        onModeSelect = {
-                                            activeSearchMode = it
-                                            focusRequester.requestFocus()
-                                        },
-                                        nearDistance = nearDistance,
-                                        onNearDistanceChange = { viewModel.updateNearDistance(it, context) },
-                                        onHelpClick = { showHelpDialog = true }
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                }
-
-                                QueryInputBar(
-                                    query = query,
-                                    onQueryChange = { newQuery ->
-                                        query = newQuery
-                                        if (newQuery.isEmpty()) {
-                                            viewModel.clearResults()
-                                            onClearContentSearchQuery()
-                                        }
-                                    },
-                                    onSearch = {
-                                        focusManager.clearFocus()
-                                        viewModel.performSearch(
-                                            context,
-                                            query,
-                                            activeSearchMode,
-                                            libraryViewModel.dataManager
-                                        )
-                                    },
-                                    canSearch = query.isNotBlank(),
-                                    placeholder = stringResource(R.string.search_query_placeholder),
-                                    onFocusChanged = { /* Handled by parent Box */ },
-                                    focusRequester = focusRequester
-                                )
-                            }
-                        }
-
-                        if (showHelpDialog) {
-                            SearchHelpDialog(onDismiss = { showHelpDialog = false })
-                        }
-
-                        AnimatedVisibility(
-                            visible = results.isNotEmpty(),
-                            enter =
-                                slideInVertically(
-                                    initialOffsetY = { fullHeight -> fullHeight },
-                                    animationSpec = tween(durationMillis = 400),
-                                ) + fadeIn(animationSpec = tween(300)),
-                            exit =
-                                slideOutVertically(
-                                    targetOffsetY = { fullHeight -> fullHeight },
-                                    animationSpec = tween(durationMillis = 300),
-                                ) + fadeOut(animationSpec = tween(200)),
-                            modifier = Modifier.fillMaxSize(),
-                        ) {
-                            SearchResultsOverlay(
-                                filteredResults = filteredResults,
-                                query = lastSearchQuery,
-                                searchMode = lastSearchMode,
-                                nearDistance = nearDistance,
-                                bookFilter = bookFilter,
-                                onBookFilterChange = { viewModel.updateBookFilter(it, libraryViewModel.dataManager) },
-                                onClearResults = {
-                                    viewModel.clearResults()
-                                    query = ""
-                                    onClearContentSearchQuery()
-                                },
-                                onSelect = onNavigateToReader,
-                                bottomPadding = bottomPadding,
-                                libraryViewModel = libraryViewModel,
-                                onOpenSavedResults = { viewModel.setShowSavedResults(true) },
-                                onSaveResults = { showResultWriter = true }
-                            )
-                        }
-
-                        SearchProgressBars(
-                            isSearching = isSearching,
-                            completedBooks = completedBooks,
-                            totalBooks = totalBooks,
-                            currentBookProgress = currentBookProgress,
-                            currentBookName = currentBookName,
-                            modifier =
-                                Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = androidx.compose.ui.unit.max(bottomPadding, imeBottom)),
-                        )
-                    }
-
-                    if (popoverAnchor != null && popoverBookId != null) {
-                        val bookId = popoverBookId!!
-                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                            com.maktabah.ui.common.TapCenteredPopover(
-                                expanded = true,
-                                onDismiss = {
-                                    popoverAnchor = null
-                                    popoverBookId = null
-                                },
-                                anchorBounds = popoverAnchor,
-                                actions = buildList {
-                                    add(
-                                        com.maktabah.ui.common.PopoverMenuAction(
-                                            label = stringResource(R.string.reader_menu_book_info),
-                                            icon = Icons.Default.Info,
-                                            onClick = {
-                                                showBookInfoId = bookId
-                                                popoverAnchor = null
-                                                popoverBookId = null
-                                            }
-                                        )
-                                    )
-                                }
-                            )
-                        }
-                    }
-
-                    if (showBookInfoId != null) {
-                        com.maktabah.ui.reader.BookInfoSheet(
-                            bookId = showBookInfoId!!,
-                            defaultTitle = "",
-                            libraryViewModel = libraryViewModel,
-                            onDismissRequest = { showBookInfoId = null }
-                        )
-                    }
-                }
-
-                1 -> {
-                    SavedResultsScreen(
-                        resultsViewModel = resultsViewModel,
-                        onSelectResult = { items ->
-                            viewModel.setShowSavedResults(false)
-                            viewModel.loadSavedResults(items, context, libraryViewModel.dataManager)
-                        },
-                        onDismiss = { viewModel.setShowSavedResults(false) },
-                        bottomPadding = bottomPadding,
-                        backHandlerEnabled = pagerState.currentPage == 1
-                    )
-                }
+                    },
+                    onRemoveHistory = { historyQuery ->
+                        viewModel.removeFromHistory(context, historyQuery)
+                    },
+                    activeMode = activeSearchMode,
+                    onModeSelect = {
+                        onModeSelect(it)
+                        focusRequester.requestFocus()
+                    },
+                    nearDistance = nearDistance,
+                    onNearDistanceChange = { viewModel.updateNearDistance(it, context) },
+                    onHelpClick = { showHelpDialog = true }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
             }
+
+            QueryInputBar(
+                query = query,
+                onQueryChange = onQueryChange,
+                onSearch = {
+                    focusManager.clearFocus()
+                    viewModel.performSearch(
+                        context,
+                        query,
+                        activeSearchMode,
+                        libraryViewModel.dataManager
+                    )
+                },
+                canSearch = query.isNotBlank(),
+                placeholder = stringResource(R.string.search_query_placeholder),
+                onFocusChanged = { /* Handled by parent Box */ },
+                focusRequester = focusRequester
+            )
         }
     }
 
-    if (showResultWriter) {
-        ResultWriterSheet(
-            results = results,
-            query = lastSearchQuery,
-            searchMode = lastSearchMode,
-            nearDistance = if (nearDistance <= 0) 10 else nearDistance,
-            resultsViewModel = resultsViewModel,
-            dataManager = libraryViewModel.dataManager,
-            onDismiss = { showResultWriter = false }
-        )
+    if (showHelpDialog) {
+        SearchHelpDialog(onDismiss = { showHelpDialog = false })
     }
 }
 
@@ -474,10 +497,6 @@ fun SearchScreen(
 private fun FilterAndCategoryContent(
     viewModel: SearchViewModel,
     libraryViewModel: LibraryViewModel,
-    flatVisibleItems: List<FlatLibraryItem>,
-    selectedBookIds: Set<Int>,
-    expandedCategories: Set<Int>,
-    searchQuery: String,
     bottomContentPadding: Dp,
     hasDonated: Boolean,
     isDataLoaded: Boolean,
@@ -485,6 +504,13 @@ private fun FilterAndCategoryContent(
     userScrollEnabled: Boolean,
     onBookLongClick: (Int, android.view.View) -> Unit
 ) {
+    val flatVisibleItems by viewModel.flatVisibleItems.collectAsState()
+    val selectedBookIds by viewModel.selectedBookIds.collectAsState()
+    val expandedCategories by viewModel.expandedCategories.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    val isTreeLoaded by viewModel.isTreeLoaded.collectAsState()
+    val isReady = isDataLoaded && isTreeLoaded
+
     Scaffold(
         topBar = {
             SearchFilterTopBar(
@@ -497,7 +523,7 @@ private fun FilterAndCategoryContent(
         },
         containerColor = Color.Transparent,
     ) { padding ->
-        if (!isDataLoaded) {
+        if (!isReady) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
@@ -689,13 +715,15 @@ private fun SearchFilterList(
             selectedBookIds, expandedCategories, flatVisibleItems,
             colors
         ) {
-            adapter.isSelectionMode = true
-            adapter.onlySelectDownloaded = true
-            adapter.selectedBookIds = selectedBookIds
-            adapter.expandedCategories = expandedCategories
             adapter.primaryColor = colors.primaryColor
             adapter.secondaryColor = colors.secondaryColor
             adapter.onSurfaceVariantColor = colors.onSurfaceVariantColor
+            adapter.expandedCategories = expandedCategories
+            adapter.updateDisplayState(
+                isSelectionMode = true,
+                onlySelectDownloaded = true,
+                selectedBookIds = selectedBookIds,
+            )
             adapter.submitList(flatVisibleItems)
         }
 
@@ -1007,20 +1035,25 @@ private fun SearchResultItemRow(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SearchProgressBars(
-    isSearching: Boolean,
-    completedBooks: Int,
-    totalBooks: Int,
-    currentBookProgress: Pair<Int, Int>?,
-    currentBookName: String,
+    viewModel: SearchViewModel,
+    bottomPadding: Dp,
     modifier: Modifier = Modifier,
 ) {
+    val isSearching by viewModel.isSearching.collectAsState()
+    val completedBooks by viewModel.completedBooks.collectAsState()
+    val totalBooks by viewModel.totalBooks.collectAsState()
+    val currentBookProgress by viewModel.currentBookProgress.collectAsState()
+    val currentBookName by viewModel.currentBookName.collectAsState()
+    val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+
     AnimatedVisibility(
         visible = isSearching,
         enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
         exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-        modifier = modifier,
+        modifier = modifier.padding(bottom = androidx.compose.ui.unit.max(bottomPadding, imeBottom)),
     ) {
         Surface(
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
@@ -1049,9 +1082,10 @@ private fun SearchProgressBars(
                         )
                     }, modifier = Modifier.fillMaxWidth())
                 }
-                if (currentBookProgress != null && currentBookProgress.second > 0) {
+                val bookProgress = currentBookProgress
+                if (bookProgress != null && bookProgress.second > 0) {
                     LinearProgressIndicator(
-                        progress = { currentBookProgress.first.toFloat() / currentBookProgress.second },
+                        progress = { bookProgress.first.toFloat() / bookProgress.second },
                         modifier = Modifier.fillMaxWidth(),
                         color = MaterialTheme.colorScheme.secondary
                     )
