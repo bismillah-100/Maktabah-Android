@@ -12,7 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -79,34 +79,62 @@ fun Modifier.fadingEdge(
     canScrollForward: Boolean,
     topPad: Dp,
     bottomFade: Dp = 48.dp
+): Modifier = fadingEdge(
+    canScrollForward = { canScrollForward },
+    topPad = topPad,
+    bottomFade = bottomFade,
+)
+
+/**
+ * Deferred variant of [fadingEdge] that reads [canScrollForward] in the draw phase
+ * and caches gradient brushes across frames.
+ */
+fun Modifier.fadingEdge(
+    canScrollForward: () -> Boolean,
+    topPad: Dp,
+    bottomFade: Dp = 48.dp
 ): Modifier = this
     .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-    .drawWithContent {
-        drawContent()
-
+    .drawWithCache {
         val topPadPx = topPad.toPx()
         val bottomFadePx = bottomFade.toPx()
 
-        if (topPadPx > 0f) {
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colorStops = topGradientColorStops,
-                    startY = 0f,
-                    endY = topPadPx,
-                ),
-                blendMode = BlendMode.DstIn,
+        val topBrush = if (topPadPx > 0f) {
+            Brush.verticalGradient(
+                colorStops = topGradientColorStops,
+                startY = 0f,
+                endY = topPadPx,
             )
+        } else {
+            null
         }
 
-        if (canScrollForward) {
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colorStops = bottomGradientColorStops,
-                    startY = size.height - bottomFadePx,
-                    endY = size.height,
-                ),
-                blendMode = BlendMode.DstIn,
+        val bottomBrush = if (bottomFadePx > 0f && size.height > 0f) {
+            Brush.verticalGradient(
+                colorStops = bottomGradientColorStops,
+                startY = size.height - bottomFadePx,
+                endY = size.height,
             )
+        } else {
+            null
+        }
+
+        onDrawWithContent {
+            drawContent()
+
+            if (topBrush != null) {
+                drawRect(
+                    brush = topBrush,
+                    blendMode = BlendMode.DstIn,
+                )
+            }
+
+            if (bottomBrush != null && canScrollForward()) {
+                drawRect(
+                    brush = bottomBrush,
+                    blendMode = BlendMode.DstIn,
+                )
+            }
         }
     }
 
@@ -116,36 +144,10 @@ fun Modifier.fadingEdge(
 fun Modifier.fadingEdge(
     listState: LazyListState,
     topPad: Dp,
-): Modifier = this
-    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-    .drawWithContent {
-        drawContent()
-
-        val topPadPx = topPad.toPx()
-        val bottomFadePx = 48.dp.toPx()
-
-        if (topPadPx > 0f) {
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colorStops = topGradientColorStops,
-                    startY = 0f,
-                    endY = topPadPx,
-                ),
-                blendMode = BlendMode.DstIn,
-            )
-        }
-
-        if (listState.canScrollForward) {
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colorStops = bottomGradientColorStops,
-                    startY = size.height - bottomFadePx,
-                    endY = size.height,
-                ),
-                blendMode = BlendMode.DstIn,
-            )
-        }
-    }
+): Modifier = fadingEdge(
+    canScrollForward = { listState.canScrollForward },
+    topPad = topPad,
+)
 
 /**
  * A reusable Composable for grouped lists using Android RecyclerView.
@@ -174,10 +176,14 @@ fun GroupedRecyclerView(
     AndroidView(
         modifier = modifier
             .fillMaxSize()
-            .fadingEdge(canScrollForward, padding.calculateTopPadding()),
+            .fadingEdge(
+                canScrollForward = { canScrollForward },
+                topPad = padding.calculateTopPadding(),
+            ),
         factory = { ctx ->
             RecyclerView(ctx).apply {
                 id = recyclerViewId
+                setHasFixedSize(true)
                 layoutDirection = android.view.View.LAYOUT_DIRECTION_RTL
                 descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
                 layoutManager = LinearLayoutManager(ctx)

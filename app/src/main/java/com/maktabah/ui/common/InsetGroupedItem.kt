@@ -13,10 +13,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -35,9 +36,7 @@ fun Modifier.insetGroupedBorder(
     cornerRadius: Dp = 30.dp,
     isFirst: Boolean,
     isLast: Boolean,
-) = this.drawWithContent {
-    drawContent()
-
+) = this.drawWithCache {
     // Menghitung pixel offset untuk pixel-snapping agar stroke tajam (tidak anti-aliasing bleed).
     // Dp.Hairline menghasilkan 0f dari toPx(), kita anggap 1 physical pixel untuk offset.
     val actualStrokeWidth = if (borderWidth == Dp.Hairline) 1f else borderWidth.toPx()
@@ -53,86 +52,94 @@ fun Modifier.insetGroupedBorder(
     // Tetap gunakan 0f untuk Dp.Hairline agar Compose menggambar 1 physical pixel
     val strokeStyle = Stroke(width = borderWidth.toPx())
 
-    when {
-        // Case 1: Item Tunggal (First & Last) -> Full Rounded Rect
-        isFirst && isLast -> {
-            drawRoundRect(
-                color = borderColor,
-                topLeft = Offset(halfStroke, halfStroke),
-                size = Size(right - halfStroke, bottom - halfStroke),
-                cornerRadius = CornerRadius(radiusPx, radiusPx),
-                style = strokeStyle,
+    val cachedPath = when {
+        isFirst && isLast -> null
+        isFirst -> Path().apply {
+            moveTo(halfStroke, bottom)
+            lineTo(halfStroke, halfStroke + radiusPx)
+            arcTo(
+                rect = Rect(
+                    halfStroke,
+                    halfStroke, halfStroke + 2 * radiusPx, halfStroke + 2 * radiusPx
+                ),
+                startAngleDegrees = 180f,
+                sweepAngleDegrees = 90f,
+                forceMoveTo = false,
             )
+            lineTo(right - radiusPx, halfStroke)
+            arcTo(
+                rect = Rect(right - 2 * radiusPx, halfStroke, right, halfStroke + 2 * radiusPx),
+                startAngleDegrees = 270f,
+                sweepAngleDegrees = 90f,
+                forceMoveTo = false,
+            )
+            lineTo(right, bottom)
         }
+        isLast -> Path().apply {
+            moveTo(halfStroke, halfStroke)
+            lineTo(halfStroke, bottom - radiusPx)
+            arcTo(
+                rect = Rect(
+                    halfStroke,
+                    bottom - 2 * radiusPx,
+                    halfStroke + 2 * radiusPx,
+                    bottom
+                ),
+                startAngleDegrees = 180f,
+                sweepAngleDegrees = -90f,
+                forceMoveTo = false,
+            )
+            lineTo(right - radiusPx, bottom)
+            arcTo(
+                rect = Rect(right - 2 * radiusPx, bottom - 2 * radiusPx, right, bottom),
+                startAngleDegrees = 90f,
+                sweepAngleDegrees = -90f,
+                forceMoveTo = false,
+            )
+            lineTo(right, halfStroke)
+        }
+        else -> null
+    }
 
-        // Case 2: Item Pertama -> Lengkung Atas, Lurus Bawah
-        isFirst -> {
-            val path = Path().apply {
-                moveTo(halfStroke, bottom)
-                lineTo(halfStroke, halfStroke + radiusPx)
-                arcTo(
-                    rect = Rect(
-                        halfStroke,
-                        halfStroke, halfStroke + 2 * radiusPx, halfStroke + 2 * radiusPx
-                    ),
-                    startAngleDegrees = 180f,
-                    sweepAngleDegrees = 90f,
-                    forceMoveTo = false,
+    val cornerRadiusObj = CornerRadius(radiusPx, radiusPx)
+    val rectTopLeft = Offset(halfStroke, halfStroke)
+    val rectSize = Size(right - halfStroke, bottom - halfStroke)
+
+    onDrawWithContent {
+        drawContent()
+
+        when {
+            // Case 1: Item Tunggal (First & Last) -> Full Rounded Rect
+            isFirst && isLast -> {
+                drawRoundRect(
+                    color = borderColor,
+                    topLeft = rectTopLeft,
+                    size = rectSize,
+                    cornerRadius = cornerRadiusObj,
+                    style = strokeStyle,
                 )
-                lineTo(right - radiusPx, halfStroke)
-                arcTo(
-                    rect = Rect(right - 2 * radiusPx, halfStroke, right, halfStroke + 2 * radiusPx),
-                    startAngleDegrees = 270f,
-                    sweepAngleDegrees = 90f,
-                    forceMoveTo = false,
-                )
-                lineTo(right, bottom)
             }
-            drawPath(path = path, color = borderColor, style = strokeStyle)
-        }
 
-        // Case 3: Item Terakhir -> Lurus Atas, Lengkung Bawah
-        isLast -> {
-            val path = Path().apply {
-                moveTo(halfStroke, halfStroke)
-                lineTo(halfStroke, bottom - radiusPx)
-                arcTo(
-                    rect = Rect(
-                        halfStroke,
-                        bottom - 2 * radiusPx,
-                        halfStroke + 2 * radiusPx,
-                        bottom
-                    ),
-                    startAngleDegrees = 180f,
-                    sweepAngleDegrees = -90f,
-                    forceMoveTo = false,
-                )
-                lineTo(right - radiusPx, bottom)
-                arcTo(
-                    rect = Rect(right - 2 * radiusPx, bottom - 2 * radiusPx, right, bottom),
-                    startAngleDegrees = 90f,
-                    sweepAngleDegrees = -90f,
-                    forceMoveTo = false,
-                )
-                lineTo(right, halfStroke)
+            // Case 2 & 3: First atau Last -> Cached Path
+            cachedPath != null -> {
+                drawPath(path = cachedPath, color = borderColor, style = strokeStyle)
             }
-            drawPath(path = path, color = borderColor, style = strokeStyle)
-        }
 
-        // Case 4: Item Tengah -> Garis Lurus Kiri & Kanan
-        else -> {
-            drawLine(
-                color = borderColor,
-                start = Offset(halfStroke, 0f),
-                end = Offset(halfStroke, h),
-                strokeWidth = actualStrokeWidth,
-            )
-            drawLine(
-                color = borderColor,
-                start = Offset(right, 0f),
-                end = Offset(right, h),
-                strokeWidth = actualStrokeWidth,
-            )
+            // Case 4: Item Tengah -> Garis Lurus Kiri & Kanan
+            else -> {
+                drawLine(
+                    color = borderColor,
+                    start = Offset(halfStroke, 0f),
+                    end = Offset(halfStroke, h),
+                    strokeWidth = actualStrokeWidth,
+                )
+                drawLine(
+                    color = borderColor,
+                    start = Offset(right, 0f),
+                    end = Offset(right, h),
+                    strokeWidth = actualStrokeWidth,
+                )
+            }
         }
     }
 }
@@ -155,17 +162,20 @@ fun InsetGroupedItem(
     val isFirst = index == 0
     val isLast = index == lastIndex
 
-    val topRadius = if (isFirst) 30.dp else 0.dp
-    val bottomRadius = if (isLast) 30.dp else 0.dp
+    val shape = remember(isFirst, isLast) {
+        val topRadius = if (isFirst) 30.dp else 0.dp
+        val bottomRadius = if (isLast) 30.dp else 0.dp
+        RoundedCornerShape(
+            topStart = topRadius,
+            topEnd = topRadius,
+            bottomStart = bottomRadius,
+            bottomEnd = bottomRadius
+        )
+    }
 
-    val shape = RoundedCornerShape(
-        topStart = topRadius,
-        topEnd = topRadius,
-        bottomStart = bottomRadius,
-        bottomEnd = bottomRadius
-    )
-
-    val borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val borderColor = remember(onSurface) { onSurface.copy(alpha = 0.38f) }
+    val dividerColor = remember(onSurface) { onSurface.copy(alpha = 0.75f) }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val haptic = LocalHapticFeedback.current
 
@@ -198,7 +208,7 @@ fun InsetGroupedItem(
             HorizontalDivider(
                 modifier = Modifier.padding(start = dividerStartPadding, end = 0.5.dp),
                 thickness = Dp.Hairline,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                color = dividerColor,
             )
         }
     }
