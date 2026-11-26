@@ -5,6 +5,7 @@ package com.maktabah.ui.common
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandHorizontally
@@ -23,7 +24,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -372,33 +372,12 @@ fun MainScreen(
         }
     }
 
+    val navBarBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val stableTabBottomPadding = 64.dp + navBarBottomPadding
+
     Scaffold(
         contentWindowInsets = WindowInsets(0.dp),
-        bottomBar = {
-            AnimatedVisibility(
-                visible = isBottomBarVisible && !isBottomBarSuppressed,
-                enter = slideInVertically { it } + fadeIn(),
-                exit = slideOutVertically { it } + fadeOut(),
-            ) {
-                MainBottomBar(
-                    currentRoute = currentRoute,
-                    navController = navController,
-                    tabs = tabs,
-                    activeTabId = activeTabId,
-                    onOpenTabSheet = { showGlobalTabsSheet = true },
-                    onOpenSingleTab = { selectedTabId ->
-                        tabManager.switchTab(selectedTabId)
-                        if (navController.currentDestination?.route != "reader_tabs") {
-                            navController.navigate("reader_tabs") {
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        }
-                    },
-                )
-            }
-        },
-    ) { innerPadding ->
+    ) { _ ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -407,7 +386,7 @@ fun MainScreen(
             AppNavHost(
                 navController = navController,
                 startDestination = lastTabRoute,
-                innerPadding = innerPadding,
+                tabBottomPadding = stableTabBottomPadding,
                 libraryViewModel = libraryViewModel,
                 annotationManager = annotationManager,
                 cloudKitSyncManager = cloudKitSyncManager,
@@ -428,21 +407,38 @@ fun MainScreen(
                 },
             )
 
-            val downloadedBookIds by libraryViewModel.downloadedBookIds.collectAsState()
-            val activeDownloadStates by libraryViewModel.activeDownloadStates.collectAsState()
-            val showOverlay = activeDownloadStates.any {
-                if (it.isBulk) it.bulkBookIds.isNotEmpty() else !downloadedBookIds.contains(it.bookId)
+            AnimatedVisibility(
+                visible = isBottomBarVisible && !isBottomBarSuppressed,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+                modifier = Modifier.align(Alignment.BottomCenter),
+            ) {
+                MainBottomBar(
+                    currentRoute = currentRoute,
+                    navController = navController,
+                    tabs = tabs,
+                    activeTabId = activeTabId,
+                    onOpenTabSheet = { showGlobalTabsSheet = true },
+                    onOpenSingleTab = { selectedTabId ->
+                        tabManager.switchTab(selectedTabId)
+                        if (navController.currentDestination?.route != "reader_tabs") {
+                            navController.navigate("reader_tabs") {
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    },
+                )
             }
-            val allowedOverlayRoutes =
-                listOf(Tab.Library.route, Tab.Annotations.route, Tab.History.route)
-            val isAllowedRoute = currentRoute in allowedOverlayRoutes
 
-            MainScreenOverlays(
+            MainScreenOverlaysHost(
+                currentRoute = currentRoute,
+                isBottomBarVisible = isBottomBarVisible && !isBottomBarSuppressed,
+                stableTabBottomPadding = stableTabBottomPadding,
+                navBarBottomPadding = navBarBottomPadding,
                 showBookNotFoundPopover = showBookNotFoundPopover,
                 onDismissBookNotFoundPopover = { showBookNotFoundPopover = false },
-                showOverlay = showOverlay && isAllowedRoute,
                 libraryViewModel = libraryViewModel,
-                bottomPadding = innerPadding.calculateBottomPadding(),
                 onNavigateToReader = handleNavigateToReader,
                 showGlobalTabsSheet = showGlobalTabsSheet,
                 tabs = tabs,
@@ -467,6 +463,54 @@ fun MainScreen(
             )
         }
     }
+}
+
+@Composable
+private fun BoxScope.MainScreenOverlaysHost(
+    currentRoute: String?,
+    isBottomBarVisible: Boolean,
+    stableTabBottomPadding: Dp,
+    navBarBottomPadding: Dp,
+    showBookNotFoundPopover: Boolean,
+    onDismissBookNotFoundPopover: () -> Unit,
+    libraryViewModel: LibraryViewModel,
+    onNavigateToReader: (Int, Int?, Int?, Int?, String?, Boolean) -> Unit,
+    showGlobalTabsSheet: Boolean,
+    tabs: List<ReaderTab>,
+    activeTabId: String?,
+    onSwitchTab: (String) -> Unit,
+    onCloseTab: (String) -> Unit,
+    onDismissGlobalTabsSheet: () -> Unit,
+) {
+    val downloadedBookIds by libraryViewModel.downloadedBookIds.collectAsState()
+    val activeDownloadStates by libraryViewModel.activeDownloadStates.collectAsState()
+    val showOverlay = activeDownloadStates.any {
+        if (it.isBulk) it.bulkBookIds.isNotEmpty() else !downloadedBookIds.contains(it.bookId)
+    }
+    val isAllowedRoute =
+        currentRoute == Tab.Library.route ||
+            currentRoute == Tab.Annotations.route ||
+            currentRoute == Tab.History.route
+
+    val overlayBottomPadding by animateDpAsState(
+        targetValue = if (isBottomBarVisible) stableTabBottomPadding else navBarBottomPadding,
+        label = "overlay_bottom_padding",
+    )
+
+    MainScreenOverlays(
+        showBookNotFoundPopover = showBookNotFoundPopover,
+        onDismissBookNotFoundPopover = onDismissBookNotFoundPopover,
+        showOverlay = showOverlay && isAllowedRoute,
+        libraryViewModel = libraryViewModel,
+        bottomPadding = overlayBottomPadding,
+        onNavigateToReader = onNavigateToReader,
+        showGlobalTabsSheet = showGlobalTabsSheet,
+        tabs = tabs,
+        activeTabId = activeTabId,
+        onSwitchTab = onSwitchTab,
+        onCloseTab = onCloseTab,
+        onDismissGlobalTabsSheet = onDismissGlobalTabsSheet,
+    )
 }
 
 @Composable
@@ -807,7 +851,7 @@ private fun CustomTabItem(
 private fun AppNavHost(
     navController: NavHostController,
     startDestination: String,
-    innerPadding: PaddingValues,
+    tabBottomPadding: Dp,
     libraryViewModel: LibraryViewModel,
     annotationManager: AnnotationManager,
     cloudKitSyncManager: CloudKitSyncManager,
@@ -906,7 +950,7 @@ private fun AppNavHost(
                 },
                 onNavigateToCloudKit = { navController.navigate("cloudkit_login") },
                 onCheckForUpdates = onCheckForUpdates,
-                bottomPadding = innerPadding.calculateBottomPadding(),
+                bottomPadding = tabBottomPadding,
                 hasDonated = hasDonated,
                 onToggleBottomBar = onToggleBottomBar,
             )
@@ -918,7 +962,7 @@ private fun AppNavHost(
             SearchScreen(
                 viewModel = searchViewModel,
                 libraryViewModel = libraryViewModel,
-                bottomPadding = innerPadding.calculateBottomPadding(),
+                bottomPadding = tabBottomPadding,
                 onNavigateToReader = { bookId, contentId, loc, len, query ->
                     handleNavigateToReader(bookId, contentId, loc, len, query, recordSearchHistory)
                 },
@@ -938,7 +982,7 @@ private fun AppNavHost(
                 cloudKitSyncManager,
                 historyViewModel,
                 annotationsViewModel,
-                innerPadding.calculateBottomPadding(),
+                tabBottomPadding,
                 onNavigateToReader = { b, c, loc, len, q ->
                     handleNavigateToReader(b, c, loc, len, q, true)
                 },
@@ -951,7 +995,7 @@ private fun AppNavHost(
                 libraryViewModel = libraryViewModel,
                 annotationManager = annotationManager,
                 cloudKitSyncManager = cloudKitSyncManager,
-                bottomPadding = innerPadding.calculateBottomPadding(),
+                bottomPadding = tabBottomPadding,
                 onNavigateToReader = { b, c, loc, len, q ->
                     handleNavigateToReader(b, c, loc, len, q, true)
                 },
