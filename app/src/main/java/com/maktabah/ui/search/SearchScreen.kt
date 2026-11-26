@@ -896,6 +896,18 @@ private fun SearchResultsOverlay(
             }.map { it.convertToArabicDigits() }
         }
 
+        val effectiveNearDistance = remember(nearDistance) {
+            if (nearDistance <= 0) 10 else nearDistance
+        }
+        val finalQuery = remember(query, searchMode, effectiveNearDistance) {
+            if (searchMode == SearchMode.NEAR) {
+                "NEAR:$effectiveNearDistance:$query"
+            } else {
+                query
+            }
+        }
+        val fallbackBookName = stringResource(R.string.library_fallback_book_name)
+
         CompositionLocalProvider(
             LocalLayoutDirection provides LayoutDirection.Rtl,
         ) {
@@ -914,14 +926,8 @@ private fun SearchResultsOverlay(
                     key = { (filteredResults[it].bookId.toLong() shl 32) or (filteredResults[it].contentId.toLong() and 0xFFFFFFFFL) },
                 ) { index ->
                     val result = filteredResults[index]
-                    val effectiveNearDistance = if (nearDistance <= 0) 10 else nearDistance
-                    val finalQuery = if (searchMode == SearchMode.NEAR) {
-                        "NEAR:$effectiveNearDistance:$query"
-                    } else {
-                        query
-                    }
                     val book = libraryViewModel.dataManager.booksById[result.bookId]
-                    val bookName = book?.name ?: stringResource(R.string.library_fallback_book_name)
+                    val bookName = book?.name ?: fallbackBookName
                     val archiveId = book?.archive ?: 0
 
                     SearchResultItemRow(
@@ -962,6 +968,22 @@ private fun SearchResultItemRow(
         mutableStateOf(result.text.ifEmpty { com.maktabah.search.SearchHitResolver.getCachedSnippet(packedId) ?: "" })
     }
 
+    var highlightRanges by remember(packedId, snippetText, searchKeywords, searchMode, effectiveNearDistance) {
+        mutableStateOf(
+            if (snippetText.isNotEmpty()) {
+                com.maktabah.search.SearchHitResolver.getCachedHighlightRanges(
+                    packedId = packedId,
+                    text = snippetText,
+                    searchKeywords = searchKeywords,
+                    mode = searchMode,
+                    nearDistance = effectiveNearDistance,
+                )
+            } else {
+                emptyList()
+            }
+        )
+    }
+
     LaunchedEffect(packedId, snippetText) {
         if (snippetText.isEmpty()) {
             val resolved = com.maktabah.search.SearchHitResolver.resolveSnippet(
@@ -977,10 +999,30 @@ private fun SearchResultItemRow(
         }
     }
 
+    LaunchedEffect(packedId, snippetText, searchKeywords, searchMode, effectiveNearDistance) {
+        if (snippetText.isNotEmpty() && highlightRanges == null) {
+            highlightRanges = com.maktabah.search.SearchHitResolver.resolveHighlightRanges(
+                packedId = packedId,
+                text = snippetText,
+                searchKeywords = searchKeywords,
+                mode = searchMode,
+                nearDistance = effectiveNearDistance,
+            )
+        }
+    }
+
+    val formattedPage = remember(result.part, result.page) {
+        "ج${result.part} ص${result.page}".convertToArabicDigits()
+    }
+
+    val onClick = remember(result.bookId, result.contentId, finalQuery, onSelect) {
+        { onSelect(result.bookId, result.contentId, null, null, finalQuery) }
+    }
+
     InsetGroupedItem(
         index = index,
         lastIndex = lastIndex,
-        onClick = { onSelect(result.bookId, result.contentId, null, null, finalQuery) },
+        onClick = onClick,
         color = MaterialTheme.colorScheme.surface,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         dividerStartPadding = Dp.Hairline,
@@ -1000,7 +1042,7 @@ private fun SearchResultItemRow(
                 )
                 Spacer(modifier = Modifier.width(16.dp))
                 Text(
-                    text = "ج${result.part} ص${result.page}".convertToArabicDigits(),
+                    text = formattedPage,
                     style = MaterialTheme.typography.bodySmall,
                     textAlign = TextAlign.Start,
                     maxLines = 1,
@@ -1009,12 +1051,12 @@ private fun SearchResultItemRow(
             }
             Spacer(modifier = Modifier.height(4.dp))
             if (snippetText.isNotEmpty()) {
-                val highlightedText = buildHighlightedText(
-                    text = snippetText,
-                    searchKeywords = searchKeywords,
-                    searchMode = searchMode,
-                    nearDistance = effectiveNearDistance
-                )
+                val highlightedText = remember(snippetText, highlightRanges) {
+                    buildHighlightedAnnotatedString(
+                        text = snippetText,
+                        ranges = highlightRanges ?: emptyList(),
+                    )
+                }
                 Text(
                     text = highlightedText,
                     style = MaterialTheme.typography.bodyMedium,

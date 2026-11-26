@@ -495,6 +495,43 @@ fun SearchHelpDialog(onDismiss: () -> Unit) {
     )
 }
 
+fun computeArabicHighlightRanges(
+    text: String,
+    searchKeywords: List<String>,
+    searchMode: SearchMode = SearchMode.PHRASE,
+    nearDistance: Int = 10,
+): List<IntRange> {
+    if (text.isEmpty() || searchKeywords.isEmpty()) return emptyList()
+    return if (searchMode == SearchMode.NEAR && searchKeywords.size > 1) {
+        val rangesWithIndex = text.findArabicMatchingRangesWithIndex(searchKeywords)
+        val effectiveDistance = if (nearDistance <= 0) 10 else nearDistance
+        text.filterRangesForNearMode(rangesWithIndex, searchKeywords.size, effectiveDistance)
+    } else {
+        text.findArabicMatchingRanges(searchKeywords)
+    }
+}
+
+fun buildHighlightedAnnotatedString(
+    text: String,
+    ranges: List<IntRange>,
+    highlightColor: Color = Color(0xFFFFD54F).copy(alpha = 0.4f),
+): AnnotatedString {
+    return buildAnnotatedString {
+        append(text)
+        if (ranges.isEmpty()) return@buildAnnotatedString
+        for (i in 0 until ranges.size) {
+            val range = ranges[i]
+            if (range.first in text.indices && range.last < text.length && range.first <= range.last) {
+                addStyle(
+                    style = SpanStyle(background = highlightColor),
+                    start = range.first,
+                    end = range.last + 1
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun buildHighlightedText(
     text: String,
@@ -504,27 +541,7 @@ fun buildHighlightedText(
     highlightColor: Color = Color(0xFFFFD54F).copy(alpha = 0.4f),
 ): AnnotatedString {
     return remember(text, searchKeywords, searchMode, nearDistance, highlightColor) {
-        buildAnnotatedString {
-            append(text)
-            if (searchKeywords.isEmpty()) return@buildAnnotatedString
-
-            val ranges = if (searchMode == SearchMode.NEAR && searchKeywords.size > 1) {
-                val rangesWithIndex = text.findArabicMatchingRangesWithIndex(searchKeywords)
-                val effectiveDistance = if (nearDistance <= 0) 10 else nearDistance
-                text.filterRangesForNearMode(rangesWithIndex, searchKeywords.size, effectiveDistance)
-            } else {
-                text.findArabicMatchingRanges(searchKeywords)
-            }
-
-            for (range in ranges) {
-                if (range.first in text.indices && range.last < text.length && range.first <= range.last) {
-                    addStyle(
-                        style = SpanStyle(background = highlightColor),
-                        start = range.first,
-                        end = range.last + 1
-                    )
-                }
-            }
-        }
+        val ranges = computeArabicHighlightRanges(text, searchKeywords, searchMode, nearDistance)
+        buildHighlightedAnnotatedString(text, ranges, highlightColor)
     }
 }
