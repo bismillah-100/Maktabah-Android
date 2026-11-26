@@ -114,14 +114,13 @@ fun AnnotationsScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchScope by viewModel.searchScope.collectAsState()
     val groupedAnnotations by viewModel.groupedAnnotations.collectAsState()
-    val expandedGroups by viewModel.expandedGroups.collectAsState()
+    val flatItems by viewModel.flatItems.collectAsState()
     val groupingMode by viewModel.groupingMode.collectAsState()
     val sortField by viewModel.sortField.collectAsState()
     val sortAscending by viewModel.sortAscending.collectAsState()
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedAnnotationIds by viewModel.selectedAnnotationIds.collectAsState()
     val allTags by viewModel.allTags.collectAsState()
-    val availableTags by viewModel.availableTags.collectAsState()
     val selectedTags by viewModel.selectedTags.collectAsState()
     val tagFilterMode by viewModel.tagFilterMode.collectAsState()
     val focusManager = LocalFocusManager.current
@@ -279,12 +278,8 @@ fun AnnotationsScreen(
                 }
             } else {
                 AnnotationsList(
-                    groupedAnnotations = groupedAnnotations,
-                    expandedGroups = expandedGroups,
+                    flatItems = flatItems,
                     groupingMode = groupingMode,
-                    allTags = availableTags,
-                    selectedTags = selectedTags,
-                    tagFilterMode = tagFilterMode,
                     onToggleTagFilter = { viewModel.toggleTagSelection(it) },
                     onOpenTagFilterDialog = { showTagFilterDialog = true },
                     onToggleTagFilterMode = { viewModel.toggleTagFilterMode() },
@@ -825,12 +820,8 @@ private fun AnnotationSortItem(
 
 @Composable
 private fun AnnotationsList(
-    groupedAnnotations: List<AnnotationGroup>,
-    expandedGroups: Map<String, Boolean>,
+    flatItems: List<AnnotationFlatItem>,
     groupingMode: AnnotationGroupingMode,
-    allTags: List<String>,
-    selectedTags: Set<String>,
-    tagFilterMode: com.maktabah.models.TagFilterMode,
     onToggleTagFilter: (String) -> Unit,
     onOpenTagFilterDialog: () -> Unit,
     onToggleTagFilterMode: () -> Unit,
@@ -851,11 +842,6 @@ private fun AnnotationsList(
     val scope = rememberCoroutineScope()
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         val colors = rememberGroupedListColors()
-
-        val flatItems =
-            remember(groupedAnnotations, expandedGroups, allTags, selectedTags, tagFilterMode) {
-                groupedAnnotations.toFlatItems(expandedGroups, allTags, selectedTags, tagFilterMode)
-        }
 
         val adapter = remember {
             AnnotationsAdapter(
@@ -890,9 +876,11 @@ private fun AnnotationsList(
             adapter.onSurfaceVariantColor = colors.onSurfaceVariantColor
             adapter.surfaceColor = colors.surfaceColor
             adapter.onStrokeColor = colors.onStrokeColor
-            adapter.groupingMode = groupingMode
-            adapter.isSelectionMode = isSelectionMode
-            adapter.selectedAnnotationIds = selectedAnnotationIds
+            adapter.updateDisplayState(
+                groupingMode = groupingMode,
+                isSelectionMode = isSelectionMode,
+                selectedAnnotationIds = selectedAnnotationIds,
+            )
             adapter.submitList(flatItems)
         }
 
@@ -906,6 +894,7 @@ private fun AnnotationsList(
                     private val swipeRect = android.graphics.RectF()
                     private val swipeRadii = FloatArray(8)
                     private val redColor = "#FF3B30".toColorInt()
+                    private var cachedTrashIcon: android.graphics.drawable.Drawable? = null
 
                     override fun onMove(
                         recyclerView: androidx.recyclerview.widget.RecyclerView,
@@ -1038,13 +1027,11 @@ private fun AnnotationsList(
                                         itemView.getTag(R.id.tag_anchor_bias) as? Float ?: 0f
 
                                     // Draw trash icon with animated "pulling" effect
-                                    val trashIcon =
-                                        androidx.core.content.ContextCompat.getDrawable(
-                                            ctx,
-                                            R.drawable.ic_delete
-                                        )
-                                    if (trashIcon != null) {
-                                        trashIcon.setTint(
+                                    val trashIcon = cachedTrashIcon ?: androidx.core.content.ContextCompat.getDrawable(
+                                        ctx,
+                                        R.drawable.ic_delete
+                                    )?.mutate()?.also {
+                                        it.setTint(
                                             android.graphics.Color.argb(
                                                 (255 * 0.85f).toInt(),
                                                 255,
@@ -1052,6 +1039,9 @@ private fun AnnotationsList(
                                                 255
                                             )
                                         )
+                                        cachedTrashIcon = it
+                                    }
+                                    if (trashIcon != null) {
                                         val iconSize = (38 * density).toInt()
                                         val margin = (16 * density).toInt()
                                         val iconTop =

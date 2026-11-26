@@ -30,6 +30,30 @@ class TagFilterViewHolder private constructor(
     private var lastFilterMode: TagFilterMode? = null
     private var isFirstBind: Boolean = true
 
+    private val filterBgDrawable = GradientDrawable().apply { shape = GradientDrawable.OVAL }
+    private val filterRipple = RippleDrawable(ColorStateList.valueOf(Color.TRANSPARENT), filterBgDrawable, null)
+    private val modeBgDrawable = GradientDrawable().apply { shape = GradientDrawable.OVAL }
+    private val modeRipple = RippleDrawable(ColorStateList.valueOf(Color.TRANSPARENT), modeBgDrawable, null)
+
+    private var lastButtonPrimaryColor: Int = Int.MIN_VALUE
+    private var lastFilterBtnActive: Boolean? = null
+    private var lastModeBtnAnd: Boolean? = null
+
+    private class ChipDrawableHolder(
+        val pillDrawable: GradientDrawable,
+        val rippleDrawable: RippleDrawable,
+        var lastPrimaryColor: Int = Int.MIN_VALUE,
+        var lastSelected: Boolean? = null,
+        var lastUnselectedBg: Int = Int.MIN_VALUE,
+        var lastSelectedBg: Int = Int.MIN_VALUE,
+        var lastStrokeColor: Int = Int.MIN_VALUE,
+    )
+
+    init {
+        filterButton.background = filterRipple
+        modeButton.background = modeRipple
+    }
+
     fun bind(
         item: AnnotationFlatItem.TagFilter,
         primaryColor: Int,
@@ -68,62 +92,50 @@ class TagFilterViewHolder private constructor(
         val selectedStroke =
             if (primaryColor != Color.TRANSPARENT) primaryColor else unselectedStroke
 
+        val primaryColorChanged = lastButtonPrimaryColor != primaryColor
+        if (primaryColorChanged) {
+            lastButtonPrimaryColor = primaryColor
+            val btnRippleColor = ColorStateList.valueOf(
+                ColorUtils.setAlphaComponent(primaryColor, (255 * 0.2f).toInt())
+            )
+            filterRipple.setColor(btnRippleColor)
+            modeRipple.setColor(btnRippleColor)
+        }
+
         // 1. Style filter tags dialog button
         val hasActiveFilter = item.selectedTags.isNotEmpty()
-        val btnTint = if (hasActiveFilter) primaryColor else onSurfaceVariantColor
-        filterButton.setColorFilter(btnTint)
+        if (primaryColorChanged || lastFilterBtnActive != hasActiveFilter) {
+            lastFilterBtnActive = hasActiveFilter
+            val btnTint = if (hasActiveFilter) primaryColor else onSurfaceVariantColor
+            filterButton.setColorFilter(btnTint)
 
-        val btnBgColor = if (hasActiveFilter) {
-            ColorUtils.setAlphaComponent(primaryColor, (255 * 0.15f).toInt())
-        } else {
-            Color.TRANSPARENT
+            val btnBgColor = if (hasActiveFilter) {
+                ColorUtils.setAlphaComponent(primaryColor, (255 * 0.15f).toInt())
+            } else {
+                Color.TRANSPARENT
+            }
+            val btnStrokeColor = if (hasActiveFilter) primaryColor else unselectedStroke
+            filterBgDrawable.setColor(btnBgColor)
+            filterBgDrawable.setStroke((if (hasActiveFilter) 1.5f else 1f * density).toInt(), btnStrokeColor)
         }
-        val btnStrokeColor = if (hasActiveFilter) primaryColor else unselectedStroke
-        val bgDrawable = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(btnBgColor)
-            setStroke((if (hasActiveFilter) 1.5f else 1f * density).toInt(), btnStrokeColor)
-        }
-        val ripple = RippleDrawable(
-            ColorStateList.valueOf(
-                ColorUtils.setAlphaComponent(
-                    primaryColor,
-                    (255 * 0.2f).toInt()
-                )
-            ),
-            bgDrawable,
-            null
-        )
-        filterButton.background = ripple
         filterButton.setOnClickListener { onOpenTagDialog() }
 
         // 2. Style AND/OR mode toggle button
         val isAndMode = item.filterMode == TagFilterMode.AND
-        val modeTint = if (isAndMode) primaryColor else onSurfaceVariantColor
-        modeButton.setColorFilter(modeTint)
+        if (primaryColorChanged || lastModeBtnAnd != isAndMode) {
+            lastModeBtnAnd = isAndMode
+            val modeTint = if (isAndMode) primaryColor else onSurfaceVariantColor
+            modeButton.setColorFilter(modeTint)
 
-        val modeBgColor = if (isAndMode) {
-            ColorUtils.setAlphaComponent(primaryColor, (255 * 0.15f).toInt())
-        } else {
-            Color.TRANSPARENT
+            val modeBgColor = if (isAndMode) {
+                ColorUtils.setAlphaComponent(primaryColor, (255 * 0.15f).toInt())
+            } else {
+                Color.TRANSPARENT
+            }
+            val modeStrokeColor = if (isAndMode) primaryColor else unselectedStroke
+            modeBgDrawable.setColor(modeBgColor)
+            modeBgDrawable.setStroke((if (isAndMode) 1.5f else 1f * density).toInt(), modeStrokeColor)
         }
-        val modeStrokeColor = if (isAndMode) primaryColor else unselectedStroke
-        val modeBgDrawable = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(modeBgColor)
-            setStroke((if (isAndMode) 1.5f else 1f * density).toInt(), modeStrokeColor)
-        }
-        val modeRipple = RippleDrawable(
-            ColorStateList.valueOf(
-                ColorUtils.setAlphaComponent(
-                    primaryColor,
-                    (255 * 0.2f).toInt()
-                )
-            ),
-            modeBgDrawable,
-            null
-        )
-        modeButton.background = modeRipple
         modeButton.setOnClickListener {
             onToggleFilterMode()
             val isNextAnd = item.filterMode == TagFilterMode.OR
@@ -137,10 +149,23 @@ class TagFilterViewHolder private constructor(
             chipsContainer.removeViewAt(chipsContainer.childCount - 1)
         }
         item.allTags.forEachIndexed { i, tag ->
-            val chip: TextView = if (i < chipsContainer.childCount) {
-                chipsContainer.getChildAt(i) as TextView
+            val chip: TextView
+            val holder: ChipDrawableHolder
+            if (i < chipsContainer.childCount) {
+                chip = chipsContainer.getChildAt(i) as TextView
+                holder = chip.tag as ChipDrawableHolder
             } else {
-                TextView(ctx).apply {
+                val pillDrawable = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = 16f * density
+                }
+                val chipRipple = RippleDrawable(
+                    ColorStateList.valueOf(Color.TRANSPARENT),
+                    pillDrawable,
+                    null
+                )
+                holder = ChipDrawableHolder(pillDrawable, chipRipple)
+                chip = TextView(ctx).apply {
                     textSize = 13f
                     gravity = Gravity.CENTER
                     val hPad = (12 * density).toInt()
@@ -148,6 +173,8 @@ class TagFilterViewHolder private constructor(
                     setPadding(hPad, vPad, hPad, vPad)
                     isClickable = true
                     isFocusable = true
+                    background = chipRipple
+                    this.tag = holder
                     val lp = LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT,
                         (32 * density).toInt()
@@ -162,29 +189,33 @@ class TagFilterViewHolder private constructor(
                 chip.text = tag
             }
             val isSelected = item.selectedTags.contains(tag)
-            val bgColor = if (isSelected) selectedBg else unselectedBg
             val strokeColor = if (isSelected) selectedStroke else unselectedStroke
-            val strokeWidth = (if (isSelected) 1.5f else 1f * density).toInt()
-            val textColor = if (isSelected) selectedText else unselectedText
-
-            val pillDrawable = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = 16f * density
-                setColor(bgColor)
-                setStroke(strokeWidth, strokeColor)
-            }
-            val chipRipple = RippleDrawable(
-                ColorStateList.valueOf(
-                    ColorUtils.setAlphaComponent(
-                        primaryColor,
-                        (255 * 0.15f).toInt()
+            if (holder.lastPrimaryColor != primaryColor) {
+                holder.lastPrimaryColor = primaryColor
+                holder.rippleDrawable.setColor(
+                    ColorStateList.valueOf(
+                        ColorUtils.setAlphaComponent(primaryColor, (255 * 0.15f).toInt())
                     )
-                ),
-                pillDrawable,
-                null
-            )
-            chip.background = chipRipple
-            chip.setTextColor(textColor)
+                )
+            }
+            if (holder.lastSelected != isSelected ||
+                holder.lastUnselectedBg != unselectedBg ||
+                holder.lastSelectedBg != selectedBg ||
+                holder.lastStrokeColor != strokeColor
+            ) {
+                holder.lastSelected = isSelected
+                holder.lastUnselectedBg = unselectedBg
+                holder.lastSelectedBg = selectedBg
+                holder.lastStrokeColor = strokeColor
+
+                val bgColor = if (isSelected) selectedBg else unselectedBg
+                val strokeWidth = (if (isSelected) 1.5f else 1f * density).toInt()
+                val textColor = if (isSelected) selectedText else unselectedText
+
+                holder.pillDrawable.setColor(bgColor)
+                holder.pillDrawable.setStroke(strokeWidth, strokeColor)
+                chip.setTextColor(textColor)
+            }
             chip.setOnClickListener { onToggleTag(tag) }
         }
 

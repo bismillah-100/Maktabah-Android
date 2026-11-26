@@ -708,6 +708,22 @@ class AnnotationsViewModel : ViewModel() {
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList(),
         )
+
+    val flatItems: StateFlow<List<AnnotationFlatItem>> =
+        combine(
+            groupedAnnotations,
+            _expandedGroups,
+            availableTags,
+            _selectedTags,
+            _tagFilterMode,
+        ) { groups, expanded, tags, selected, mode ->
+            groups.toFlatItems(expanded, tags, selected, mode)
+        }.flowOn(Dispatchers.Default)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList(),
+        )
 }
 
 private fun String.parseTags(): Set<String> {

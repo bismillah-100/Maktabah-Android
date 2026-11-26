@@ -45,6 +45,8 @@ sealed class AnnotationFlatItem {
         val groupKey: String,
         val index: Int,      // 1-based, used for InsetGroupedItem
         val lastIndex: Int,
+        val formattedTags: String = "",
+        val parsedColor: Int = Color.YELLOW,
     ) : AnnotationFlatItem()
 
     data class Spacer(val groupKey: String) : AnnotationFlatItem()
@@ -87,23 +89,51 @@ class AnnotationsAdapter(
     var onSurfaceVariantColor: Int = Color.TRANSPARENT
     var surfaceColor: Int = Color.TRANSPARENT
     var onStrokeColor: Int = Color.TRANSPARENT
-    var groupingMode: AnnotationGroupingMode = AnnotationGroupingMode.BOOK
 
-    var isSelectionMode: Boolean = false
+    private var groupingModeField: AnnotationGroupingMode = AnnotationGroupingMode.BOOK
+    var groupingMode: AnnotationGroupingMode
+        get() = groupingModeField
         set(value) {
-            if (field != value) {
-                field = value
-                if (itemCount > 0) notifyItemRangeChanged(0, itemCount)
-            }
+            updateDisplayState(groupingMode = value)
         }
 
-    var selectedAnnotationIds: Set<Long> = emptySet()
+    private var isSelectionModeField: Boolean = false
+    var isSelectionMode: Boolean
+        get() = isSelectionModeField
         set(value) {
-            if (field != value) {
-                field = value
-                if (itemCount > 0) notifyItemRangeChanged(0, itemCount)
-            }
+            updateDisplayState(isSelectionMode = value)
         }
+
+    private var selectedAnnotationIdsField: Set<Long> = emptySet()
+    var selectedAnnotationIds: Set<Long>
+        get() = selectedAnnotationIdsField
+        set(value) {
+            updateDisplayState(selectedAnnotationIds = value)
+        }
+
+    fun updateDisplayState(
+        groupingMode: AnnotationGroupingMode = this.groupingMode,
+        isSelectionMode: Boolean = this.isSelectionMode,
+        selectedAnnotationIds: Set<Long> = this.selectedAnnotationIds,
+    ) {
+        val groupingChanged = this.groupingModeField != groupingMode
+        val selectionModeChanged = this.isSelectionModeField != isSelectionMode
+        val selectedChanged = this.selectedAnnotationIdsField != selectedAnnotationIds
+        if (!groupingChanged && !selectionModeChanged && !selectedChanged) return
+
+        this.groupingModeField = groupingMode
+        this.isSelectionModeField = isSelectionMode
+        this.selectedAnnotationIdsField = selectedAnnotationIds
+
+        if (itemCount > 0) {
+            val payload = if (!groupingChanged && !selectionModeChanged) {
+                PAYLOAD_SELECTION_STATE
+            } else {
+                PAYLOAD_DISPLAY_STATE
+            }
+            notifyItemRangeChanged(0, itemCount, payload)
+        }
+    }
 
     companion object {
         private const val TYPE_TAG_FILTER = 3
@@ -111,6 +141,8 @@ class AnnotationsAdapter(
         private const val TYPE_ITEM = 1
         private const val TYPE_SPACER = 2
         private const val TYPE_EMPTY = 4
+        private const val PAYLOAD_SELECTION_STATE = "payload_selection_state"
+        private const val PAYLOAD_DISPLAY_STATE = "payload_display_state"
     }
 
     override fun getItemViewType(position: Int) = when (getItem(position)) {
@@ -148,7 +180,14 @@ class AnnotationsAdapter(
                 val holder = recyclerView.getChildViewHolder(child)
                 val position = holder.bindingAdapterPosition
                 if (position == RecyclerView.NO_POSITION || position >= itemCount) continue
-                applyDecorationState(child, getItem(position))
+                val item = getItem(position)
+                applyDecorationState(child, item)
+                when (holder) {
+                    is HeaderViewHolder if item is AnnotationFlatItem.Header ->
+                        holder.updateDivider(isLast = item.isLast, animate = true)
+                    is ItemViewHolder if item is AnnotationFlatItem.Item ->
+                        holder.updateDivider(isLast = item.index == item.lastIndex, animate = true)
+                }
             }
             recyclerView.invalidateItemDecorations()
             recyclerView.invalidate()
@@ -243,14 +282,47 @@ class AnnotationsAdapter(
         }
     }
 
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int, payloads: MutableList<Any>) {
+        if (payloads.isEmpty()) {
+            super.onBindViewHolder(holder, position, payloads)
+            return
+        }
+        val item = getItem(position)
+        when {
+            payloads.contains(PAYLOAD_DISPLAY_STATE) -> {
+                when (holder) {
+                    is HeaderViewHolder if item is AnnotationFlatItem.Header -> holder.updateSelectionOrMode(item)
+                    is ItemViewHolder if item is AnnotationFlatItem.Item -> holder.updateSelectionState(
+                        item = item,
+                        onAnnotationClick = onAnnotationClick,
+                        onAnnotationLongClick = onAnnotationLongClick,
+                    )
+                }
+            }
+            payloads.contains(PAYLOAD_SELECTION_STATE) -> {
+                when (holder) {
+                    is HeaderViewHolder if item is AnnotationFlatItem.Header -> holder.updateSelectionOrMode(item)
+                    is ItemViewHolder if item is AnnotationFlatItem.Item -> holder.updateSelectionState(
+                        item = item,
+                        onAnnotationClick = onAnnotationClick,
+                        onAnnotationLongClick = onAnnotationLongClick,
+                    )
+                }
+            }
+            else -> super.onBindViewHolder(holder, position, payloads)
+        }
+    }
+
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+        val item = getItem(position)
+
         // Tag child items for expand/collapse animation (same pattern as LibraryAdapter)
         val clickedKey = lastClickedGroupKey
         val clickedParent = lastClickedHeader
         if (clickedKey != null && clickedParent != null) {
-            val isChildOfClicked = when (val flatItem = getItem(position)) {
-                is AnnotationFlatItem.Item -> flatItem.groupKey == clickedKey
-                is AnnotationFlatItem.Spacer -> flatItem.groupKey == clickedKey
+            val isChildOfClicked = when (item) {
+                is AnnotationFlatItem.Item -> item.groupKey == clickedKey
+                is AnnotationFlatItem.Spacer -> item.groupKey == clickedKey
                 else -> false
             }
             holder.itemView.tag = if (isChildOfClicked) clickedParent else null
@@ -258,14 +330,13 @@ class AnnotationsAdapter(
             holder.itemView.tag = null
         }
 
-        val item = getItem(position)
         applyDecorationState(holder.itemView, item)
 
         when (holder) {
             is TagFilterViewHolder -> {
-                val item = getItem(position) as AnnotationFlatItem.TagFilter
+                val tagFilter = item as AnnotationFlatItem.TagFilter
                 holder.bind(
-                    item = item,
+                    item = tagFilter,
                     primaryColor = primaryColor,
                     surfaceColor = surfaceColor,
                     onSurfaceColor = onSurfaceColor,
@@ -277,13 +348,13 @@ class AnnotationsAdapter(
                 )
             }
             is HeaderViewHolder -> {
-                val item = getItem(position) as AnnotationFlatItem.Header
+                val headerItem = item as AnnotationFlatItem.Header
                 holder.bind(
-                    item = item,
+                    item = headerItem,
                     onToggle = {
                         val currentPos = holder.bindingAdapterPosition
                         if (currentPos == RecyclerView.NO_POSITION) return@bind
-                        val isExpanded = (getItem(currentPos) as? AnnotationFlatItem.Header)?.isExpanded ?: item.isExpanded
+                        val isExpanded = (getItem(currentPos) as? AnnotationFlatItem.Header)?.isExpanded ?: headerItem.isExpanded
                         val animator = recyclerView.itemAnimator as? com.maktabah.ui.library.TreeItemAnimator
                         if (isExpanded) {
                             // collapsing — tag children so they animate toward header
@@ -298,18 +369,17 @@ class AnnotationsAdapter(
                         } else {
                             // expanding — store parent so newly bound children get the tag
                             lastClickedHeader = java.lang.ref.WeakReference(holder.itemView)
-                            lastClickedGroupKey = item.group.key
+                            lastClickedGroupKey = headerItem.group.key
                             recyclerView.removeCallbacks(clearParentRunnable)
                             recyclerView.postDelayed(clearParentRunnable, 350)
                         }
-                        onToggleGroup(item.group.key)
+                        onToggleGroup(headerItem.group.key)
                     }
                 )
             }
             is ItemViewHolder -> {
-                val item = getItem(position) as AnnotationFlatItem.Item
                 holder.bind(
-                    item = item,
+                    item = item as AnnotationFlatItem.Item,
                     onAnnotationClick = onAnnotationClick,
                     onAnnotationLongClick = onAnnotationLongClick,
                 )
@@ -346,16 +416,35 @@ class AnnotationsAdapter(
             divider.animate().cancel()
         }
 
-        fun bind(item: AnnotationFlatItem.Header, onToggle: () -> Unit) {
-            nameText.text = item.group.title
+        fun updateDivider(isLast: Boolean, animate: Boolean) {
+            if (isLast) {
+                divider.animate().cancel()
+                divider.visibility = View.INVISIBLE
+            } else if (animate && divider.isInvisible) {
+                divider.alpha = 0f
+                divider.visibility = View.VISIBLE
+                divider.animate().alpha(0.35f).setDuration(250).start()
+            } else {
+                divider.animate().cancel()
+                divider.visibility = View.VISIBLE
+                divider.alpha = 0.35f
+            }
+        }
 
-            arrowIcon.setColorFilter(secondaryColor)
-
+        fun updateSelectionOrMode(item: AnnotationFlatItem.Header) {
             if (isSelectionMode) {
-                val groupAnnIds = item.group.annotations.mapNotNull { it.id }
-                val selectedCount = groupAnnIds.count { selectedAnnotationIds.contains(it) }
-                val allSelected = groupAnnIds.isNotEmpty() && selectedCount == groupAnnIds.size
-                val mixedSelected = groupAnnIds.isNotEmpty() && selectedCount > 0 && selectedCount < groupAnnIds.size
+                val annotations = item.group.annotations
+                var totalWithId = 0
+                var selectedCount = 0
+                for (i in 0 until annotations.size) {
+                    val id = annotations[i].id ?: continue
+                    totalWithId++
+                    if (selectedAnnotationIds.contains(id)) {
+                        selectedCount++
+                    }
+                }
+                val allSelected = totalWithId > 0 && selectedCount == totalWithId
+                val mixedSelected = totalWithId > 0 && selectedCount > 0 && selectedCount < totalWithId
 
                 if (allSelected) {
                     typeIcon.setImageResource(R.drawable.ic_check_circle)
@@ -380,6 +469,13 @@ class AnnotationsAdapter(
                     typeIcon.setImageResource(R.drawable.ic_import_contacts)
                 }
             }
+        }
+
+        fun bind(item: AnnotationFlatItem.Header, onToggle: () -> Unit) {
+            nameText.text = item.group.title
+
+            arrowIcon.setColorFilter(secondaryColor)
+            updateSelectionOrMode(item)
 
             // Only set rotation if not currently performing a rotation animation
             val isRotating = arrowIcon.getTag(R.id.tag_animating_rotation) != null
@@ -387,20 +483,7 @@ class AnnotationsAdapter(
                 arrowIcon.rotation = if (item.isExpanded) 0f else 90f
             }
 
-            if (item.isLast) {
-                divider.animate().cancel()
-                divider.visibility = View.INVISIBLE
-            } else {
-                if (divider.isInvisible) {
-                    divider.alpha = 0f
-                    divider.visibility = View.VISIBLE
-                    divider.animate().alpha(0.35f).setDuration(250).start()
-                } else {
-                    divider.animate().cancel()
-                    divider.visibility = View.VISIBLE
-                    divider.alpha = 0.35f
-                }
-            }
+            updateDivider(isLast = item.isLast, animate = false)
 
             // Clear inner background for decoration
             itemContainer.background = null
@@ -454,14 +537,69 @@ class AnnotationsAdapter(
             divider.animate().cancel()
         }
 
+        fun updateDivider(isLast: Boolean, animate: Boolean) {
+            if (isLast) {
+                divider.animate().cancel()
+                divider.visibility = View.INVISIBLE
+            } else if (animate && divider.isInvisible) {
+                divider.alpha = 0f
+                divider.visibility = View.VISIBLE
+                divider.animate().alpha(0.35f).setDuration(250).start()
+            } else {
+                divider.animate().cancel()
+                divider.visibility = View.VISIBLE
+                divider.alpha = 0.35f
+            }
+        }
+
+        fun updateSelectionState(
+            item: AnnotationFlatItem.Item,
+            onAnnotationClick: (Int, Int?, Int?, Int?, String?) -> Unit,
+            onAnnotationLongClick: ((Annotation, View) -> Unit)?,
+        ) {
+            val ann = item.ann
+            if (isSelectionMode) {
+                selectIcon?.visibility = View.VISIBLE
+                val isSelected = ann.id != null && selectedAnnotationIds.contains(ann.id)
+                if (isSelected) {
+                    selectIcon?.setImageResource(R.drawable.ic_check_circle)
+                    selectIcon?.setColorFilter(primaryColor)
+                } else {
+                    selectIcon?.setImageResource(R.drawable.ic_circle)
+                    selectIcon?.setColorFilter(onSurfaceVariantColor)
+                }
+                itemView.setOnClickListener {
+                    if (ann.id != null) {
+                        onToggleAnnotationSelection(ann.id)
+                    }
+                }
+                itemView.setOnLongClickListener(null)
+            } else {
+                selectIcon?.visibility = View.GONE
+                itemView.setOnClickListener {
+                    onAnnotationClick(
+                        ann.bkId,
+                        ann.contentId,
+                        ann.rangeLocation,
+                        ann.rangeLength,
+                        null
+                    )
+                }
+
+                itemView.setOnLongClickListener {
+                    onAnnotationLongClick?.invoke(ann, it)
+                    true
+                }
+            }
+        }
+
         fun bind(
             item: AnnotationFlatItem.Item,
             onAnnotationClick: (Int, Int?, Int?, Int?, String?) -> Unit,
             onAnnotationLongClick: ((Annotation, View) -> Unit)?,
         ) {
             val ann = item.ann
-            val hexStr = if (ann.colorHex.startsWith("#")) ann.colorHex else "#${ann.colorHex}"
-            val parsedColor = try { hexStr.toColorInt() } catch (_: Exception) { Color.YELLOW }
+            val parsedColor = item.parsedColor
 
             val ssb = SpannableStringBuilder(ann.context)
 
@@ -494,9 +632,9 @@ class AnnotationsAdapter(
             pageText.text = rawPageText.convertToArabicDigits()
             pageText.setTextColor(onSurfaceVariantColor)
 
-            if (ann.tags.isNotEmpty()) {
+            if (item.formattedTags.isNotEmpty()) {
                 tagsText.visibility = View.VISIBLE
-                tagsText.text = ann.tags.replace("،", ",").split(",").mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }.joinToString(" -- ")
+                tagsText.text = item.formattedTags
                 tagsText.setTextColor(onSurfaceVariantColor)
             } else {
                 tagsText.visibility = View.GONE
@@ -506,53 +644,13 @@ class AnnotationsAdapter(
             itemContainer.isClickable = false
             itemContainer.isFocusable = false
 
-            if (isSelectionMode) {
-                selectIcon?.visibility = View.VISIBLE
-                val isSelected = ann.id != null && selectedAnnotationIds.contains(ann.id)
-                if (isSelected) {
-                    selectIcon?.setImageResource(R.drawable.ic_check_circle)
-                    selectIcon?.setColorFilter(primaryColor)
-                } else {
-                    selectIcon?.setImageResource(R.drawable.ic_circle)
-                    selectIcon?.setColorFilter(onSurfaceVariantColor)
-                }
-                itemView.setOnClickListener {
-                    if (ann.id != null) {
-                        onToggleAnnotationSelection(ann.id)
-                    }
-                }
-            } else {
-                selectIcon?.visibility = View.GONE
-                itemView.setOnClickListener {
-                    onAnnotationClick(
-                        ann.bkId,
-                        ann.contentId,
-                        ann.rangeLocation,
-                        ann.rangeLength,
-                        null
-                    )
-                }
+            updateSelectionState(
+                item = item,
+                onAnnotationClick = onAnnotationClick,
+                onAnnotationLongClick = onAnnotationLongClick,
+            )
 
-                itemView.setOnLongClickListener {
-                    onAnnotationLongClick?.invoke(ann, it)
-                    true
-                }
-            }
-
-            if (item.index == item.lastIndex) {
-                divider.animate().cancel()
-                divider.visibility = View.INVISIBLE
-            } else {
-                if (divider.isInvisible) {
-                    divider.alpha = 0f
-                    divider.visibility = View.VISIBLE
-                    divider.animate().alpha(0.35f).setDuration(250).start()
-                } else {
-                    divider.animate().cancel()
-                    divider.visibility = View.VISIBLE
-                    divider.alpha = 0.35f
-                }
-            }
+            updateDivider(isLast = item.index == item.lastIndex, animate = false)
         }
     }
 
@@ -626,11 +724,24 @@ fun List<AnnotationGroup>.toFlatItems(
 
         if (isExpanded) {
             annList.forEachIndexed { annIndex, ann ->
+                val formattedTags = if (ann.tags.isNotEmpty()) {
+                    ann.tags.replace("،", ",")
+                        .split(",")
+                        .mapNotNull { it.trim().takeIf { s -> s.isNotEmpty() } }
+                        .joinToString(" -- ")
+                } else {
+                    ""
+                }
+                val hexStr = if (ann.colorHex.startsWith("#")) ann.colorHex else "#${ann.colorHex}"
+                val parsedColor = try { hexStr.toColorInt() } catch (_: Exception) { Color.YELLOW }
+
                 result += AnnotationFlatItem.Item(
                     ann = ann,
                     groupKey = group.key,
                     index = annIndex + 1,
                     lastIndex = groupLastIndex,
+                    formattedTags = formattedTags,
+                    parsedColor = parsedColor,
                 )
             }
         }
