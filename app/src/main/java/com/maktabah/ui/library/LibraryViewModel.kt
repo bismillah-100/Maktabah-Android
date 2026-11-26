@@ -339,6 +339,7 @@ class LibraryViewModel(
                 val roots =
                     if (viewModeVal == LibraryViewMode.AUTHOR) _authorCategories.value else _rootCategories.value
                 val cleanQuery = query.normalizeArabic()
+                val normalizedNames = dataManager.normalizedNamesById
 
                 withContext(Dispatchers.Default) {
                     fun findMatching(cats: List<Any>): Boolean {
@@ -346,9 +347,7 @@ class LibraryViewModel(
                         var matches = false
                         for (c in cats) {
                             if (c is BooksData) {
-                                if (cleanQuery.isEmpty() || c.name.normalizeArabic()
-                                        .contains(cleanQuery, ignoreCase = true)
-                                ) {
+                                if (dataManager.bookContainsNormalizedQuery(c, cleanQuery, normalizedNames)) {
                                     matches = true
                                 }
                             } else if (c is CategoryData) {
@@ -521,9 +520,9 @@ class LibraryViewModel(
 
     private fun filterAuthorHierarchy(
         categories: List<CategoryData>,
-        query: String
+        cleanQuery: String,
+        normalizedNames: Map<Int, String>,
     ): List<CategoryData> {
-        val cleanQuery = query.normalizeArabic()
         if (cleanQuery.isEmpty()) return categories
 
         val matchedAuthors = mutableListOf<CategoryData>()
@@ -541,7 +540,7 @@ class LibraryViewModel(
         for (category in categories) {
             val matchingBooks = category.children.filter { child ->
                 if (child is BooksData) {
-                    child.name.normalizeArabic().contains(cleanQuery, ignoreCase = true)
+                    dataManager.bookContainsNormalizedQuery(child, cleanQuery, normalizedNames)
                 } else false
             }
 
@@ -556,13 +555,14 @@ class LibraryViewModel(
 
     private fun filterAuthorRoots(
         roots: List<CategoryData>,
-        query: String,
+        cleanQuery: String,
+        normalizedNames: Map<Int, String>,
         showOnlyDownloaded: Boolean,
         downloadedIds: Set<Int>
     ): List<CategoryData> {
         var filtered = roots
-        if (query.isNotEmpty()) {
-            filtered = filterAuthorHierarchy(filtered, query)
+        if (cleanQuery.isNotEmpty()) {
+            filtered = filterAuthorHierarchy(filtered, cleanQuery, normalizedNames)
         }
         if (showOnlyDownloaded) {
             filtered = filtered.mapNotNull { cat ->
@@ -577,26 +577,22 @@ class LibraryViewModel(
         return filtered
     }
 
-    private class LibraryTreeFlattener(
+    private inner class LibraryTreeFlattener(
         val expanded: Set<Int>,
         val viewModeVal: LibraryViewMode,
         val query: String,
         val cleanQuery: String,
+        val normalizedNames: Map<Int, String>,
         val showOnlyDownloaded: Boolean,
         val downloadedIds: Set<Int>,
         val categoryLimits: Map<Int, Int>
     ) {
         val result = mutableListOf<FlatLibraryItem>()
 
-        private fun matchesText(text: String, cleanQuery: String): Boolean {
-            if (cleanQuery.isEmpty()) return true
-            return text.normalizeArabic().contains(cleanQuery, ignoreCase = true)
-        }
-
         fun hasMatchingBooks(cats: List<Any>): Boolean {
             for (c in cats) {
                 if (c is BooksData) {
-                    val matchesQuery = matchesText(c.name, cleanQuery)
+                    val matchesQuery = dataManager.bookContainsNormalizedQuery(c, cleanQuery, normalizedNames)
                     val matchesDownloaded = !showOnlyDownloaded || downloadedIds.contains(c.id)
                     if (matchesQuery && matchesDownloaded) return true
                 } else if (c is CategoryData) {
@@ -626,7 +622,7 @@ class LibraryViewModel(
                     val matchesQuery = if (viewModeVal == LibraryViewMode.AUTHOR) {
                         true
                     } else {
-                        matchesText(item.name, cleanQuery)
+                        dataManager.bookContainsNormalizedQuery(item, cleanQuery, normalizedNames)
                     }
                     val matchesDownloaded =
                         !showOnlyDownloaded || downloadedIds.contains(item.id)
@@ -692,12 +688,13 @@ class LibraryViewModel(
                 if (viewModeVal == LibraryViewMode.AUTHOR) _authorCategories.value else _rootCategories.value
             val query = _searchQuery.value
             val cleanQuery = query.normalizeArabic()
+            val normalizedNames = dataManager.normalizedNamesById
             val showOnlyDownloaded = _showOnlyDownloaded.value
             val downloadedIds = _downloadedBookIds.value
             val categoryLimits = _categoryLimits.value
 
             if (viewModeVal == LibraryViewMode.AUTHOR) {
-                roots = filterAuthorRoots(roots, query, showOnlyDownloaded, downloadedIds)
+                roots = filterAuthorRoots(roots, cleanQuery, normalizedNames, showOnlyDownloaded, downloadedIds)
             }
 
             val flattener = LibraryTreeFlattener(
@@ -705,6 +702,7 @@ class LibraryViewModel(
                 viewModeVal = viewModeVal,
                 query = query,
                 cleanQuery = cleanQuery,
+                normalizedNames = normalizedNames,
                 showOnlyDownloaded = showOnlyDownloaded,
                 downloadedIds = downloadedIds,
                 categoryLimits = categoryLimits

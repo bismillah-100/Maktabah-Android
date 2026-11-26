@@ -1,6 +1,8 @@
 package com.maktabah.ui.history
 
 import android.app.Application
+import android.content.Context
+import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.maktabah.database.HistoryDatabaseManager
@@ -8,6 +10,7 @@ import com.maktabah.manager.LibraryDataManager
 import com.maktabah.models.ReadingEntry
 import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -17,6 +20,9 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
@@ -46,18 +52,59 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
+    private val _historyExpanded = MutableStateFlow(true)
+    val historyExpanded: StateFlow<Boolean> = _historyExpanded.asStateFlow()
+
+    private val _favoritesExpanded = MutableStateFlow(true)
+    val favoritesExpanded: StateFlow<Boolean> = _favoritesExpanded.asStateFlow()
+
+    private val favoriteOrderFlow: Flow<List<Int>> = _entriesByBookId
+        .map { entries ->
+            entries.values
+                .asSequence()
+                .filter { it.isFavorite }
+                .sortedByDescending { it.favoritedAt ?: 0L }
+                .map { it.bookId }
+                .toList()
+        }
+        .distinctUntilChanged()
+
     private var filteredHistoryFlow: StateFlow<List<Int>>? = null
     private var filteredFavoritesFlow: StateFlow<List<Int>>? = null
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
+            val historyPrefs = app.getSharedPreferences("HistoryPrefs", Context.MODE_PRIVATE)
+            _historyExpanded.value = historyPrefs.getBoolean("historyExpanded", true)
+            _favoritesExpanded.value = historyPrefs.getBoolean("favoritesExpanded", true)
+
             // Migrasi one-shot dari JSON lama ke SQLite
             val jsonFile = File(app.filesDir, "user_data.json")
-            val prefs = app.getSharedPreferences("history_db_prefs", android.content.Context.MODE_PRIVATE)
+            val prefs = app.getSharedPreferences("history_db_prefs", Context.MODE_PRIVATE)
             dbManager.migrateFromJsonIfNeeded(jsonFile, prefs)
 
             // Load dari SQLite
             loadFromDatabase()
+        }
+    }
+
+    fun toggleHistoryExpanded() {
+        val next = !_historyExpanded.value
+        _historyExpanded.value = next
+        viewModelScope.launch(Dispatchers.IO) {
+            getApplication<Application>()
+                .getSharedPreferences("HistoryPrefs", Context.MODE_PRIVATE)
+                .edit { putBoolean("historyExpanded", next) }
+        }
+    }
+
+    fun toggleFavoritesExpanded() {
+        val next = !_favoritesExpanded.value
+        _favoritesExpanded.value = next
+        viewModelScope.launch(Dispatchers.IO) {
+            getApplication<Application>()
+                .getSharedPreferences("HistoryPrefs", Context.MODE_PRIVATE)
+                .edit { putBoolean("favoritesExpanded", next) }
         }
     }
 
@@ -90,10 +137,11 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
         ) { order, query, _ ->
             val cleanQuery = query.normalizeArabic()
             if (cleanQuery.isBlank()) order
-            else order.filter { dataManager.bookContainsQuery(it, cleanQuery) }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), _historyOrder.value).also {
-            filteredHistoryFlow = it
+            else order.filter { dataManager.bookContainsNormalizedQuery(it, cleanQuery) }
         }
+            .flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.Lazily, _historyOrder.value)
+            .also { filteredHistoryFlow = it }
     }
 
     @OptIn(kotlinx.coroutines.FlowPreview::class)
@@ -102,58 +150,89 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
         catalogRevision: StateFlow<Long>? = null,
     ): StateFlow<List<Int>> {
         return filteredFavoritesFlow ?: combine(
-            _entriesByBookId,
+            favoriteOrderFlow,
             _searchQuery.debounce { query -> if (query.isEmpty()) 0L else 500L },
             catalogRevision ?: MutableStateFlow(0L),
-        ) { entries, query, _ ->
+        ) { favorites, query, _ ->
             val cleanQuery = query.normalizeArabic()
-            val favorites = entries.values
-                .filter { it.isFavorite }
-                .sortedByDescending { it.favoritedAt ?: 0L }
-                .map { it.bookId }
             if (cleanQuery.isBlank()) favorites
-            else favorites.filter { dataManager.bookContainsQuery(it, cleanQuery) }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), getFavoriteBookIds()).also {
-            filteredFavoritesFlow = it
+            else favorites.filter { dataManager.bookContainsNormalizedQuery(it, cleanQuery) }
         }
+            .flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.Lazily, getFavoriteBookIds())
+            .also { filteredFavoritesFlow = it }
     }
 
     fun addBookToHistory(bookId: Int): List<ReadingEntry> {
+        return recordBookOpen(bookId = bookId, contentId = null)
+    }
+
+    fun updateLastContentId(contentId: Int, bookId: Int) {
+        val entries = _entriesByBookId.value.toMutableMap()
+        val entry = entries[bookId]
+        if (entry != null) {
+            val now = System.currentTimeMillis()
+            val newEntry = entry.copy(
+                lastContentId = contentId,
+                positionUpdatedAt = now,
+                updatedAt = now
+            )
+            entries[bookId] = newEntry
+            _entriesByBookId.value = entries
+            viewModelScope.launch(Dispatchers.IO) { dbManager.upsertEntry(newEntry) }
+        } else {
+            recordBookOpen(bookId = bookId, contentId = contentId)
+        }
+    }
+
+    private fun recordBookOpen(bookId: Int, contentId: Int?): List<ReadingEntry> {
+        val now = System.currentTimeMillis()
         val entries = _entriesByBookId.value.toMutableMap()
         val entry = entries[bookId] ?: ReadingEntry(
             bookId = bookId,
             ckRecordId = bookId.toString()
         )
-        val newEntry = entry.copy(
-            lastOpenedAt = System.currentTimeMillis(),
-            updatedAt = System.currentTimeMillis()
-        )
+        val newEntry = if (contentId != null) {
+            entry.copy(
+                lastContentId = contentId,
+                lastOpenedAt = now,
+                positionUpdatedAt = now,
+                updatedAt = now
+            )
+        } else {
+            entry.copy(
+                lastOpenedAt = now,
+                updatedAt = now
+            )
+        }
         entries[bookId] = newEntry
 
-        val affectedEntries = mutableListOf<ReadingEntry>()
-        affectedEntries.add(newEntry)
+        val affectedEntries = mutableListOf(newEntry)
+        val upserted = mutableListOf(newEntry)
+        val deletedIds = mutableListOf<Int>()
 
         val order = _historyOrder.value.toMutableList()
         order.remove(bookId)
         order.add(0, bookId)
 
         if (order.size > maxHistoryCount) {
-            val toRemove = order.subList(maxHistoryCount, order.size).toList()
-            order.removeAll(toRemove)
+            val overflow = order.subList(maxHistoryCount, order.size)
+            val toRemove = overflow.toList()
+            overflow.clear()
             toRemove.forEach { idToRemove ->
                 val oldEntry = entries[idToRemove]
                 if (oldEntry != null) {
                     val updatedOldEntry = oldEntry.copy(
                         lastOpenedAt = null,
                         lastContentId = null,
-                        updatedAt = System.currentTimeMillis()
+                        updatedAt = now
                     )
                     if (!updatedOldEntry.isFavorite) {
                         entries.remove(idToRemove)
-                        viewModelScope.launch(Dispatchers.IO) { dbManager.deleteEntry(idToRemove) }
+                        deletedIds.add(idToRemove)
                     } else {
                         entries[idToRemove] = updatedOldEntry
-                        viewModelScope.launch(Dispatchers.IO) { dbManager.upsertEntry(updatedOldEntry) }
+                        upserted.add(updatedOldEntry)
                     }
                     affectedEntries.add(updatedOldEntry)
                 }
@@ -164,29 +243,14 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
         _historyOrder.value = order
 
         viewModelScope.launch(Dispatchers.IO) {
-            dbManager.upsertEntry(newEntry)
-            dbManager.saveHistoryOrder(order)
+            dbManager.saveHistoryBatch(
+                upsertEntries = upserted,
+                deleteBookIds = deletedIds,
+                newOrder = order,
+            )
         }
 
         return affectedEntries
-    }
-
-    fun updateLastContentId(contentId: Int, bookId: Int) {
-        val entries = _entriesByBookId.value.toMutableMap()
-        val entry = entries[bookId]
-        if (entry != null) {
-            val newEntry = entry.copy(
-                lastContentId = contentId,
-                positionUpdatedAt = System.currentTimeMillis(),
-                updatedAt = System.currentTimeMillis()
-            )
-            entries[bookId] = newEntry
-            _entriesByBookId.value = entries
-            viewModelScope.launch(Dispatchers.IO) { dbManager.upsertEntry(newEntry) }
-        } else {
-            addBookToHistory(bookId)
-            updateLastContentId(contentId, bookId)
-        }
     }
 
     fun toggleFavorite(bookId: Int): ReadingEntry? {
@@ -224,14 +288,20 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
         if (!newEntry.isFavorite) {
             entries.remove(bookId)
             viewModelScope.launch(Dispatchers.IO) {
-                dbManager.deleteEntry(bookId)
-                dbManager.saveHistoryOrder(order)
+                dbManager.saveHistoryBatch(
+                    upsertEntries = emptyList(),
+                    deleteBookIds = listOf(bookId),
+                    newOrder = order,
+                )
             }
         } else {
             entries[bookId] = newEntry
             viewModelScope.launch(Dispatchers.IO) {
-                dbManager.upsertEntry(newEntry)
-                dbManager.saveHistoryOrder(order)
+                dbManager.saveHistoryBatch(
+                    upsertEntries = listOf(newEntry),
+                    deleteBookIds = emptyList(),
+                    newOrder = order,
+                )
             }
         }
         _entriesByBookId.value = entries

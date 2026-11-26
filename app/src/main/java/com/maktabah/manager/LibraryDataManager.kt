@@ -15,6 +15,7 @@ class LibraryDataManager(
         val allRootCategories: List<CategoryData> = emptyList(),
         val categoryMap: Map<Int, CategoryData> = emptyMap(),
         val booksById: Map<Int, BooksData> = emptyMap(),
+        val normalizedNamesById: Map<Int, String> = emptyMap(),
     )
 
     @Volatile
@@ -29,6 +30,9 @@ class LibraryDataManager(
     val booksById: Map<Int, BooksData>
         get() = snapshot.booksById
 
+    val normalizedNamesById: Map<Int, String>
+        get() = snapshot.normalizedNamesById
+
     private val shortsCache = mutableMapOf<String, ShortsMapping>()
 
     fun loadData() {
@@ -40,6 +44,7 @@ class LibraryDataManager(
         val categories = mutableListOf<CategoryData>()
         val catMap = mutableMapOf<Int, CategoryData>()
         val booksMap = mutableMapOf<Int, BooksData>()
+        val normalizedNamesMap = mutableMapOf<Int, String>()
         val authorsMap = mutableMapOf<Int, Pair<String, String>>()
         val rootCats = mutableListOf<CategoryData>()
 
@@ -133,6 +138,7 @@ class LibraryDataManager(
                     }
 
                     booksMap[book.id] = book
+                    normalizedNamesMap[book.id] = book.name.normalizeArabic()
                     catMap[book.categoryId]?.children?.add(book)
                 }
             }
@@ -142,6 +148,7 @@ class LibraryDataManager(
             allRootCategories = rootCats.toList(),
             categoryMap = catMap.toMap(),
             booksById = booksMap.toMap(),
+            normalizedNamesById = normalizedNamesMap.toMap(),
         )
     }
 
@@ -234,11 +241,33 @@ class LibraryDataManager(
         return authorCategories
     }
 
-	// Fungsi pembantu untuk cek apakah nama buku mengandung query
-	fun bookContainsQuery(bookId: Int, query: String): Boolean {
-		val bookName = booksById[bookId]?.name ?: return false
-		return bookName.normalizeArabic().contains(query.normalizeArabic(), ignoreCase = true)
-	}
+    fun bookContainsNormalizedQuery(
+        bookId: Int,
+        normalizedQuery: String,
+        normalizedNames: Map<Int, String> = this.normalizedNamesById,
+        books: Map<Int, BooksData> = this.booksById,
+    ): Boolean {
+        if (normalizedQuery.isEmpty()) return true
+        val normalizedName = normalizedNames[bookId]
+            ?: books[bookId]?.name?.normalizeArabic()
+            ?: return false
+        return normalizedName.contains(normalizedQuery, ignoreCase = true)
+    }
+
+    fun bookContainsNormalizedQuery(
+        book: BooksData,
+        normalizedQuery: String,
+        normalizedNames: Map<Int, String> = this.normalizedNamesById,
+    ): Boolean {
+        if (normalizedQuery.isEmpty()) return true
+        val normalizedName = normalizedNames[book.id] ?: book.name.normalizeArabic()
+        return normalizedName.contains(normalizedQuery, ignoreCase = true)
+    }
+
+    // Fungsi pembantu untuk cek apakah nama buku mengandung query
+    fun bookContainsQuery(bookId: Int, query: String): Boolean {
+        return bookContainsNormalizedQuery(bookId, query.normalizeArabic())
+    }
 
     fun getBookNames(ids: List<Int>): Map<Int, String> {
         if (!mainDbFile.exists() || ids.isEmpty()) {

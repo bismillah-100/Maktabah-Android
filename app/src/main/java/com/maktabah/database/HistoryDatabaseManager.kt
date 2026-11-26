@@ -285,15 +285,14 @@ class HistoryDatabaseManager(private val dbFile: File) {
 
     // region Batch (untuk applyCloudKitChanges)
 
-    fun applyCloudKitBatch(
+    fun saveHistoryBatch(
         upsertEntries: List<ReadingEntry>,
         deleteBookIds: List<Int>,
-        newOrder: List<Int>
+        newOrder: List<Int>? = null,
     ) {
-        if (upsertEntries.isEmpty() && deleteBookIds.isEmpty() && newOrder.isEmpty()) return
+        if (upsertEntries.isEmpty() && deleteBookIds.isEmpty() && newOrder == null) return
         openRW().use { db ->
-            db.prepare("BEGIN TRANSACTION;")?.use { it.step() }
-            try {
+            db.inTransaction {
                 deleteBookIds.chunked(900).forEach { chunk ->
                     val placeholders = chunk.joinToString(",") { "?" }
                     db.prepare("DELETE FROM reading_entries WHERE book_id IN ($placeholders);")?.use { stmt ->
@@ -303,39 +302,47 @@ class HistoryDatabaseManager(private val dbFile: File) {
                         stmt.step()
                     }
                 }
-                db.prepare(
-                    """INSERT OR REPLACE INTO reading_entries
-                       (book_id, last_content_id, last_opened_at, favorited_at,
-                        position_updated_at, updated_at, is_favorite, ck_record_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?);"""
-                )?.use { stmt ->
-                    for (entry in upsertEntries) {
-                        stmt.bindInt(1, entry.bookId)
-                        if (entry.lastContentId != null) stmt.bindInt(2, entry.lastContentId)
+                if (upsertEntries.isNotEmpty()) {
+                    db.prepare(
+                        """INSERT OR REPLACE INTO reading_entries
+                           (book_id, last_content_id, last_opened_at, favorited_at,
+                            position_updated_at, updated_at, is_favorite, ck_record_id)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?);"""
+                    )?.use { stmt ->
+                        for (entry in upsertEntries) {
+                            stmt.bindInt(1, entry.bookId)
+                            if (entry.lastContentId != null) stmt.bindInt(2, entry.lastContentId)
                             else stmt.bindNull(2)
-                        if (entry.lastOpenedAt != null) stmt.bindLong(3, entry.lastOpenedAt)
+                            if (entry.lastOpenedAt != null) stmt.bindLong(3, entry.lastOpenedAt)
                             else stmt.bindNull(3)
-                        if (entry.favoritedAt != null) stmt.bindLong(4, entry.favoritedAt)
+                            if (entry.favoritedAt != null) stmt.bindLong(4, entry.favoritedAt)
                             else stmt.bindNull(4)
-                        if (entry.positionUpdatedAt != null) stmt.bindLong(5, entry.positionUpdatedAt)
+                            if (entry.positionUpdatedAt != null) stmt.bindLong(5, entry.positionUpdatedAt)
                             else stmt.bindNull(5)
-                        stmt.bindLong(6, entry.updatedAt)
-                        stmt.bindInt(7, if (entry.isFavorite) 1 else 0)
-                        if (entry.ckRecordId != null) stmt.bindText(8, entry.ckRecordId)
+                            stmt.bindLong(6, entry.updatedAt)
+                            stmt.bindInt(7, if (entry.isFavorite) 1 else 0)
+                            if (entry.ckRecordId != null) stmt.bindText(8, entry.ckRecordId)
                             else stmt.bindNull(8)
-                        stmt.step()
-                        stmt.reset()
-                        stmt.clearBindings()
+                            stmt.step()
+                            stmt.reset()
+                            stmt.clearBindings()
+                        }
                     }
                 }
-                // Simpan order baru
-                insertHistoryOrder(db, newOrder)
-                db.prepare("COMMIT;")?.use { it.step() }
-            } catch (e: Exception) {
-                db.prepare("ROLLBACK;")?.use { it.step() }
-                throw e
+                if (newOrder != null) {
+                    insertHistoryOrder(db, newOrder)
+                }
             }
         }
+    }
+
+    fun applyCloudKitBatch(
+        upsertEntries: List<ReadingEntry>,
+        deleteBookIds: List<Int>,
+        newOrder: List<Int>
+    ) {
+        if (upsertEntries.isEmpty() && deleteBookIds.isEmpty() && newOrder.isEmpty()) return
+        saveHistoryBatch(upsertEntries, deleteBookIds, newOrder)
     }
 
     // endregion

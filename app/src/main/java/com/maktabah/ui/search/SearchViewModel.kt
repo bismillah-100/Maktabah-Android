@@ -215,6 +215,7 @@ class SearchViewModel : ViewModel() {
                 val matchingIds = mutableSetOf<Int>()
                 val roots = dataManager.allRootCategories
                 val cleanQuery = query.normalizeArabic()
+                val normalizedNames = dataManager.normalizedNamesById
 
                 withContext(Dispatchers.Default) {
                     fun findMatching(cats: List<Any>): Boolean {
@@ -222,7 +223,7 @@ class SearchViewModel : ViewModel() {
                         var matches = false
                         for (c in cats) {
                             if (c is BooksData) {
-                                if (c.name.matchesQuery(cleanQuery)) {
+                                if (dataManager.bookContainsNormalizedQuery(c, cleanQuery, normalizedNames)) {
                                     matches = true
                                 }
                             } else if (c is CategoryData) {
@@ -340,6 +341,7 @@ class SearchViewModel : ViewModel() {
             val result = mutableListOf<FlatLibraryItem>()
             val expanded = _expandedCategories.value
             val roots = dataManager.allRootCategories
+            val normalizedNames = dataManager.normalizedNamesById
             val downloadedIds = _downloadedBookIds.value
             val query = _searchQuery.value
             val cleanQuery = query.normalizeArabic()
@@ -347,7 +349,7 @@ class SearchViewModel : ViewModel() {
             fun hasMatchingBooks(cats: List<Any>): Boolean {
                 for (c in cats) {
                     if (c is BooksData) {
-                        val matchesQuery = c.name.matchesQuery(cleanQuery)
+                        val matchesQuery = dataManager.bookContainsNormalizedQuery(c, cleanQuery, normalizedNames)
                         val matchesDownloaded = downloadedIds.contains(c.id)
                         if (matchesQuery && matchesDownloaded) return true
                     } else if (c is CategoryData) {
@@ -366,7 +368,7 @@ class SearchViewModel : ViewModel() {
 
                 for (item in categories) {
                     if (item is BooksData) {
-                        val matchesQuery = item.name.matchesQuery(cleanQuery)
+                        val matchesQuery = dataManager.bookContainsNormalizedQuery(item, cleanQuery, normalizedNames)
                         val matchesDownloaded = downloadedIds.contains(item.id)
 
                         if (matchesQuery && matchesDownloaded) {
@@ -681,6 +683,7 @@ class SearchViewModel : ViewModel() {
         val currentFilter = _bookFilter.value
         val allResults = _searchResults.value
         val booksMap = dataManager.booksById // Capture thread-safe reference
+        val normalizedNames = dataManager.normalizedNamesById
 
         filterJob?.cancel()
 
@@ -696,13 +699,14 @@ class SearchViewModel : ViewModel() {
                     }
                     return@launch
                 }
-                val normalizedNames = mutableMapOf<Int, String>()
                 val filtered = allResults.filter { result ->
                     ensureActive() // Cooperative cancellation
-                    val normalizedName = normalizedNames.getOrPut(result.bookId) {
-                        booksMap[result.bookId]?.name?.normalizeArabic() ?: ""
-                    }
-                    cleanQuery.isEmpty() || normalizedName.contains(cleanQuery, ignoreCase = true)
+                    dataManager.bookContainsNormalizedQuery(
+                        bookId = result.bookId,
+                        normalizedQuery = cleanQuery,
+                        normalizedNames = normalizedNames,
+                        books = booksMap,
+                    )
                 }
                 withContext(Dispatchers.Main) {
                     _filteredSearchResults.value = filtered
