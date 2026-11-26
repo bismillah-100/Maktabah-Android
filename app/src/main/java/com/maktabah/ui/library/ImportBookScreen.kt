@@ -58,6 +58,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -80,6 +81,10 @@ import com.maktabah.models.CategoryData
 import com.maktabah.models.ImportMode
 import com.maktabah.ui.search.SearchTextField
 import com.maktabah.utils.normalizeArabic
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -934,15 +939,44 @@ fun SearchPickerDialog(
     onDismiss: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
-    val filtered =
-        remember(query, items) {
-            val cleanQuery = query.normalizeArabic()
-            if (cleanQuery.isBlank()) {
-                items
-            } else {
-                items.filter { it.second.normalizeArabic().contains(cleanQuery, ignoreCase = true) }
+    var debouncedQuery by remember { mutableStateOf("") }
+
+    LaunchedEffect(query) {
+        if (query.isNotBlank()) {
+            delay(300.milliseconds)
+        }
+        debouncedQuery = query
+    }
+
+    val normalizedLabels by produceState<List<String>?>(initialValue = null, items) {
+        value = withContext(Dispatchers.Default) {
+            items.map { it.second.normalizeArabic() }
+        }
+    }
+
+    var filtered by remember(items) { mutableStateOf(items) }
+
+    LaunchedEffect(items, normalizedLabels, debouncedQuery) {
+        val cleanQuery = debouncedQuery.normalizeArabic()
+        if (cleanQuery.isBlank()) {
+            filtered = items
+        } else {
+            val labels = normalizedLabels
+            filtered = withContext(Dispatchers.Default) {
+                if (labels != null && labels.size == items.size) {
+                    buildList {
+                        for (i in items.indices) {
+                            if (labels[i].contains(cleanQuery, ignoreCase = true)) {
+                                add(items[i])
+                            }
+                        }
+                    }
+                } else {
+                    items.filter { it.second.normalizeArabic().contains(cleanQuery, ignoreCase = true) }
+                }
             }
         }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -959,7 +993,11 @@ fun SearchPickerDialog(
                 Spacer(Modifier.height(8.dp))
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp)) {
-                        items(filtered, key = { (id, _) -> id }) { (id, label) ->
+                        items(
+                            items = filtered,
+                            key = { (id, _) -> id },
+                            contentType = { "picker_item" },
+                        ) { (id, label) ->
                             Row(
                                 modifier =
                                     Modifier
