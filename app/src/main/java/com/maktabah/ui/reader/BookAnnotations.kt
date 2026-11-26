@@ -163,7 +163,8 @@ fun BookAnnotationsSheet(
                                 onDeleteComplete = {
                                     filteredAnnotations = filteredAnnotations.filterNot { it.id == ann.id }
                                 },
-                                dividerStartPadding = Dp.Hairline
+                                dividerStartPadding = Dp.Hairline,
+                                canStartSwipe = { !listState.isScrollInProgress },
                             )
                         }
                     }

@@ -22,23 +22,17 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxState
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -47,10 +41,9 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.maktabah.R
 import com.maktabah.models.ReaderTab
-import com.maktabah.ui.common.SwipeDeleteBackground
+import com.maktabah.ui.common.SwipeToDeleteBox
 import com.maktabah.ui.common.consumeBottomSheetNestedScroll
 import com.maktabah.ui.common.fadingEdge
-import com.maktabah.ui.common.isSwipeTargetReached
 import com.maktabah.ui.search.SearchTextField
 import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.Dispatchers
@@ -153,58 +146,14 @@ fun ReaderTabsListSheet(
                     ) {
                         items(filteredTabs, key = { it.id }) { tab ->
                             val isActive = tab.id == activeTabId
-                            var itemWidth by remember { mutableIntStateOf(0) }
-                            var dismissStateRef by remember {
-                                mutableStateOf<SwipeToDismissBoxState?>(
-                                    null
-                                )
-                            }
-                            val dismissState =
-                                rememberSwipeToDismissBoxState(
-                                    positionalThreshold = { it * 0.5f },
-                                    confirmValueChange = { value ->
-                                        if (value == SwipeToDismissBoxValue.EndToStart) {
-                                            dismissStateRef?.isSwipeTargetReached(itemWidth) == true
-                                        } else {
-                                            true
-                                        }
-                                    },
-                                )
-                            dismissStateRef = dismissState
 
-                            LaunchedEffect(dismissState.targetValue, itemWidth) {
-                                androidx.compose.runtime.snapshotFlow {
-                                    val offset = try {
-                                        dismissState.requireOffset()
-                                    } catch (_: Exception) {
-                                        0f
-                                    }
-                                    dismissState.targetValue to offset
-                                }.collect { (target, offset) ->
-                                    if (target == SwipeToDismissBoxValue.EndToStart && itemWidth > 0 && kotlin.math.abs(
-                                            offset
-                                        ) >= itemWidth * 0.95f
-                                    ) {
-                                        onClose(tab.id)
-                                    }
-                                }
-                            }
-
-                            SwipeToDismissBox(
-                                modifier = Modifier
-                                    .onSizeChanged { itemWidth = it.width }
-                                    .animateItem(),
-                                state = dismissState,
-                                enableDismissFromStartToEnd = false,
-                                enableDismissFromEndToStart = true,
-                                backgroundContent = {
-                                    SwipeDeleteBackground(
-                                        dismissState = dismissState,
-                                        icon = Icons.Default.Close,
-                                        shape = RoundedCornerShape(30.dp),
-                                        contentDescription = stringResource(R.string.reader_tabs_close)
-                                    )
-                                },
+                            SwipeToDeleteBox(
+                                onDismiss = { onClose(tab.id) },
+                                modifier = Modifier.animateItem(),
+                                canStartSwipe = { !listState.isScrollInProgress },
+                                icon = Icons.Default.Close,
+                                shape = RoundedCornerShape(30.dp),
+                                contentDescription = stringResource(R.string.reader_tabs_close),
                             ) {
                                 Surface(
                                     shape = RoundedCornerShape(30.dp),

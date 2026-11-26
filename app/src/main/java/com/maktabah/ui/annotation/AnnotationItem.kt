@@ -2,6 +2,7 @@ package com.maktabah.ui.annotation
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -9,26 +10,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxState
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
@@ -43,16 +35,13 @@ import androidx.core.graphics.toColorInt
 import com.maktabah.R
 import com.maktabah.models.Annotation
 import com.maktabah.ui.common.InsetGroupedItem
-import com.maktabah.ui.common.SwipeDeleteBackground
-import com.maktabah.ui.common.isSwipeTargetReached
+import com.maktabah.ui.common.SwipeToDeleteBox
 import com.maktabah.utils.convertToArabicDigits
 import com.maktabah.utils.toAutoDirectionAnnotatedString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.lazy.LazyItemScope
 import kotlinx.coroutines.withContext
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LazyItemScope.AnnotationItem(
     ann: Annotation,
@@ -65,43 +54,11 @@ fun LazyItemScope.AnnotationItem(
     onDeleteComplete: () -> Unit,
     outerPadding: PaddingValues = PaddingValues(horizontal = 16.dp),
     dividerStartPadding: Dp = 16.dp,
-    enableSwipe: Boolean = true
+    enableSwipe: Boolean = true,
+    canStartSwipe: () -> Boolean = { true },
 ) {
     val context = LocalContext.current
-    var itemWidth by remember { mutableIntStateOf(0) }
-    var dismissStateRef by remember { mutableStateOf<SwipeToDismissBoxState?>(null) }
     val dismissScope = rememberCoroutineScope()
-    val dismissState =
-        rememberSwipeToDismissBoxState(
-            positionalThreshold = { it * 0.5f },
-            confirmValueChange = { value ->
-                if (value == SwipeToDismissBoxValue.EndToStart) {
-                    dismissStateRef?.isSwipeTargetReached(itemWidth) == true
-                } else {
-                    true
-                }
-            },
-        )
-    dismissStateRef = dismissState
-
-    androidx.compose.runtime.LaunchedEffect(dismissState.targetValue, itemWidth) {
-        androidx.compose.runtime.snapshotFlow {
-            val offset = try { dismissState.requireOffset() } catch (_: Exception) { 0f }
-            dismissState.targetValue to offset
-        }.collect { (target, offset) ->
-            if (target == SwipeToDismissBoxValue.EndToStart && itemWidth > 0 && kotlin.math.abs(offset) >= itemWidth * 0.95f) {
-                onDeleteComplete()
-                dismissScope.launch {
-                    val syncResult = onDelete()
-                    if (syncResult != null) {
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, syncResult, Toast.LENGTH_LONG).show()
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     val isFirst = index == 0
     val isLast = index == lastIndex
@@ -209,25 +166,29 @@ fun LazyItemScope.AnnotationItem(
     }
 
     if (enableSwipe) {
-        SwipeToDismissBox(
-            modifier = modifier.onSizeChanged { itemWidth = it.width }.animateItem(),
-            state = dismissState,
-            enableDismissFromStartToEnd = false,
-            enableDismissFromEndToStart = true,
-            backgroundContent = {
-                SwipeDeleteBackground(
-                    dismissState = dismissState,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    shape = shape,
-                    revealedWidthOffset = 16.dp,
-                    contentDescription = stringResource(R.string.reader_ann_editor_delete),
-                    iconSize = 38.dp
-                )
+        SwipeToDeleteBox(
+            onDismiss = {
+                onDeleteComplete()
+                dismissScope.launch {
+                    val syncResult = onDelete()
+                    if (syncResult != null) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, syncResult, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
             },
-            content = { content() }
+            modifier = modifier.animateItem(),
+            canStartSwipe = canStartSwipe,
+            backgroundModifier = Modifier.padding(horizontal = 16.dp),
+            shape = shape,
+            revealedWidthOffset = 16.dp,
+            contentDescription = stringResource(R.string.reader_ann_editor_delete),
+            iconSize = 38.dp,
+            content = content,
         )
     } else {
-        androidx.compose.foundation.layout.Box(modifier = modifier) {
+        Box(modifier = modifier) {
             content()
         }
     }
