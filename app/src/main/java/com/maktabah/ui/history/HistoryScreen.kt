@@ -11,10 +11,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,7 +28,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyHorizontalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -64,17 +64,19 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.core.content.edit
 import com.maktabah.R
 import com.maktabah.cloudKit.CloudKitSyncManager
 import com.maktabah.database.AnnotationManager
+import com.maktabah.models.BooksData
 import com.maktabah.models.ReadingEntry
 import com.maktabah.ui.common.DonationCard
 import com.maktabah.ui.common.DonationIconButton
@@ -106,10 +108,12 @@ fun HistoryScreen(
     val isDataLoaded by libraryViewModel.isDataLoaded.collectAsState()
     val catalogRevision by libraryViewModel.catalogRevision.collectAsState()
     val booksById = remember(catalogRevision, isDataLoaded) { libraryViewModel.dataManager.booksById }
+    val normalizedNamesById = remember(catalogRevision, isDataLoaded) {
+        libraryViewModel.dataManager.normalizedNamesById
+    }
     val context = LocalContext.current
-    val sharedPrefs = remember { context.getSharedPreferences("HistoryPrefs", android.content.Context.MODE_PRIVATE) }
-    var historyExpanded by remember { mutableStateOf(sharedPrefs.getBoolean("historyExpanded", true)) }
-    var favoritesExpanded by remember { mutableStateOf(sharedPrefs.getBoolean("favoritesExpanded", true)) }
+    val historyExpanded by historyViewModel.historyExpanded.collectAsState()
+    val favoritesExpanded by historyViewModel.favoritesExpanded.collectAsState()
     var isSyncing by remember { mutableStateOf(false) }
     val searchQuery by historyViewModel.searchQuery.collectAsState()
     val entriesByBookId by historyViewModel.entriesByBookId.collectAsState()
@@ -126,6 +130,27 @@ fun HistoryScreen(
     var selectedBookInfoId by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+
+    val onNavigateToBook = remember(onNavigateToReader) {
+        { bookId: Int, contentId: Int? ->
+            onNavigateToReader(bookId, contentId, null, null, null)
+        }
+    }
+    val onRemoveHistory = remember(historyViewModel, cloudKitSyncManager, context) {
+        { id: Int ->
+            val entry = historyViewModel.removeFromHistory(id)
+            cloudKitSyncManager.uploadHistory(context, listOfNotNull(entry))
+        }
+    }
+    val onToggleFavorite = remember(historyViewModel, cloudKitSyncManager, context) {
+        { id: Int ->
+            val entry = historyViewModel.toggleFavorite(id)
+            cloudKitSyncManager.uploadHistory(context, listOfNotNull(entry))
+        }
+    }
+    val onShowBookInfo = remember {
+        { id: Int -> selectedBookInfoId = id }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -188,26 +213,20 @@ fun HistoryScreen(
                 ) {
                     historySection(
                         isExpanded = historyExpanded,
-                        onToggleExpand = {
-                            historyExpanded = !historyExpanded
-                            sharedPrefs.edit { putBoolean("historyExpanded", historyExpanded) }
-                        },
+                        onToggleExpand = historyViewModel::toggleHistoryExpanded,
                         historyItems = filteredHistory,
                         entriesByBookId = entriesByBookId,
-                        bookById = { booksById[it] },
-                        onNavigateToReader = onNavigateToReader,
-                        onRemoveHistory = { id ->
-                            val entry = historyViewModel.removeFromHistory(id)
-                            cloudKitSyncManager.uploadHistory(context, listOfNotNull(entry))
-                        },
-                        onToggleFavorite = { id ->
-                            val entry = historyViewModel.toggleFavorite(id)
-                            cloudKitSyncManager.uploadHistory(context, listOfNotNull(entry))
-                        },
-                        onShowBookInfo = { selectedBookInfoId = it }
+                        booksById = booksById,
+                        onNavigateToBook = onNavigateToBook,
+                        onRemoveHistory = onRemoveHistory,
+                        onToggleFavorite = onToggleFavorite,
+                        onShowBookInfo = onShowBookInfo,
                     )
 
-                    item(key = "history_favorites_spacer") {
+                    item(
+                        key = "history_favorites_spacer",
+                        contentType = "spacer",
+                    ) {
                         Spacer(
                             modifier = Modifier
                                 .height(16.dp)
@@ -217,23 +236,20 @@ fun HistoryScreen(
 
                     favoritesSection(
                         isExpanded = favoritesExpanded,
-                        onToggleExpand = {
-                            favoritesExpanded = !favoritesExpanded
-                            sharedPrefs.edit { putBoolean("favoritesExpanded", favoritesExpanded)}
-                        },
+                        onToggleExpand = historyViewModel::toggleFavoritesExpanded,
                         favoriteItems = filteredFavorites,
                         entriesByBookId = entriesByBookId,
-                        bookById = { booksById[it] },
-                        onNavigateToReader = onNavigateToReader,
-                        onRemoveFavorite = { id ->
-                            val entry = historyViewModel.toggleFavorite(id)
-                            cloudKitSyncManager.uploadHistory(context, listOfNotNull(entry))
-                        },
-                        onShowBookInfo = { selectedBookInfoId = it }
+                        booksById = booksById,
+                        onNavigateToBook = onNavigateToBook,
+                        onRemoveFavorite = onToggleFavorite,
+                        onShowBookInfo = onShowBookInfo,
                     )
 
                     if (!hasDonated) {
-                        item(key = "donation_card") {
+                        item(
+                            key = "donation_card",
+                            contentType = "donation_card",
+                        ) {
                             DonationCard(modifier = Modifier.animateItem())
                         }
                     }
@@ -242,14 +258,19 @@ fun HistoryScreen(
         }
 
         if (showAddFavoriteSheet) {
+            val favoriteBookIds = remember(entriesByBookId) {
+                entriesByBookId.values
+                    .asSequence()
+                    .filter { it.isFavorite }
+                    .map { it.bookId }
+                    .toSet()
+            }
             AddFavoriteSheet(
                 books = remember(booksById) { booksById.values.toList() },
-                entriesByBookId = entriesByBookId,
+                normalizedNamesById = normalizedNamesById,
+                favoriteBookIds = favoriteBookIds,
                 onDismiss = { showAddFavoriteSheet = false },
-                onToggleFavorite = { bookId ->
-                    val entry = historyViewModel.toggleFavorite(bookId)
-                    cloudKitSyncManager.uploadHistory(context, listOfNotNull(entry))
-                }
+                onToggleFavorite = onToggleFavorite,
             )
         }
 
@@ -390,13 +411,16 @@ private fun LazyListScope.historySection(
     onToggleExpand: () -> Unit,
     historyItems: List<Int>,
     entriesByBookId: Map<Int, ReadingEntry>,
-    bookById: (Int) -> com.maktabah.models.BooksData?,
-    onNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
+    booksById: Map<Int, BooksData>,
+    onNavigateToBook: (Int, Int?) -> Unit,
     onRemoveHistory: (Int) -> Unit,
     onToggleFavorite: (Int) -> Unit,
     onShowBookInfo: (Int) -> Unit,
 ) {
-    item(key = "history_header") {
+    item(
+        key = "history_header",
+        contentType = "section_header",
+    ) {
         SectionHeader(
             title = stringResource(R.string.history_title),
             isExpanded = isExpanded,
@@ -406,7 +430,10 @@ private fun LazyListScope.historySection(
     }
     if (isExpanded) {
         if (historyItems.isEmpty()) {
-            item(key = "history_empty") {
+            item(
+                key = "history_empty",
+                contentType = "empty_message",
+            ) {
                 Text(
                     stringResource(R.string.history_empty),
                     modifier = Modifier
@@ -415,103 +442,124 @@ private fun LazyListScope.historySection(
                 )
             }
         } else {
-            item(key = "history_horizontal_grid") {
+            item(
+                key = "history_horizontal_grid",
+                contentType = "history_grid",
+            ) {
                 val rowCount = when (historyItems.size) {
                     in 0..4 -> 1
                     in 5..8 -> 2
                     else -> 3
                 }
-                val scrollState = rememberScrollState()
+                val textMeasurer = rememberTextMeasurer()
+                val density = LocalDensity.current
+                val titleStyle = MaterialTheme.typography.titleMedium
+                val chipHeight = remember(titleStyle, density) {
+                    val lineHeightPx = textMeasurer.measure(
+                        text = "Agا",
+                        style = titleStyle,
+                        maxLines = 1,
+                    ).size.height
+                    with(density) { maxOf(24.dp, lineHeightPx.toDp() + 24.dp) }
+                }
+                val gridHeight = chipHeight * rowCount + 8.dp * (rowCount - 1)
 
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    Box(
+                    LazyHorizontalStaggeredGrid(
+                        rows = StaggeredGridCells.Fixed(rowCount),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(scrollState)
-                            .animateItem()
+                            .height(gridHeight)
+                            .animateItem(),
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        horizontalItemSpacing = 8.dp,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            for (rowIndex in 0 until rowCount) {
-                                val rowItems = historyItems.filterIndexed { index, _ -> index % rowCount == rowIndex }
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    for (bookId in rowItems) {
-                                        val entry = entriesByBookId[bookId]
-                                        val bookName = bookById(bookId)?.name ?: "Unknown"
-                                        var showMenu by remember { mutableStateOf(false) }
-
-                                        Box {
-                                            InsetGroupedItem(
-                                                index = 0,
-                                                lastIndex = 0,
-                                                onClick = {
-                                                    onNavigateToReader(
-                                                        bookId,
-                                                        entry?.lastContentId,
-                                                        null,
-                                                        null,
-                                                        null
-                                                    )
-                                                },
-                                                onLongClick = { showMenu = true },
-                                                contentPadding = PaddingValues(
-                                                    horizontal = 16.dp,
-                                                    vertical = 12.dp
-                                                ),
-                                                outerPadding = PaddingValues(0.dp),
-                                                fillMaxWidth = false,
-                                                modifier = Modifier.widthIn(max = 200.dp),
-                                            ) {
-                                                Text(
-                                                    bookName,
-                                                    style = MaterialTheme.typography.titleMedium,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
-
-											TapCenteredPopover(
-												expanded = showMenu,
-												onDismiss = { showMenu = false },
-												actions = buildList {
-													add(
-														PopoverMenuAction(
-															label = stringResource(R.string.history_menu_remove_history),
-															icon = Icons.Default.Delete,
-															onClick = { onRemoveHistory(bookId) },
-														)
-													)
-													add(
-														PopoverMenuAction(
-															label = if (entry?.isFavorite == true)
-																stringResource(R.string.history_menu_remove_favorite)
-															else
-																stringResource(R.string.history_menu_add_favorite),
-															icon = if (entry?.isFavorite == true) Icons.Default.StarBorder else Icons.Default.Star,
-															onClick = { onToggleFavorite(bookId) },
-														)
-													)
-                                                    add(
-                                                        PopoverMenuAction(
-                                                            label = stringResource(R.string.reader_menu_book_info),
-                                                            icon = Icons.Default.Info,
-                                                            onClick = { onShowBookInfo(bookId) },
-                                                        )
-                                                    )
-												},
-											)
-                                        }
-                                    }
-                                }
-                            }
+                        items(
+                            items = historyItems,
+                            key = { bookId -> bookId },
+                            contentType = { "history_chip" },
+                        ) { bookId ->
+                            val entry = entriesByBookId[bookId]
+                            val bookName = booksById[bookId]?.name ?: "Unknown"
+                            HistoryBookChip(
+                                bookId = bookId,
+                                bookName = bookName,
+                                lastContentId = entry?.lastContentId,
+                                isFavorite = entry?.isFavorite == true,
+                                onNavigateToBook = onNavigateToBook,
+                                onRemoveHistory = onRemoveHistory,
+                                onToggleFavorite = onToggleFavorite,
+                                onShowBookInfo = onShowBookInfo,
+                            )
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun HistoryBookChip(
+    bookId: Int,
+    bookName: String,
+    lastContentId: Int?,
+    isFavorite: Boolean,
+    onNavigateToBook: (Int, Int?) -> Unit,
+    onRemoveHistory: (Int) -> Unit,
+    onToggleFavorite: (Int) -> Unit,
+    onShowBookInfo: (Int) -> Unit,
+) {
+    var showMenu by remember { mutableStateOf(false) }
+
+    Box {
+        InsetGroupedItem(
+            index = 0,
+            lastIndex = 0,
+            onClick = { onNavigateToBook(bookId, lastContentId) },
+            onLongClick = { showMenu = true },
+            contentPadding = PaddingValues(
+                horizontal = 16.dp,
+                vertical = 12.dp
+            ),
+            outerPadding = PaddingValues(0.dp),
+            fillMaxWidth = false,
+            modifier = Modifier.widthIn(max = 200.dp),
+        ) {
+            Text(
+                bookName,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        if (showMenu) {
+            TapCenteredPopover(
+                expanded = true,
+                onDismiss = { showMenu = false },
+                actions = listOf(
+                    PopoverMenuAction(
+                        label = stringResource(R.string.history_menu_remove_history),
+                        icon = Icons.Default.Delete,
+                        onClick = { onRemoveHistory(bookId) },
+                    ),
+                    PopoverMenuAction(
+                        label = if (isFavorite)
+                            stringResource(R.string.history_menu_remove_favorite)
+                        else
+                            stringResource(R.string.history_menu_add_favorite),
+                        icon = if (isFavorite) Icons.Default.StarBorder else Icons.Default.Star,
+                        onClick = { onToggleFavorite(bookId) },
+                    ),
+                    PopoverMenuAction(
+                        label = stringResource(R.string.reader_menu_book_info),
+                        icon = Icons.Default.Info,
+                        onClick = { onShowBookInfo(bookId) },
+                    ),
+                ),
+            )
         }
     }
 }
@@ -521,12 +569,15 @@ private fun LazyListScope.favoritesSection(
     onToggleExpand: () -> Unit,
     favoriteItems: List<Int>,
     entriesByBookId: Map<Int, ReadingEntry>,
-    bookById: (Int) -> com.maktabah.models.BooksData?,
-    onNavigateToReader: (Int, Int?, Int?, Int?, String?) -> Unit,
+    booksById: Map<Int, BooksData>,
+    onNavigateToBook: (Int, Int?) -> Unit,
     onRemoveFavorite: (Int) -> Unit,
     onShowBookInfo: (Int) -> Unit,
 ) {
-    item(key = "favorites_header") {
+    item(
+        key = "favorites_header",
+        contentType = "section_header",
+    ) {
         SectionHeader(
             title = stringResource(R.string.history_favorites_title),
             isExpanded = isExpanded,
@@ -536,7 +587,10 @@ private fun LazyListScope.favoritesSection(
     }
     if (isExpanded) {
         if (favoriteItems.isEmpty()) {
-            item(key = "favorites_empty") {
+            item(
+                key = "favorites_empty",
+                contentType = "empty_message",
+            ) {
                 Text(
                     stringResource(R.string.history_favorites_empty),
                     modifier = Modifier
@@ -547,64 +601,76 @@ private fun LazyListScope.favoritesSection(
         } else {
             items(
                 count = favoriteItems.size,
-                key = { index -> "fav_${favoriteItems[index]}" }) { index ->
+                key = { index -> "fav_${favoriteItems[index]}" },
+                contentType = { "favorite_row" },
+            ) { index ->
                 val bookId = favoriteItems[index]
                 val entry = entriesByBookId[bookId]
-                val bookName = bookById(bookId)?.name ?: "Unknown"
-                var showMenu by remember { mutableStateOf(false) }
+                val bookName = booksById[bookId]?.name ?: "Unknown"
 
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    Box(
-                        modifier = Modifier
-                            .padding(horizontal = 16.dp, vertical = 4.dp)
-                            .animateItem()
-                    ) {
-                        InsetGroupedItem(
-                            index = 0,
-                            lastIndex = 0,
-                            onClick = {
-                                onNavigateToReader(
-                                    bookId,
-                                    entry?.lastContentId,
-                                    null,
-                                    null,
-                                    null
-                                )
-                            },
-                            onLongClick = { showMenu = true },
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                            outerPadding = PaddingValues(0.dp),
-                        ) {
-                            Text(
-                                bookName,
-                                style = MaterialTheme.typography.titleMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                FavoriteBookRow(
+                    bookId = bookId,
+                    bookName = bookName,
+                    lastContentId = entry?.lastContentId,
+                    onNavigateToBook = onNavigateToBook,
+                    onRemoveFavorite = onRemoveFavorite,
+                    onShowBookInfo = onShowBookInfo,
+                    modifier = Modifier.animateItem(),
+                )
+            }
+        }
+    }
+}
 
-						TapCenteredPopover(
-							expanded = showMenu,
-							onDismiss = { showMenu = false },
-							actions = buildList {
-								add(
-									PopoverMenuAction(
-										label = stringResource(R.string.history_menu_remove_favorite),
-										icon = Icons.Default.Delete,
-										onClick = { onRemoveFavorite(bookId) },
-									)
-								)
-                                add(
-                                    PopoverMenuAction(
-                                        label = stringResource(R.string.reader_menu_book_info),
-                                        icon = Icons.Default.Info,
-                                        onClick = { onShowBookInfo(bookId) },
-                                    )
-                                )
-							},
-						)
-                    }
-                }
+@Composable
+private fun FavoriteBookRow(
+    bookId: Int,
+    bookName: String,
+    lastContentId: Int?,
+    onNavigateToBook: (Int, Int?) -> Unit,
+    onRemoveFavorite: (Int) -> Unit,
+    onShowBookInfo: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var showMenu by remember { mutableStateOf(false) }
+
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        Box(
+            modifier = modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+        ) {
+            InsetGroupedItem(
+                index = 0,
+                lastIndex = 0,
+                onClick = { onNavigateToBook(bookId, lastContentId) },
+                onLongClick = { showMenu = true },
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                outerPadding = PaddingValues(0.dp),
+            ) {
+                Text(
+                    bookName,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            if (showMenu) {
+                TapCenteredPopover(
+                    expanded = true,
+                    onDismiss = { showMenu = false },
+                    actions = listOf(
+                        PopoverMenuAction(
+                            label = stringResource(R.string.history_menu_remove_favorite),
+                            icon = Icons.Default.Delete,
+                            onClick = { onRemoveFavorite(bookId) },
+                        ),
+                        PopoverMenuAction(
+                            label = stringResource(R.string.reader_menu_book_info),
+                            icon = Icons.Default.Info,
+                            onClick = { onShowBookInfo(bookId) },
+                        ),
+                    ),
+                )
             }
         }
     }
@@ -645,10 +711,11 @@ private fun SectionHeader(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddFavoriteSheet(
-    books: List<com.maktabah.models.BooksData>,
-    entriesByBookId: Map<Int, ReadingEntry>,
+    books: List<BooksData>,
+    normalizedNamesById: Map<Int, String>,
+    favoriteBookIds: Set<Int>,
     onDismiss: () -> Unit,
-    onToggleFavorite: (Int) -> Unit
+    onToggleFavorite: (Int) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
@@ -657,22 +724,25 @@ private fun AddFavoriteSheet(
     var searchFavQuery by remember { mutableStateOf("") }
     var debouncedQuery by remember { mutableStateOf(searchFavQuery) }
 
-    androidx.compose.runtime.LaunchedEffect(searchFavQuery) {
+    LaunchedEffect(searchFavQuery) {
         if (searchFavQuery.isNotBlank()) {
             delay(300.milliseconds)
         }
         debouncedQuery = searchFavQuery
     }
 
-    var filteredBooks by remember { mutableStateOf(books) }
+    var filteredBooks by remember(books) { mutableStateOf(books) }
 
-    androidx.compose.runtime.LaunchedEffect(books, debouncedQuery) {
+    LaunchedEffect(books, normalizedNamesById, debouncedQuery) {
         if (debouncedQuery.isBlank()) {
             filteredBooks = books
         } else {
             val result = withContext(Dispatchers.Default) {
                 val cleanQuery = debouncedQuery.normalizeArabic()
-                books.filter { it.name.normalizeArabic().contains(cleanQuery, ignoreCase = true) }
+                books.filter { book ->
+                    val normalizedName = normalizedNamesById[book.id] ?: book.name.normalizeArabic()
+                    normalizedName.contains(cleanQuery, ignoreCase = true)
+                }
             }
             filteredBooks = result
         }
@@ -717,34 +787,17 @@ private fun AddFavoriteSheet(
                     ) {
                         itemsIndexed(
                             items = filteredBooks,
-                            key = { _, book -> book.id }
+                            key = { _, book -> book.id },
+                            contentType = { _, _ -> "add_favorite_book" },
                         ) { index, book ->
-                            val isFav = entriesByBookId[book.id]?.isFavorite == true
-                            InsetGroupedItem(
+                            AddFavoriteBookRow(
                                 index = index,
                                 lastIndex = filteredBooks.lastIndex,
-                                onClick = { onToggleFavorite(book.id) },
-                                contentPadding = PaddingValues(vertical = 12.dp, horizontal = 16.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = book.name,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    if (isFav) {
-                                        Icon(
-                                            Icons.Default.Star,
-                                            contentDescription = "Favorite",
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-                            }
+                                bookId = book.id,
+                                bookName = book.name,
+                                isFavorite = book.id in favoriteBookIds,
+                                onToggleFavorite = onToggleFavorite,
+                            )
                         }
                     }
                 }
@@ -756,6 +809,42 @@ private fun AddFavoriteSheet(
                     onValueChange = { searchFavQuery = it },
                     placeholder = stringResource(R.string.library_search_books_placeholder),
                     onClearClick = { searchFavQuery = "" }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddFavoriteBookRow(
+    index: Int,
+    lastIndex: Int,
+    bookId: Int,
+    bookName: String,
+    isFavorite: Boolean,
+    onToggleFavorite: (Int) -> Unit,
+) {
+    InsetGroupedItem(
+        index = index,
+        lastIndex = lastIndex,
+        onClick = { onToggleFavorite(bookId) },
+        contentPadding = PaddingValues(vertical = 12.dp, horizontal = 16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = bookName,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f)
+            )
+            if (isFavorite) {
+                Icon(
+                    Icons.Default.Star,
+                    contentDescription = "Favorite",
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
         }
