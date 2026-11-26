@@ -20,6 +20,11 @@ class ItemHighlightDrawable(private val parentView: () -> View?) : Drawable() {
     )
 
     private var currentHighlightColor: Int = Color.TRANSPARENT
+    private var lastActivityTimeMs: Long = 0L
+    private var hasActiveState: Boolean = false
+    private var lastRippleWidth: Int = -1
+    private var lastRippleHeight: Int = -1
+
     fun setHighlightColor(color: Int) {
         if (currentHighlightColor != color) {
             currentHighlightColor = color
@@ -27,12 +32,26 @@ class ItemHighlightDrawable(private val parentView: () -> View?) : Drawable() {
         }
     }
 
+    fun isHighlightActive(nowMs: Long): Boolean {
+        return hasActiveState || (lastActivityTimeMs != 0L && nowMs - lastActivityTimeMs < 800L)
+    }
+
+    fun updateRippleBounds(width: Int, height: Int) {
+        if (lastRippleWidth != width || lastRippleHeight != height) {
+            lastRippleWidth = width
+            lastRippleHeight = height
+            rippleDrawable.setBounds(0, 0, width, height)
+        }
+    }
+
     init {
         rippleDrawable.callback = object : Callback {
             override fun invalidateDrawable(who: Drawable) {
+                lastActivityTimeMs = android.os.SystemClock.uptimeMillis()
                 parentView()?.invalidate()
             }
             override fun scheduleDrawable(who: Drawable, what: Runnable, `when`: Long) {
+                lastActivityTimeMs = android.os.SystemClock.uptimeMillis()
                 parentView()?.postDelayed(what, `when` - android.os.SystemClock.uptimeMillis())
             }
             override fun unscheduleDrawable(who: Drawable, what: Runnable) {
@@ -42,7 +61,21 @@ class ItemHighlightDrawable(private val parentView: () -> View?) : Drawable() {
     }
 
     override fun onStateChange(stateSet: IntArray): Boolean {
+        var active = false
+        for (state in stateSet) {
+            if (state == android.R.attr.state_pressed ||
+                state == android.R.attr.state_focused ||
+                state == android.R.attr.state_hovered
+            ) {
+                active = true
+                break
+            }
+        }
+        hasActiveState = active
         val changed = rippleDrawable.setState(stateSet)
+        if (changed || active) {
+            lastActivityTimeMs = android.os.SystemClock.uptimeMillis()
+        }
         if (changed) parentView()?.invalidate()
         return changed || super.onStateChange(stateSet)
     }
@@ -54,11 +87,17 @@ class ItemHighlightDrawable(private val parentView: () -> View?) : Drawable() {
 
     override fun jumpToCurrentState() {
         super.jumpToCurrentState()
+        hasActiveState = false
+        lastActivityTimeMs = 0L
         rippleDrawable.jumpToCurrentState()
     }
 
     override fun setBounds(left: Int, top: Int, right: Int, bottom: Int) {
         super.setBounds(left, top, right, bottom)
+        val width = right - left
+        val height = bottom - top
+        lastRippleWidth = width
+        lastRippleHeight = height
         rippleDrawable.setBounds(left, top, right, bottom)
     }
 
@@ -89,14 +128,17 @@ class GroupedCardDecoration(
 
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
-    private val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private val halfStroke = strokeWidth / 2f
     private val path = Path()
+    private val strokePath = Path()
 
     // Cached objects to avoid allocation in onDraw
     private val currentGroupChildren = mutableListOf<View>()
     private val sortedChildren = mutableListOf<View>()
     private val radiiCache = FloatArray(8)
+    private val childComparator = Comparator<View> { a, b ->
+        val topCompare = getVisibleTop(a).compareTo(getVisibleTop(b))
+        if (topCompare != 0) topCompare else a.top.compareTo(b.top)
+    }
 
     var surfaceColor: Int = 0
         set(value) {
@@ -111,10 +153,6 @@ class GroupedCardDecoration(
         }
 
     var highlightColor: Int = 0
-        set(value) {
-            field = value
-            highlightPaint.color = value
-        }
 
     init {
         strokePaint.strokeWidth = strokeWidth
@@ -156,6 +194,8 @@ class GroupedCardDecoration(
         var hasVisibleGroup = false
         currentGroupChildren.clear()
 
+        val nowMs = android.os.SystemClock.uptimeMillis()
+
         fun drawCurrentGroup() {
             if (!hasVisibleGroup) return
 
@@ -188,10 +228,20 @@ class GroupedCardDecoration(
             c.drawPath(path, fillPaint)
 
             if (highlightColor != 0) {
-                c.withClip(path) {
-                    for (groupChild in currentGroupChildren) {
-                        val bg = groupChild.background as? ItemHighlightDrawable
-                        if (bg != null) {
+                var hasActiveRipple = false
+                for (i in 0 until currentGroupChildren.size) {
+                    val bg = currentGroupChildren[i].background as? ItemHighlightDrawable
+                    if (bg != null && bg.isHighlightActive(nowMs)) {
+                        hasActiveRipple = true
+                        break
+                    }
+                }
+                if (hasActiveRipple) {
+                    c.withClip(path) {
+                        for (i in 0 until currentGroupChildren.size) {
+                            val groupChild = currentGroupChildren[i]
+                            val bg = groupChild.background as? ItemHighlightDrawable ?: continue
+                            if (!bg.isHighlightActive(nowMs)) continue
                             bg.setHighlightColor(highlightColor)
                             val translatedTop = groupChild.top + groupChild.translationY
                             val translatedBottom = groupChild.bottom + groupChild.translationY
@@ -204,9 +254,7 @@ class GroupedCardDecoration(
                             if (visibleTop < visibleBottom) {
                                 withClip(left, visibleTop, right, visibleBottom) {
                                     translate(left, snap(translatedTop))
-                                    bg.rippleDrawable.setBounds(
-                                        0,
-                                        0,
+                                    bg.updateRippleBounds(
                                         (right - left).toInt(),
                                         (translatedBottom - translatedTop).toInt()
                                     )
@@ -216,14 +264,13 @@ class GroupedCardDecoration(
                         }
                     }
                 }
-                highlightPaint.color = highlightColor
             }
 
             if (strokePaint.color != Color.TRANSPARENT) {
                 if (topRadius > 0f && bottomRadius > 0f) {
                     c.drawPath(path, strokePaint)
                 } else {
-                    val strokePath = Path()
+                    strokePath.reset()
 
                     if (topRadius > 0f && bottomRadius == 0f) {
                         strokePath.moveTo(left, bottom)
@@ -263,12 +310,10 @@ class GroupedCardDecoration(
         for (i in 0 until count) {
             sortedChildren.add(parent.getChildAt(i))
         }
-        sortedChildren.sortWith(compareBy(
-            { getVisibleTop(it) },
-            { it.top }
-        ))
+        sortedChildren.sortWith(childComparator)
 
-        for (child in sortedChildren) {
+        for (i in 0 until sortedChildren.size) {
+            val child = sortedChildren[i]
             var isFirst: Boolean
             var isLast: Boolean
 
@@ -281,8 +326,12 @@ class GroupedCardDecoration(
                 }
                 isFirst = info.isFirst
                 isLast = info.isLast
-                child.setTag(com.maktabah.R.id.tag_is_first, isFirst)
-                child.setTag(com.maktabah.R.id.tag_is_last, isLast)
+                if (child.getTag(com.maktabah.R.id.tag_is_first) != isFirst) {
+                    child.setTag(com.maktabah.R.id.tag_is_first, isFirst)
+                }
+                if (child.getTag(com.maktabah.R.id.tag_is_last) != isLast) {
+                    child.setTag(com.maktabah.R.id.tag_is_last, isLast)
+                }
             } else {
                 val tagFirst = child.getTag(com.maktabah.R.id.tag_is_first) as? Boolean
                 val tagLast = child.getTag(com.maktabah.R.id.tag_is_last) as? Boolean
