@@ -768,23 +768,27 @@ private fun LibraryList(
             ) {
                 override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): androidx.recyclerview.widget.RecyclerView.ViewHolder {
                     val composeView = androidx.compose.ui.platform.ComposeView(parent.context).apply {
+                        setViewCompositionStrategy(
+                            androidx.compose.ui.platform.ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool
+                        )
                         layoutParams = android.view.ViewGroup.LayoutParams(
                             android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                             android.view.ViewGroup.LayoutParams.WRAP_CONTENT
                         )
+                        setContent {
+                            androidx.compose.runtime.CompositionLocalProvider(
+                                androidx.compose.ui.platform.LocalLayoutDirection provides
+                                    androidx.compose.ui.unit.LayoutDirection.Rtl,
+                            ) {
+                                DonationCard()
+                            }
+                        }
                     }
                     return object : androidx.recyclerview.widget.RecyclerView.ViewHolder(composeView) {}
                 }
 
                 override fun onBindViewHolder(holder: androidx.recyclerview.widget.RecyclerView.ViewHolder, position: Int) {
-                    (holder.itemView as androidx.compose.ui.platform.ComposeView).setContent {
-                        androidx.compose.runtime.CompositionLocalProvider(
-                            androidx.compose.ui.platform.LocalLayoutDirection provides
-                                androidx.compose.ui.unit.LayoutDirection.Rtl,
-                        ) {
-                            DonationCard()
-                        }
-                    }
+                    // Content is set once in onCreateViewHolder
                 }
             }.apply {
                 submitList(if (hasDonated) emptyList() else listOf(Unit))
@@ -808,12 +812,14 @@ private fun LibraryList(
             adapter.secondaryColor = colors.secondaryColor
             adapter.onSurfaceVariantColor = colors.onSurfaceVariantColor
             adapter.expandedCategories = expandedCategories
+            adapter.updateDisplayState(
+                viewMode = viewMode,
+                isSelectionMode = isSelectionMode,
+                selectedBookIds = selectedBookIds,
+                onlySelectDownloaded = showOnlyDownloaded,
+            )
 
             adapter.submitList(flatVisibleItems) {
-                adapter.viewMode = viewMode
-                adapter.isSelectionMode = isSelectionMode
-                adapter.selectedBookIds = selectedBookIds
-                adapter.onlySelectDownloaded = showOnlyDownloaded
                 if (viewModeChanged) {
                     adapter.scrollToTop()
                 }

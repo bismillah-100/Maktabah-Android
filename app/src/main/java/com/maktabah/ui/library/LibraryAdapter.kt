@@ -33,10 +33,18 @@ class LibraryAdapter(
     private lateinit var recyclerView: RecyclerView
     private var lastClickedParent: java.lang.ref.WeakReference<View>? = null
     private var lastClickedCategoryId: Int? = null
+    private var lastClickedDescendantRange: IntRange? = null
+    private class CategoryBookIdsEntry(
+        val categoryRef: CategoryData,
+        val bookIds: IntArray,
+    )
+
+    private val categoryBookIdsCache = HashMap<Int, CategoryBookIdsEntry>()
 
     fun clearLastClickedParent() {
         lastClickedParent = null
         lastClickedCategoryId = null
+        lastClickedDescendantRange = null
     }
 
     fun scrollToTop() {
@@ -48,6 +56,7 @@ class LibraryAdapter(
     private val clearParentRunnable = Runnable {
         lastClickedParent = null
         lastClickedCategoryId = null
+        lastClickedDescendantRange = null
     }
 
     override fun onViewRecycled(holder: ViewHolder) {
@@ -75,7 +84,37 @@ class LibraryAdapter(
         currentList: MutableList<FlatLibraryItem>
     ) {
         super.onCurrentListChanged(previousList, currentList)
+        if (onlySelectDownloaded) {
+            categoryBookIdsCache.clear()
+        }
+        recomputeExpandDescendantRange(currentList)
         syncVisibleDecorationState()
+    }
+
+    private fun recomputeExpandDescendantRange(list: List<FlatLibraryItem>) {
+        val clickedCategoryId = lastClickedCategoryId
+        if (clickedCategoryId == null || lastClickedParent == null) {
+            lastClickedDescendantRange = null
+            return
+        }
+        val clickedPos = list.indexOfFirst {
+            val item = it.item
+            item is CategoryData && item.id == clickedCategoryId
+        }
+        if (clickedPos == -1) {
+            lastClickedDescendantRange = null
+            return
+        }
+        val clickedLevel = list[clickedPos].level
+        var endPos = clickedPos
+        for (i in (clickedPos + 1) until list.size) {
+            if (list[i].level > clickedLevel) {
+                endPos = i
+            } else {
+                break
+            }
+        }
+        lastClickedDescendantRange = if (endPos > clickedPos) (clickedPos + 1)..endPos else null
     }
 
     private fun syncVisibleDecorationState() {
@@ -88,41 +127,75 @@ class LibraryAdapter(
                 val position = holder.bindingAdapterPosition
                 if (position == RecyclerView.NO_POSITION || position >= itemCount) continue
                 val isLast = position == itemCount - 1
-                holder.updateDividerForLast(isLast)
+                holder.updateDividerForLast(isLast, animate = true)
             }
             recyclerView.invalidateItemDecorations()
             recyclerView.invalidate()
         }
     }
 
-    var viewMode: LibraryViewMode = LibraryViewMode.CATEGORY
-        set(value) {
-            if (field != value) {
-                field = value
-                clearLastClickedParent()
-                if (itemCount > 0) notifyItemRangeChanged(0, itemCount)
-            }
+    fun updateDisplayState(
+        viewMode: LibraryViewMode = this.viewMode,
+        isSelectionMode: Boolean = this.isSelectionMode,
+        selectedBookIds: Set<Int> = this.selectedBookIds,
+        onlySelectDownloaded: Boolean = this.onlySelectDownloaded,
+    ) {
+        val viewModeChanged = this.viewMode != viewMode
+        val selectionModeChanged = this.isSelectionMode != isSelectionMode
+        val selectedChanged = this.selectedBookIds != selectedBookIds
+        val onlyDownloadedChanged = this.onlySelectDownloaded != onlySelectDownloaded
+
+        if (!viewModeChanged && !selectionModeChanged && !selectedChanged && !onlyDownloadedChanged) {
+            return
         }
 
-    var isSelectionMode: Boolean = false
-        set(value) {
-            if (field != value) {
-                field = value
-                clearLastClickedParent()
-                if (itemCount > 0) notifyItemRangeChanged(0, itemCount)
-            }
+        if (viewModeChanged || selectionModeChanged) {
+            clearLastClickedParent()
+        }
+        if (viewModeChanged || onlyDownloadedChanged || !isSelectionMode) {
+            categoryBookIdsCache.clear()
         }
 
-    var selectedBookIds: Set<Int> = emptySet()
-        set(value) {
-            if (field != value) {
-                field = value
-                if (itemCount > 0) notifyItemRangeChanged(0, itemCount)
+        this.viewModeField = viewMode
+        this.isSelectionModeField = isSelectionMode
+        this.selectedBookIdsField = selectedBookIds
+        this.onlySelectDownloadedField = onlySelectDownloaded
+
+        if (itemCount > 0) {
+            val payload = if (!viewModeChanged && !selectionModeChanged && !onlyDownloadedChanged) {
+                PAYLOAD_SELECTION_STATE
+            } else {
+                PAYLOAD_DISPLAY_STATE
             }
+            notifyItemRangeChanged(0, itemCount, payload)
+        }
+    }
+
+    private var viewModeField: LibraryViewMode = LibraryViewMode.CATEGORY
+    var viewMode: LibraryViewMode
+        get() = viewModeField
+        set(value) {
+            updateDisplayState(viewMode = value)
+        }
+
+    private var isSelectionModeField: Boolean = false
+    var isSelectionMode: Boolean
+        get() = isSelectionModeField
+        set(value) {
+            updateDisplayState(isSelectionMode = value)
+        }
+
+    private var selectedBookIdsField: Set<Int> = emptySet()
+    var selectedBookIds: Set<Int>
+        get() = selectedBookIdsField
+        set(value) {
+            updateDisplayState(selectedBookIds = value)
         }
 
     companion object {
         private const val PAYLOAD_EXPAND_STATE = "payload_expand_state"
+        private const val PAYLOAD_SELECTION_STATE = "payload_selection_state"
+        private const val PAYLOAD_DISPLAY_STATE = "payload_display_state"
     }
 
     var expandedCategories: Set<Int> = emptySet()
@@ -141,12 +214,11 @@ class LibraryAdapter(
             }
         }
 
-    var onlySelectDownloaded: Boolean = false
+    private var onlySelectDownloadedField: Boolean = false
+    var onlySelectDownloaded: Boolean
+        get() = onlySelectDownloadedField
         set(value) {
-            if (field != value) {
-                field = value
-                if (itemCount > 0) notifyItemRangeChanged(0, itemCount)
-            }
+            updateDisplayState(onlySelectDownloaded = value)
         }
 
     override fun getItemViewType(position: Int): Int {
@@ -161,6 +233,7 @@ class LibraryAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val inflater = LayoutInflater.from(parent.context)
+        val horizontalMargin = (16 * parent.context.resources.displayMetrics.density).toInt()
         val view = when (viewType) {
             0 -> inflater.inflate(R.layout.item_library_category, parent, false)
             1 -> inflater.inflate(R.layout.item_library_book, parent, false)
@@ -168,72 +241,76 @@ class LibraryAdapter(
             else -> throw IllegalArgumentException("Unknown viewType")
         }.apply {
             layoutDirection = View.LAYOUT_DIRECTION_RTL
+            val lp = layoutParams as? ViewGroup.MarginLayoutParams
+            if (lp != null) {
+                lp.leftMargin = horizontalMargin
+                lp.rightMargin = horizontalMargin
+                lp.marginStart = horizontalMargin
+                lp.marginEnd = horizontalMargin
+                layoutParams = lp
+            }
         }
         return ViewHolder(view)
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int, payloads: MutableList<Any>) {
-        if (payloads.contains(PAYLOAD_EXPAND_STATE)) {
-            val item = getItem(position).item as? CategoryData ?: return
-            holder.updateExpandState(expandedCategories.contains(item.id))
-        } else {
+        if (payloads.isEmpty()) {
             super.onBindViewHolder(holder, position, payloads)
+            return
+        }
+        val flatItem = getItem(position)
+        when {
+            payloads.contains(PAYLOAD_DISPLAY_STATE) -> {
+                holder.updateDisplayState(
+                    flatItem = flatItem,
+                    viewMode = viewMode,
+                    isSelectionMode = isSelectionMode,
+                    selectedBookIds = selectedBookIds,
+                    onCategorySelectionToggle = onCategorySelectionToggle,
+                )
+            }
+            payloads.contains(PAYLOAD_SELECTION_STATE) -> {
+                holder.updateSelectionState(
+                    flatItem = flatItem,
+                    isSelectionMode = isSelectionMode,
+                    selectedBookIds = selectedBookIds,
+                )
+            }
+            payloads.contains(PAYLOAD_EXPAND_STATE) -> {
+                val item = flatItem.item as? CategoryData ?: return
+                holder.updateExpandState(expandedCategories.contains(item.id))
+            }
+            else -> super.onBindViewHolder(holder, position, payloads)
         }
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val flatItem = getItem(position)
 
-        // Tag child item with parent if expanding
-        val clickedCategoryId = lastClickedCategoryId
+        // Tag child item with parent if expanding (O(1) range check)
         val clickedParent = lastClickedParent
-        if (clickedCategoryId != null && clickedParent != null) {
-            val clickedPos = currentList.indexOfFirst {
-                val i = it.item
-                (i is CategoryData && i.id == clickedCategoryId)
-            }
-            if (clickedPos != -1) {
-                val clickedItem = getItem(clickedPos)
-                val clickedLevel = clickedItem.level
-                if (position > clickedPos) {
-                    var isDescendant = true
-                    for (i in (clickedPos + 1) until position) {
-                        if (getItem(i).level <= clickedLevel) {
-                            isDescendant = false
-                            break
-                        }
-                    }
-                    if (isDescendant && flatItem.level > clickedLevel) {
-                        holder.itemView.tag = clickedParent
-                    } else {
-                        holder.itemView.tag = null
-                    }
-                } else {
-                    holder.itemView.tag = null
-                }
-            } else {
-                holder.itemView.tag = null
-            }
+        val expandRange = lastClickedDescendantRange
+        if (clickedParent != null && expandRange != null && position in expandRange) {
+            holder.itemView.tag = clickedParent
         } else {
             holder.itemView.tag = null
         }
 
-            holder.bind(
-                flatItem = flatItem,
-                isLast = position == itemCount - 1,
-                viewMode = viewMode,
-                isSelectionMode = isSelectionMode,
-                selectedBookIds = selectedBookIds,
-                expandedCategories = expandedCategories,
-                isBookDownloadedById = isBookDownloadedById,
-                onCategoryToggle = onCategoryToggle,
-                onBookClick = onBookClick,
-                onBookSelectionToggle = onBookSelectionToggle,
-                onBookLongClick = onBookLongClick,
-                onLoadMore = onLoadMore,
-                onLoadMoreAuthors = onLoadMoreAuthors,
-                onCategorySelectionToggle = onCategorySelectionToggle,
-                onSetExpandClick = { parentView, categoryId, isExpanded ->
+        holder.bind(
+            flatItem = flatItem,
+            isLast = position == itemCount - 1,
+            viewMode = viewMode,
+            isSelectionMode = isSelectionMode,
+            selectedBookIds = selectedBookIds,
+            expandedCategories = expandedCategories,
+            onCategoryToggle = onCategoryToggle,
+            onBookClick = onBookClick,
+            onBookSelectionToggle = onBookSelectionToggle,
+            onBookLongClick = onBookLongClick,
+            onLoadMore = onLoadMore,
+            onLoadMoreAuthors = onLoadMoreAuthors,
+            onCategorySelectionToggle = onCategorySelectionToggle,
+            onSetExpandClick = { parentView, categoryId, isExpanded ->
                 val currentPos = holder.bindingAdapterPosition
                 if (currentPos != RecyclerView.NO_POSITION) {
                     val animator = recyclerView.itemAnimator as? TreeItemAnimator
@@ -252,12 +329,86 @@ class LibraryAdapter(
                     } else { // expanding
                         lastClickedParent = java.lang.ref.WeakReference(parentView)
                         lastClickedCategoryId = categoryId
+                        recomputeExpandDescendantRange(currentList)
                         recyclerView.removeCallbacks(clearParentRunnable)
                         recyclerView.postDelayed(clearParentRunnable, 350)
                     }
                 }
             }
         )
+    }
+
+    private fun getOrComputeCategoryBookIds(category: CategoryData): IntArray {
+        categoryBookIdsCache[category.id]?.let { entry ->
+            if (entry.categoryRef === category) return entry.bookIds
+        }
+        val collected = ArrayList<Int>()
+        fun collect(children: List<Any>) {
+            for (i in 0 until children.size) {
+                when (val child = children[i]) {
+                    is BooksData -> {
+                        if (!onlySelectDownloaded || isBookDownloadedById(child.id)) {
+                            collected.add(child.id)
+                        }
+                    }
+                    is CategoryData -> collect(child.children)
+                }
+            }
+        }
+        collect(category.children)
+        val result = IntArray(collected.size) { collected[it] }
+        categoryBookIdsCache[category.id] = CategoryBookIdsEntry(category, result)
+        return result
+    }
+
+    private fun countSelected(bookIds: IntArray, selected: Set<Int>): Int {
+        var count = 0
+        for (i in 0 until bookIds.size) {
+            if (selected.contains(bookIds[i])) {
+                count++
+            }
+        }
+        return count
+    }
+
+    private class IndentedDividerDrawable(
+        private val delegate: android.graphics.drawable.Drawable?,
+    ) : android.graphics.drawable.Drawable() {
+        private var startInset: Int = 0
+        private var endInset: Int = 0
+        private var isRtl: Boolean = true
+
+        fun setIndents(start: Int, end: Int, rtl: Boolean) {
+            if (startInset != start || endInset != end || isRtl != rtl) {
+                startInset = start
+                endInset = end
+                isRtl = rtl
+                invalidateSelf()
+            }
+        }
+
+        override fun draw(canvas: android.graphics.Canvas) {
+            val inner = delegate ?: return
+            val b = bounds
+            val left = b.left + if (isRtl) endInset else startInset
+            val right = b.right - if (isRtl) startInset else endInset
+            if (left < right) {
+                inner.setBounds(left, b.top, right, b.bottom)
+                inner.draw(canvas)
+            }
+        }
+
+        override fun setAlpha(alpha: Int) {
+            delegate?.alpha = alpha
+        }
+
+        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
+            delegate?.colorFilter = colorFilter
+        }
+
+        @Suppress("DEPRECATION")
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
     }
 
     inner class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -267,6 +418,17 @@ class LibraryAdapter(
         private val arrowIcon: ImageView? = itemView.findViewById(R.id.arrowIcon)
         private val indentSpace: Space? = itemView.findViewById(R.id.indentSpace)
         private val divider: View? = itemView.findViewById(R.id.divider)
+        private val dividerDrawable: IndentedDividerDrawable? = divider?.let { div ->
+            val lp = div.layoutParams as? ViewGroup.MarginLayoutParams
+            if (lp != null && (lp.marginStart != 0 || lp.marginEnd != 0 || lp.leftMargin != 0 || lp.rightMargin != 0)) {
+                lp.marginStart = 0
+                lp.marginEnd = 0
+                lp.leftMargin = 0
+                lp.rightMargin = 0
+                div.layoutParams = lp
+            }
+            IndentedDividerDrawable(div.background).also { div.background = it }
+        }
 
         init {
             itemView.background = com.maktabah.utils.ItemHighlightDrawable { itemView.parent as? View }
@@ -294,24 +456,181 @@ class LibraryAdapter(
             arrowIcon?.animate()?.cancel()
             (arrowIcon?.getTag(R.id.tag_animating_rotation) as? android.animation.Animator)?.cancel()
             arrowIcon?.setTag(R.id.tag_animating_rotation, null)
+            divider?.animate()?.cancel()
             itemView.setTag(R.id.tag_selection_mode, null)
         }
 
-        fun updateDividerForLast(isLast: Boolean) {
+        fun updateDividerForLast(isLast: Boolean, animate: Boolean = false) {
             val div = divider ?: return
             if (isLast) {
                 div.animate().cancel()
                 div.visibility = View.INVISIBLE
+            } else if (animate && div.visibility == View.INVISIBLE) {
+                div.alpha = 0f
+                div.visibility = View.VISIBLE
+                div.animate().alpha(0.35f).setDuration(250).start()
             } else {
-                if (div.visibility == View.INVISIBLE) {
-                    div.alpha = 0f
-                    div.visibility = View.VISIBLE
-                    div.animate().alpha(0.35f).setDuration(250).start()
+                div.animate().cancel()
+                div.visibility = View.VISIBLE
+                div.alpha = 0.35f
+            }
+        }
+
+        private fun bindCategoryIconAndSelection(
+            item: CategoryData,
+            viewMode: LibraryViewMode,
+            isSelectionMode: Boolean,
+            selectedBookIds: Set<Int>,
+            selectionModeChanged: Boolean,
+            density: Float,
+            onCategorySelectionToggle: (CategoryData) -> Unit,
+        ) {
+            if (isSelectionMode) {
+                val allBooks = getOrComputeCategoryBookIds(item)
+                val selectedCount = countSelected(allBooks, selectedBookIds)
+
+                val allSelected = allBooks.isNotEmpty() && selectedCount == allBooks.size
+                val mixedSelected = allBooks.isNotEmpty() && selectedCount > 0 && selectedCount < allBooks.size
+
+                if (allSelected) {
+                    typeIcon?.setImageResource(R.drawable.ic_check_circle)
+                    typeIcon?.setColorFilter(getPrimaryColor())
+                } else if (mixedSelected) {
+                    typeIcon?.setImageResource(R.drawable.ic_check_indeterminate)
+                    typeIcon?.setColorFilter(getPrimaryColor())
                 } else {
-                    div.animate().cancel()
-                    div.visibility = View.VISIBLE
-                    div.alpha = 0.35f
+                    typeIcon?.setImageResource(R.drawable.ic_circle)
+                    typeIcon?.setColorFilter(getOnSurfaceVariantColor())
                 }
+                typeIcon?.scaleX = 1f
+                itemView.isSelected = allSelected || mixedSelected
+                typeIcon?.setOnClickListener { onCategorySelectionToggle(item) }
+            } else {
+                itemView.isSelected = false
+                typeIcon?.setOnClickListener(null)
+                typeIcon?.isClickable = false
+                typeIcon?.setImageResource(if (viewMode == LibraryViewMode.AUTHOR) R.drawable.ic_person else R.drawable.ic_folder)
+                typeIcon?.setColorFilter(getSecondaryColor())
+                typeIcon?.scaleX = -1f
+            }
+
+            if (selectionModeChanged) {
+                typeIcon?.animate()?.cancel()
+                typeIcon?.alpha = 0f
+                typeIcon?.translationX = if (isSelectionMode) -20f * density else 20f * density
+                typeIcon?.animate()
+                    ?.alpha(1f)
+                    ?.translationX(0f)
+                    ?.setDuration(250)
+                    ?.start()
+            } else {
+                typeIcon?.alpha = 1f
+                typeIcon?.translationX = 0f
+            }
+        }
+
+        private fun bindBookIconAndSelection(
+            flatItem: FlatLibraryItem,
+            item: BooksData,
+            isSelectionMode: Boolean,
+            selectedBookIds: Set<Int>,
+            selectionModeChanged: Boolean,
+            density: Float,
+        ) {
+            if (isSelectionMode) {
+                val isSelected = selectedBookIds.contains(item.id)
+                itemView.isSelected = isSelected
+                if (isSelected) {
+                    typeIcon?.setImageResource(R.drawable.ic_check_circle)
+                    typeIcon?.setColorFilter(getPrimaryColor())
+                } else {
+                    typeIcon?.setImageResource(R.drawable.ic_circle)
+                    typeIcon?.setColorFilter(getOnSurfaceVariantColor())
+                }
+                typeIcon?.scaleX = 1f
+            } else {
+                itemView.isSelected = false
+                if (flatItem.isDownloaded) {
+                    typeIcon?.setImageResource(R.drawable.ic_import_contacts)
+                } else {
+                    typeIcon?.setImageResource(R.drawable.ic_cloud)
+                }
+                typeIcon?.setColorFilter(getSecondaryColor())
+                typeIcon?.scaleX = -1f
+            }
+
+            if (selectionModeChanged) {
+                typeIcon?.animate()?.cancel()
+                typeIcon?.alpha = 0f
+                typeIcon?.translationX = if (isSelectionMode) -20f * density else 20f * density
+                typeIcon?.animate()
+                    ?.alpha(1f)
+                    ?.translationX(0f)
+                    ?.setDuration(250)
+                    ?.start()
+            } else {
+                typeIcon?.alpha = 1f
+                typeIcon?.translationX = 0f
+            }
+        }
+
+        fun updateSelectionState(
+            flatItem: FlatLibraryItem,
+            isSelectionMode: Boolean,
+            selectedBookIds: Set<Int>,
+        ) {
+            val density = itemView.context.resources.displayMetrics.density
+            when (val item = flatItem.item) {
+                is CategoryData -> bindCategoryIconAndSelection(
+                    item = item,
+                    viewMode = viewMode,
+                    isSelectionMode = isSelectionMode,
+                    selectedBookIds = selectedBookIds,
+                    selectionModeChanged = false,
+                    density = density,
+                    onCategorySelectionToggle = onCategorySelectionToggle,
+                )
+                is BooksData -> bindBookIconAndSelection(
+                    flatItem = flatItem,
+                    item = item,
+                    isSelectionMode = isSelectionMode,
+                    selectedBookIds = selectedBookIds,
+                    selectionModeChanged = false,
+                    density = density,
+                )
+            }
+        }
+
+        fun updateDisplayState(
+            flatItem: FlatLibraryItem,
+            viewMode: LibraryViewMode,
+            isSelectionMode: Boolean,
+            selectedBookIds: Set<Int>,
+            onCategorySelectionToggle: (CategoryData) -> Unit,
+        ) {
+            val density = itemView.context.resources.displayMetrics.density
+            val wasSelectionMode = itemView.getTag(R.id.tag_selection_mode) as? Boolean
+            val selectionModeChanged = wasSelectionMode != null && wasSelectionMode != isSelectionMode
+            itemView.setTag(R.id.tag_selection_mode, isSelectionMode)
+
+            when (val item = flatItem.item) {
+                is CategoryData -> bindCategoryIconAndSelection(
+                    item = item,
+                    viewMode = viewMode,
+                    isSelectionMode = isSelectionMode,
+                    selectedBookIds = selectedBookIds,
+                    selectionModeChanged = selectionModeChanged,
+                    density = density,
+                    onCategorySelectionToggle = onCategorySelectionToggle,
+                )
+                is BooksData -> bindBookIconAndSelection(
+                    flatItem = flatItem,
+                    item = item,
+                    isSelectionMode = isSelectionMode,
+                    selectedBookIds = selectedBookIds,
+                    selectionModeChanged = selectionModeChanged,
+                    density = density,
+                )
             }
         }
 
@@ -322,7 +641,6 @@ class LibraryAdapter(
             isSelectionMode: Boolean,
             selectedBookIds: Set<Int>,
             expandedCategories: Set<Int>,
-            isBookDownloadedById: (Int) -> Boolean,
             onCategoryToggle: (Int) -> Unit,
             onBookClick: (Int) -> Unit,
             onBookSelectionToggle: (Int) -> Unit,
@@ -341,33 +659,18 @@ class LibraryAdapter(
             itemContainer?.isClickable = false
             itemContainer?.isFocusable = false
 
-            val layoutParams = itemView.layoutParams as? ViewGroup.MarginLayoutParams
-            if (layoutParams != null) {
-                val horizontalMargin = (16 * density).toInt()
-                if (layoutParams.leftMargin != horizontalMargin || layoutParams.rightMargin != horizontalMargin ||
-                    layoutParams.marginStart != horizontalMargin || layoutParams.marginEnd != horizontalMargin) {
-                    layoutParams.leftMargin = horizontalMargin
-                    layoutParams.rightMargin = horizontalMargin
-                    layoutParams.marginStart = horizontalMargin
-                    layoutParams.marginEnd = horizontalMargin
-                    itemView.layoutParams = layoutParams
-                }
-            }
-
-            val dividerParams = divider?.layoutParams as? ViewGroup.MarginLayoutParams
-            if (dividerParams != null) {
+            if (dividerDrawable != null) {
                 val strokeWidth = (1 * density).toInt()
                 val targetStart = if (item is LoadMoreData || item is LoadMoreAuthors) {
                     strokeWidth
                 } else {
-                    val dividerIndent = (80 + (flatItem.level * 16)) * density
-                    dividerIndent.toInt()
+                    ((80 + (flatItem.level * 16)) * density).toInt()
                 }
-                if (dividerParams.marginStart != targetStart || dividerParams.marginEnd != strokeWidth) {
-                    dividerParams.marginStart = targetStart
-                    dividerParams.marginEnd = strokeWidth
-                    divider.layoutParams = dividerParams
-                }
+                dividerDrawable.setIndents(
+                    start = targetStart,
+                    end = strokeWidth,
+                    rtl = itemView.layoutDirection == View.LAYOUT_DIRECTION_RTL,
+                )
             }
 
             val wasSelectionMode = itemView.getTag(R.id.tag_selection_mode) as? Boolean
@@ -394,62 +697,15 @@ class LibraryAdapter(
 
                     arrowIcon?.setColorFilter(getSecondaryColor())
 
-                    if (isSelectionMode) {
-                        fun getAllBooks(cats: List<Any>): List<Int> {
-                            val list = mutableListOf<Int>()
-                            for (c in cats) {
-                                if (c is BooksData) {
-                                    if (!onlySelectDownloaded || isBookDownloadedById(c.id)) {
-                                        list.add(c.id)
-                                    }
-                                }
-                                else if (c is CategoryData) list.addAll(getAllBooks(c.children))
-                            }
-                            return list
-                        }
-                        val allBooks = getAllBooks(item.children)
-                        val selectedCount = allBooks.count { selectedBookIds.contains(it) }
-
-                        val allSelected = allBooks.isNotEmpty() && selectedCount == allBooks.size
-                        val mixedSelected = allBooks.isNotEmpty() && selectedCount > 0 && selectedCount < allBooks.size
-
-                        if (allSelected) {
-                            typeIcon?.setImageResource(R.drawable.ic_check_circle)
-                            typeIcon?.setColorFilter(getPrimaryColor())
-                        } else if (mixedSelected) {
-                            typeIcon?.setImageResource(R.drawable.ic_check_indeterminate)
-                            typeIcon?.setColorFilter(getPrimaryColor())
-                        } else {
-                            typeIcon?.setImageResource(R.drawable.ic_circle)
-                            typeIcon?.setColorFilter(getOnSurfaceVariantColor())
-                        }
-                        typeIcon?.scaleX = 1f
-                        itemView.isSelected = allSelected || mixedSelected
-
-                        typeIcon?.setOnClickListener { onCategorySelectionToggle(item) }
-                    } else {
-                        itemView.isSelected = false
-                        typeIcon?.setOnClickListener(null)
-                        typeIcon?.isClickable = false
-                        typeIcon?.setImageResource(if (viewMode == LibraryViewMode.AUTHOR) R.drawable.ic_person else R.drawable.ic_folder)
-                        typeIcon?.setColorFilter(getSecondaryColor())
-                        typeIcon?.scaleX = -1f // Match Compose scaleX = -1f for RTL/folder icon
-                    }
-
-                    if (selectionModeChanged) {
-                        typeIcon?.animate()?.cancel()
-                        typeIcon?.alpha = 0f
-                        typeIcon?.translationX =
-                            if (isSelectionMode) -20f * density else 20f * density
-                        typeIcon?.animate()
-                            ?.alpha(1f)
-                            ?.translationX(0f)
-                            ?.setDuration(250)
-                            ?.start()
-                    } else {
-                        typeIcon?.alpha = 1f
-                        typeIcon?.translationX = 0f
-                    }
+                    bindCategoryIconAndSelection(
+                        item = item,
+                        viewMode = viewMode,
+                        isSelectionMode = isSelectionMode,
+                        selectedBookIds = selectedBookIds,
+                        selectionModeChanged = selectionModeChanged,
+                        density = density,
+                        onCategorySelectionToggle = onCategorySelectionToggle,
+                    )
 
                     arrowIcon?.isClickable = false
 
@@ -487,43 +743,14 @@ class LibraryAdapter(
 
                     typeIcon?.isClickable = false
 
-                    if (isSelectionMode) {
-                        val isSelected = selectedBookIds.contains(item.id)
-                        itemView.isSelected = isSelected
-                        if (isSelected) {
-                            typeIcon?.setImageResource(R.drawable.ic_check_circle)
-                            typeIcon?.setColorFilter(getPrimaryColor())
-                        } else {
-                            typeIcon?.setImageResource(R.drawable.ic_circle)
-                            typeIcon?.setColorFilter(getOnSurfaceVariantColor())
-                        }
-                        typeIcon?.scaleX = 1f
-                    } else {
-                        itemView.isSelected = false
-                        val isDownloaded = flatItem.isDownloaded
-                        if (isDownloaded) {
-                            typeIcon?.setImageResource(R.drawable.ic_import_contacts)
-                        } else {
-                            typeIcon?.setImageResource(R.drawable.ic_cloud)
-                        }
-                        typeIcon?.setColorFilter(getSecondaryColor())
-                        typeIcon?.scaleX = -1f
-                    }
-
-                    if (selectionModeChanged) {
-                        typeIcon?.animate()?.cancel()
-                        typeIcon?.alpha = 0f
-                        typeIcon?.translationX =
-                            if (isSelectionMode) -20f * density else 20f * density
-                        typeIcon?.animate()
-                            ?.alpha(1f)
-                            ?.translationX(0f)
-                            ?.setDuration(250)
-                            ?.start()
-                    } else {
-                        typeIcon?.alpha = 1f
-                        typeIcon?.translationX = 0f
-                    }
+                    bindBookIconAndSelection(
+                        flatItem = flatItem,
+                        item = item,
+                        isSelectionMode = isSelectionMode,
+                        selectedBookIds = selectedBookIds,
+                        selectionModeChanged = selectionModeChanged,
+                        density = density,
+                    )
 
                     itemView.setOnClickListener {
                         if (isSelectionMode) {
@@ -552,7 +779,7 @@ class LibraryAdapter(
                 }
             }
 
-            updateDividerForLast(isLast)
+            updateDividerForLast(isLast, animate = false)
         }
     }
 }
