@@ -24,7 +24,6 @@ import com.maktabah.models.FlatLibraryItem
 import com.maktabah.models.LibraryViewMode
 import com.maktabah.models.LoadMoreAuthors
 import com.maktabah.models.LoadMoreData
-import com.maktabah.search.SearchHitResolver
 import com.maktabah.ui.common.UiText
 import com.maktabah.ui.reader.ReaderTabManager
 import com.maktabah.utils.normalizeArabic
@@ -962,9 +961,6 @@ class LibraryViewModel(
                 }
                 _deleteMessages.trySend(UiText.StringResource(R.string.library_delete_no_result))
             } finally {
-                if (anyMutationOccurred) {
-                    SearchHitResolver.clearCache()
-                }
                 if (catalogMutated) {
                     checkBookUpdatesPeriodically(force = true)
                 }

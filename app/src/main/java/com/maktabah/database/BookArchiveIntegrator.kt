@@ -5,6 +5,7 @@ package com.maktabah.database
 import android.content.Context
 import android.util.Log
 import com.maktabah.models.IntegratePhase
+import com.maktabah.search.SearchHitResolver
 import com.maktabah.utils.cleaningLineBreaks
 import com.maktabah.utils.normalizeArabic
 import com.maktabah.utils.removingHarakat
@@ -60,6 +61,8 @@ object BookArchiveIntegrator {
             var ftsTransactionOk = !ftsFile.exists()
 
             if (file.exists()) {
+                val targetSet = targetIds.toSet()
+                SearchHitResolver.invalidateArchive(file.absolutePath, targetSet)
                 try {
                     SQLiteDB(
                         file.absolutePath,
@@ -90,6 +93,8 @@ object BookArchiveIntegrator {
                     throw e
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed deleting content tables from archive $archiveId", e)
+                } finally {
+                    SearchHitResolver.invalidateArchive(file.absolutePath, targetSet)
                 }
             }
 
@@ -140,6 +145,8 @@ object BookArchiveIntegrator {
         onPhaseChanged?.invoke(IntegratePhase.DATA)
         val archiveFile = File(context.filesDir, "$archiveId.sqlite")
         val archiveFtsFile = File(context.filesDir, "${archiveId}_fts.sqlite")
+        val invalidatedIds = setOf(bookId)
+        SearchHitResolver.invalidateArchive(archiveFile.absolutePath, invalidatedIds)
 
         var db: SQLiteDB? = null
         var ftsDb: SQLiteDB? = null
@@ -212,6 +219,7 @@ object BookArchiveIntegrator {
         } finally {
             db?.close()
             ftsDb?.close()
+            SearchHitResolver.invalidateArchive(archiveFile.absolutePath, invalidatedIds)
             // Clean up downloaded file
             if (downloadedDbFile.exists()) {
                 downloadedDbFile.delete()
@@ -238,6 +246,8 @@ object BookArchiveIntegrator {
         if (!archiveFile.exists()) return@run true
 
         val archiveFtsFile = File(context.filesDir, "${archiveId}_fts.sqlite")
+        val migratedIds = setOf(oldId, newId)
+        SearchHitResolver.invalidateArchive(archiveFile.absolutePath, migratedIds)
         var db: SQLiteDB? = null
         var ftsDb: SQLiteDB? = null
 
@@ -287,6 +297,7 @@ object BookArchiveIntegrator {
         } finally {
             db?.close()
             ftsDb?.close()
+            SearchHitResolver.invalidateArchive(archiveFile.absolutePath, migratedIds)
         }
     }
 

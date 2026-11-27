@@ -18,27 +18,81 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 
-object SearchHitResolver {
-    private val cache = LruCache<Long, String>(1000)
-    private val highlightCache = LruCache<String, Pair<String, List<IntRange>>>(1000)
+internal class RefCountedDbPool<T : Any>(
+    private val maxEntries: Int = 8,
+    private val closeHandle: (T) -> Unit,
+) {
+    class Entry<T : Any>(
+        val handle: T,
+        val queryLock: Any = Any(),
+        var activeUsers: Int = 0,
+        var markedForClose: Boolean = false,
+    )
 
-    private class CachedDb(val db: SQLiteDB) {
-        val queryLock = Any()
-        var activeUsers: Int = 0
-        var markedForClose: Boolean = false
+    private val lock = Any()
+    private val entries = LinkedHashMap<String, Entry<T>>(maxEntries + 1, 0.75f, true)
+
+    fun acquire(key: String, opener: () -> T?): Entry<T>? {
+        synchronized(lock) {
+            val existing = entries[key]
+            if (existing != null && !existing.markedForClose) {
+                existing.activeUsers++
+                return existing
+            }
+            val opened = opener() ?: return null
+            val entry = Entry(handle = opened, activeUsers = 1)
+            entries[key] = entry
+            while (entries.size > maxEntries) {
+                val eldestKey = entries.entries.iterator().next().key
+                if (eldestKey == key) break
+                val evicted = entries.remove(eldestKey) ?: break
+                markOrCloseLocked(evicted)
+            }
+            return entry
+        }
     }
 
-    private val dbCacheLock = Any()
-    private val dbCache = object : LruCache<String, CachedDb>(8) {
-        override fun entryRemoved(evicted: Boolean, key: String, oldValue: CachedDb, newValue: CachedDb?) {
-            synchronized(dbCacheLock) {
-                oldValue.markedForClose = true
-                if (oldValue.activeUsers == 0) {
-                    runCatching { oldValue.db.close() }
-                }
+    fun release(entry: Entry<T>) {
+        synchronized(lock) {
+            if (entry.activeUsers > 0) {
+                entry.activeUsers--
+            }
+            if (entry.markedForClose && entry.activeUsers == 0) {
+                runCatching { closeHandle(entry.handle) }
             }
         }
     }
+
+    fun evict(key: String) {
+        synchronized(lock) {
+            val removed = entries.remove(key) ?: return
+            markOrCloseLocked(removed)
+        }
+    }
+
+    fun evictAll() {
+        synchronized(lock) {
+            val iterator = entries.values.iterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                iterator.remove()
+                markOrCloseLocked(entry)
+            }
+        }
+    }
+
+    private fun markOrCloseLocked(entry: Entry<T>) {
+        entry.markedForClose = true
+        if (entry.activeUsers == 0) {
+            runCatching { closeHandle(entry.handle) }
+        }
+    }
+}
+
+object SearchHitResolver {
+    private val cache = LruCache<Long, String>(1000)
+    private val highlightCache = LruCache<String, Pair<String, List<IntRange>>>(1000)
+    private val dbPool = RefCountedDbPool<SQLiteDB>(maxEntries = 8) { db -> db.close() }
 
     fun getCachedSnippet(packedId: Long): String? = cache.get(packedId)
 
@@ -82,12 +136,31 @@ object SearchHitResolver {
         }
     }
 
+    fun invalidateArchive(archivePath: String, bookIds: Set<Int> = emptySet()) {
+        dbPool.evict(archivePath)
+        if (bookIds.isEmpty()) {
+            cache.evictAll()
+            highlightCache.evictAll()
+            return
+        }
+        for (packedId in cache.snapshot().keys) {
+            if ((packedId ushr 32).toInt() in bookIds) {
+                cache.remove(packedId)
+            }
+        }
+        for (key in highlightCache.snapshot().keys) {
+            val sep = key.indexOf(':')
+            val packedId = if (sep > 0) key.substring(0, sep).toLongOrNull() else null
+            if (packedId != null && (packedId ushr 32).toInt() in bookIds) {
+                highlightCache.remove(key)
+            }
+        }
+    }
+
     fun clearCache() {
         cache.evictAll()
         highlightCache.evictAll()
-        synchronized(dbCacheLock) {
-            dbCache.evictAll()
-        }
+        dbPool.evictAll()
     }
 
     suspend fun resolveSnippet(
@@ -135,32 +208,15 @@ object SearchHitResolver {
         snippet
     }
 
-    private fun acquireDb(path: String): CachedDb? {
-        synchronized(dbCacheLock) {
-            val existing = dbCache.get(path)
-            if (existing != null && !existing.markedForClose) {
-                existing.activeUsers++
-                return existing
-            }
-            val opened = try {
+    private fun acquireDb(path: String): RefCountedDbPool.Entry<SQLiteDB>? {
+        return dbPool.acquire(path) {
+            try {
                 SQLiteDB(
                     path,
                     SQLiteDB.SQLITE_OPEN_READONLY or SQLiteDB.SQLITE_OPEN_FULLMUTEX,
                 )
             } catch (_: Exception) {
-                return null
-            }
-            val entry = CachedDb(opened).apply { activeUsers = 1 }
-            dbCache.put(path, entry)
-            return entry
-        }
-    }
-
-    private fun releaseDb(entry: CachedDb) {
-        synchronized(dbCacheLock) {
-            entry.activeUsers--
-            if (entry.markedForClose && entry.activeUsers <= 0) {
-                runCatching { entry.db.close() }
+                null
             }
         }
     }
@@ -170,7 +226,7 @@ object SearchHitResolver {
         var nass: String? = null
         try {
             synchronized(entry.queryLock) {
-                entry.db.prepare("SELECT nass FROM \"b$bookId\" WHERE id = ? LIMIT 1;")?.use { stmt ->
+                entry.handle.prepare("SELECT nass FROM \"b$bookId\" WHERE id = ? LIMIT 1;")?.use { stmt ->
                     stmt.bindInt(1, contentId)
                     if (stmt.step() == SQLiteDB.SQLITE_ROW) {
                         val type = stmt.columnType(0)
@@ -190,7 +246,7 @@ object SearchHitResolver {
             }
         } catch (_: Exception) {
         } finally {
-            releaseDb(entry)
+            dbPool.release(entry)
         }
         return nass
     }

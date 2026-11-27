@@ -6,7 +6,6 @@ import com.maktabah.models.AuthorRow
 import com.maktabah.models.BooksData
 import com.maktabah.models.CategoryData
 import com.maktabah.models.ImportBookMetadata
-import com.maktabah.search.SearchHitResolver
 import com.maktabah.utils.normalizeArabic
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -234,7 +233,6 @@ object BookImportManager {
                 BookArchiveIntegrator.removeBookFromArchive(context, metadata.bkid, oldArchiveId)
             }
 
-            SearchHitResolver.clearCache()
             Result.success(Unit)
         } catch (e: CancellationException) {
             withContext(NonCancellable) {
@@ -449,7 +447,6 @@ object BookImportManager {
                     throw e
                 }
 
-                SearchHitResolver.clearCache()
                 Result.success(Unit)
             }
         } catch (e: CancellationException) {
