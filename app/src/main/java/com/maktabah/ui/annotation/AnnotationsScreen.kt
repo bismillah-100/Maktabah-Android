@@ -959,7 +959,7 @@ private fun AnnotationsList(
                             if (item != null) {
                                 val isLast = item.index == item.lastIndex
                                 val density = ctx.resources.displayMetrics.density
-                                val maxRadius = 30f * density
+                                val maxRadius = GroupedCardDecoration.COMPACT_HEADER_CORNER_RADIUS_DP * density
                                 val bottomRadius = if (isLast) maxRadius else 0f
 
                                 swipePath.reset()
@@ -1103,7 +1103,7 @@ private fun AnnotationsList(
             userScrollEnabled = userScrollEnabled,
             decorationFactory = { rv ->
                 val ctx = rv.context
-                val cornerRadius = 30 * ctx.resources.displayMetrics.density
+                val cornerRadius = GroupedCardDecoration.COMPACT_HEADER_CORNER_RADIUS_DP * ctx.resources.displayMetrics.density
                 val marginH = 16 * ctx.resources.displayMetrics.density
 
                 GroupedCardDecoration(

@@ -736,7 +736,7 @@ private fun SearchFilterList(
             userScrollEnabled = userScrollEnabled,
             decorationFactory = { rv ->
                 val ctx = rv.context
-                val cornerRadius = 30 * ctx.resources.displayMetrics.density
+                val cornerRadius = GroupedCardDecoration.DEFAULT_CORNER_RADIUS_DP * ctx.resources.displayMetrics.density
                 val marginH = 16 * ctx.resources.displayMetrics.density
 
                 GroupedCardDecoration(

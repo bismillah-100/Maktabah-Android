@@ -126,6 +126,29 @@ class GroupedCardDecoration(
         val isLast: Boolean
     )
 
+    companion object {
+        const val DEFAULT_CORNER_RADIUS_DP = 24f
+        const val COMPACT_HEADER_CORNER_RADIUS_DP = 23f
+
+        /**
+         * Computes the scale factor for top and bottom radii when their sum exceeds [height],
+         * matching Skia's addRoundRect behavior without allocating in onDraw.
+         */
+        internal fun radiusScale(
+            topRadius: Float,
+            bottomRadius: Float,
+            height: Float,
+        ): Float {
+            val safeHeight = height.coerceAtLeast(0f)
+            val totalRadius = topRadius + bottomRadius
+            return if (totalRadius > safeHeight && totalRadius > 0f) {
+                safeHeight / totalRadius
+            } else {
+                1f
+            }
+        }
+    }
+
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val path = Path()
@@ -199,8 +222,8 @@ class GroupedCardDecoration(
         fun drawCurrentGroup() {
             if (!hasVisibleGroup) return
 
-            val topRadius = if (currentIsFirst) cornerRadius else 0f
-            val bottomRadius = if (currentIsLast) cornerRadius else 0f
+            val rawTopRadius = if (currentIsFirst) cornerRadius else 0f
+            val rawBottomRadius = if (currentIsLast) cornerRadius else 0f
 
             // Kita gunakan fungsi snap() untuk left dan right agar bernilai x.5f
             // Sama seperti top dan bottom, ini akan membuat hairline (strokeWidth = 0f) menjadi sangat tajam
@@ -209,6 +232,14 @@ class GroupedCardDecoration(
             val right = snap(parent.width - marginHorizontal + currentTranslationX) - 1f
             val top = snap(currentTop)
             val bottom = snap(currentBottom) - 1f
+
+            val scale = radiusScale(
+                topRadius = rawTopRadius,
+                bottomRadius = rawBottomRadius,
+                height = bottom - top,
+            )
+            val topRadius = rawTopRadius * scale
+            val bottomRadius = rawBottomRadius * scale
 
             radiiCache[0] = topRadius
             radiiCache[1] = topRadius
